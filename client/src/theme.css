@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+@import "tailwindcss-safe-area";
+
+@theme {
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-lg: 18px;
+  --text-lg--line-height: 28px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 38px;
+  --text-4xl: 36px;
+  --text-4xl--line-height: 44px;
+  --text-5xl: 46px;
+  --text-5xl--line-height: 56px;
+
+  --font-sans: "Hind Siliguri", "Inter", system-ui, sans-serif;
+  --font-en: "Inter", "Hind Siliguri", system-ui, sans-serif;
+
+  --color-brand: #087a35;
+  --color-brand-dark: #064b27;
+  --color-brand-deep: #043a1e;
+  --color-accent: #ff8a00;
+  --color-accent-dark: #e67a00;
+  --color-mist: #f0faf2;
+  --color-mist-2: #e2f4e7;
+  --color-ink: #202820;
+  --color-dim: #737b73;
+  --color-line: #e5eae5;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --text: #202820;
+  --dim: #737b73;
+  --border: #e5eae5;
+  --accent: #087a35;
+  --radius: 14px;
+  --space-surface: var(--surface);
+  --space-surface-alt: #f0faf2;
+  --space-muted: var(--dim);
+  --space-border: var(--border);
+  --space-accent: var(--accent);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-en {
+  font-family: var(--font-en);
+}
+
+/* Phone tap targets */
+@layer base {
+  button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) {
+    min-height: 2.25rem;
+  }
+  /* Older Android browsers/WebViews add a ~300ms tap delay and can treat
+     a tap as a double-tap-zoom gesture, which makes buttons feel dead.
+     manipulation removes the delay and the gesture ambiguity. */
+  a, button, [role="button"], input, select, textarea, label, summary {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(8, 122, 53, 0.12);
+  }
+}
+
+@keyframes gs-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.gs-fade-up {
+  animation: gs-fade-up 0.45s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-fade-up { animation: none; }
+  html { scroll-behavior: auto; }
+}

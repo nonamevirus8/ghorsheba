@@ -1,0 +1,130 @@
+# GhorSheba (ঘরসেবা)
+
+**Your Home. Our Responsibility.**
+
+GhorSheba is a home-service marketplace for Tangail, Bangladesh. It connects
+customers with verified local professionals — electricians, plumbers, masons,
+painters, carpenters, AC technicians, tile workers, cleaners and renovation
+contractors — through an admin-coordinated booking workflow.
+
+The site is primarily in Bengali (বাংলা) with English as a secondary language,
+and all prices are in Bangladeshi Taka (৳).
+
+## How it works
+
+1. A customer registers and submits a booking request for a service.
+2. An admin reviews the request and assigns a suitable verified professional.
+3. The professional accepts the job, completes the work, and marks it done.
+4. The customer confirms completion and can leave a review.
+5. Payment is cash, recorded by an authorized admin (no online payment
+   gateway is integrated).
+
+Booking statuses: `Pending → Confirmed → Provider Assigned → In Progress →
+Completed` (or `Cancelled`). Every booking gets a unique ID and a full status
+history.
+
+## Features
+
+- **Homepage** — service catalogue, how-it-works, professional listings and
+  reviews (real data only; no fabricated ratings or testimonials).
+- **Customer panel** — registration/login, booking form with photo upload,
+  booking tracking, completion confirmation, reviews and complaints.
+- **Professional panel** — registration with admin verification, job list,
+  accept/reject, start/finish work, availability toggle.
+- **Admin panel** — booking management and assignment, professional
+  verification, review moderation, complaint handling, service and pricing
+  management, platform settings (commission %, support contacts) and an
+  activity log.
+- **Roles & security** — customer / professional / admin roles are enforced
+  in the server actions, not just in the UI. Passwords are stored salted and
+  hashed; sessions are server-side tokens.
+
+## Tech stack
+
+- **Frontend:** React 19 + TypeScript, Tailwind CSS v4, TanStack Query,
+  Recharts, Lucide icons. Fonts: Hind Siliguri (Bengali) + Inter (English).
+- **Backend:** TypeScript server actions with Zod-validated request/response
+  schemas, running on the Bun runtime.
+- **Database:** SQLite via Drizzle ORM. The schema mirrors the product's
+  logical collections: `users`, `professionals`, `services`, `bookings`,
+  `booking_events`, `reviews`, `notifications`, `complaints`, `locations`,
+  `settings`, `admin_logs`, `sessions`.
+- **Images:** uploaded photos are stored as binary blobs referenced by key
+  from the database.
+
+## Repository layout
+
+```
+client/            React frontend
+  src/App.tsx        Homepage and public pages
+  src/booking.tsx    Booking flow
+  src/panels.tsx     Customer / professional / admin panels
+  src/lib.tsx        Shared UI helpers
+  src/api.ts         Typed client for the server actions
+server/
+  src/actions.ts     All server actions (auth, bookings, admin, …)
+  src/schema.ts      Drizzle database schema
+drizzle/           SQL migrations
+  0002_…sql          Core tables + seed data (see below)
+```
+
+## Seed data
+
+Migration `drizzle/0002_ghorsheba_core_tables_and_catalog_seed.sql` creates
+the core tables and seeds the platform reference data:
+
+- **12 services:** Electrician, Plumber, Mason, Painter, Carpenter,
+  AC Technician, Tile Worker, Welding, Cleaning, Glass & Aluminium,
+  Renovation, Pest Control.
+- **12 Tangail upazilas (locations):** Tangail Sadar, Ghatail, Kalihati,
+  Mirzapur, Sakhipur, Basail, Madhupur, Nagarpur, Delduar, Bhuapur,
+  Gopalpur, Dhanbari.
+- **1 platform settings row** (default 10% commission; support contacts are
+  left empty for the admin to fill in).
+
+No demo users, professionals, bookings or reviews are seeded — those are
+created only through real in-app registrations and bookings.
+
+## Running locally
+
+This project was built for the Muse web-artifact runtime, which provides
+the `@hatch/space-sdk` package (typed action client/server plumbing) and
+hosts the app. To explore or typecheck the code outside that runtime you
+need [Bun](https://bun.sh) 1.3+:
+
+```bash
+bun install        # resolves dependencies (see note below)
+bun run typecheck  # typechecks client and server
+bun run build      # builds server actions and the client bundle
+```
+
+> **Note:** `package.json` references `@hatch/space-sdk` from a local path
+> provided by the Muse platform, so `bun install` only completes inside
+> that environment. The application source itself (components, actions,
+> schema, migrations) is complete in this repository.
+
+The first admin account is claimed from the app's login screen ("প্রথম
+অ্যাডমিন অ্যাকাউন্ট সেটআপ করুন") — that option appears only while no admin
+exists.
+
+## Design system
+
+| Token        | Value     |
+| ------------ | --------- |
+| Primary green | `#087A35` |
+| Dark green    | `#064B27` |
+| Accent orange | `#FF8A00` |
+| Light green bg| `#F0FAF2` |
+| Text dark     | `#202820` |
+| Border        | `#E5EAE5` |
+
+Mobile-first layout, rounded cards with subtle shadows.
+
+## Notes
+
+- No secrets, passwords, API keys or credentials are stored in this
+  repository. The production database is **not** included.
+- The binary image assets used by the deployed site (hero and service
+  photos under `client/src/assets/`) are not part of this code push; the
+  components reference them by import and render an icon treatment when an
+  image is absent.

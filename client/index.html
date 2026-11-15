@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="bn">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="টাঙ্গাইলে ইলেকট্রিশিয়ান, প্লাম্বার, রাজমিস্ত্রি, রংমিস্ত্রি ও অন্যান্য হোম সার্ভিস সহজে খুঁজুন GhorSheba-তে।" />
+    <meta property="og:title" content="GhorSheba | টাঙ্গাইলের নির্ভরযোগ্য হোম সার্ভিস" />
+    <meta property="og:description" content="টাঙ্গাইলে যাচাই করা দক্ষ মিস্ত্রি খুঁজুন সহজে, দ্রুত এবং নিরাপদে।" />
+    <meta property="og:type" content="website" />
+    <!-- Empty inline icon: stops the browser fetching /favicon.ico, which
+         lives outside the space's routes and fails auth. -->
+    <link rel="icon" href="data:," />
+    <title>GhorSheba | টাঙ্গাইলের নির্ভরযোগ্য হোম সার্ভিস</title>
+    <script src="./src/main.tsx" type="module"></script>
+  </head>
+  <body>
+    <div
+      data-generated-space-root=""
+      data-generated-space-slug="ghorsheba"
+    ></div>
+    <noscript>
+      <div style="padding:32px 20px;text-align:center;font-family:sans-serif;color:#202820;">
+        <p style="font-size:18px;font-weight:700;">GhorSheba চালু করতে JavaScript দরকার</p>
+        <p style="font-size:15px;color:#555;">আপনার ব্রাউজারে JavaScript চালু করে পেজটি আবার খুলুন।</p>
+      </div>
+    </noscript>
+    <!-- Boot watchdog (plain ES5, no modules): if the app bundle cannot
+         start in this browser — old WebView, blocked/dropped script, very
+         slow network — the page would otherwise sit frozen like a picture
+         with dead buttons. After ~12s with an empty app root, show a
+         plain-language message with a working reload button instead.
+         The moment React mounts (root gains a child) the watchdog stops. -->
+    <script>
+      (function () {
+        var root = document.querySelector("[data-generated-space-root]");
+        if (!root) return;
+        var tries = 0;
+        var timer = setInterval(function () {
+          tries += 1;
+          if (root.children.length > 0) {
+            clearInterval(timer);
+            return;
+          }
+          if (tries < 12) return;
+          clearInterval(timer);
+          if (document.getElementById("gs-boot-fallback")) return;
+          var box = document.createElement("div");
+          box.id = "gs-boot-fallback";
+          box.style.cssText =
+            "padding:36px 20px;text-align:center;font-family:sans-serif;color:#202820;background:#ffffff;";
+          var h = document.createElement("p");
+          h.style.cssText = "font-size:18px;font-weight:700;margin:0 0 8px;";
+          h.textContent = "পেজটি চালু হতে সমস্যা হচ্ছে";
+          var p = document.createElement("p");
+          p.style.cssText = "font-size:15px;line-height:1.55;color:#555;margin:0 auto 18px;max-width:340px;";
+          p.textContent =
+            "আপনার ব্রাউজারটি পুরনো হলে বা ইন্টারনেট সংযোগ ধীর হলে এমন হতে পারে। Chrome ব্রাউজারটি আপডেট করে আবার চেষ্টা করুন।";
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = "আবার চেষ্টা করুন";
+          btn.style.cssText =
+            "background:#087a35;color:#ffffff;border:0;padding:12px 26px;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;";
+          btn.onclick = function () {
+            window.location.reload();
+          };
+          box.appendChild(h);
+          box.appendChild(p);
+          box.appendChild(btn);
+          root.appendChild(box);
+        }, 1000);
+      })();
+    </script>
+  </body>
+</html>

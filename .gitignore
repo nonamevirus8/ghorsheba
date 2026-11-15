@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+client/dist/
+client/dist-cvm/
+server/dist/
+.space-build/
+.space-build-cvm/
+
+# Runtime database — never commit (contains user accounts & password hashes)
+app.db
+app.db-shm
+app.db-wal
+
+# Platform internals
+.harness/
+audits/
+.bun-cache/
+.xmds-icon
+client/.tsbuildinfo.client
+
+# Snapshot sync records
+*.muse-github-snapshot-sync.json
