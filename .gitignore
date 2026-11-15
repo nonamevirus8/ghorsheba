@@ -22,3 +22,12 @@ client/.tsbuildinfo.client
 
 # Snapshot sync records
 *.muse-github-snapshot-sync.json
+
+# Portable (Vercel) edition
+portable/node_modules/
+portable/dist/
+portable/.env
+portable/.env.*
+!portable/.env.example
+portable/.vercel/
+portable/.tsbuildinfo

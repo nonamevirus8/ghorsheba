@@ -66,6 +66,8 @@ server/
   src/schema.ts      Drizzle database schema
 drizzle/           SQL migrations
   0002_…sql          Core tables + seed data (see below)
+portable/          Standalone Vercel edition (Vite + API functions +
+                   Postgres) — see "Deploying on Vercel" below
 ```
 
 ## Seed data
@@ -98,14 +100,65 @@ bun run typecheck  # typechecks client and server
 bun run build      # builds server actions and the client bundle
 ```
 
-> **Note:** `package.json` references `@hatch/space-sdk` from a local path
-> provided by the Muse platform, so `bun install` only completes inside
-> that environment. The application source itself (components, actions,
-> schema, migrations) is complete in this repository.
+> **Note:** the root `package.json` references `@hatch/space-sdk` from a
+> local path provided by the Muse platform, so `bun install` at the
+> repository root only completes inside that environment. For a standalone
+> deployment (Vercel, local machine, any host), use the portable edition
+> in [`portable/`](portable/) described below — it has no platform
+> dependencies at all.
 
 The first admin account is claimed from the app's login screen ("প্রথম
 অ্যাডমিন অ্যাকাউন্ট সেটআপ করুন") — that option appears only while no admin
 exists.
+
+## Deploying on Vercel (portable edition)
+
+The [`portable/`](portable/) folder is a complete, self-contained copy of
+this app that builds and runs on Vercel with plain `bun install` /
+`npm install` from the public npm registry — no Muse/Hatch packages.
+It keeps every feature and workflow of the platform build (homepage,
+customer / professional / admin panels, the full booking flow, reviews,
+cash payment recording); only the plumbing differs: Vite builds the
+frontend, Vercel serverless functions in `portable/api/` serve the
+actions, and data lives in a Postgres database (Drizzle ORM) instead of
+the platform's SQLite + blob storage. Uploaded photos are stored in a
+`blobs` table in the same Postgres database.
+
+**Steps:**
+
+1. **Create a Postgres database.** A free [Supabase](https://supabase.com)
+   project is enough: create the project, then open **Settings →
+   Database → Connection string → Transaction pooler** and copy the URI.
+   (Any other Postgres — Neon, Railway, self-hosted — works too.)
+2. **Import this repository in Vercel** (Add New → Project → select
+   `nonamevirus8/ghorsheba`).
+3. **Set the Root Directory to `portable`** — in the import screen, or
+   later under Project → Settings → General → Root Directory. This is
+   required: the repository root is the Muse-platform build, whose
+   `package.json` points at a platform-local SDK file that does not exist
+   on Vercel.
+4. **Add the environment variable** below (Project → Settings →
+   Environment Variables, for Production — and Preview if you want
+   preview deployments to work too).
+5. **Deploy.** The first request automatically creates the tables and
+   seed data (the same 12 services, 12 Tangail upazilas and settings row
+   as migration `portable/drizzle/0001_ghorsheba_portable_pg.sql`). To
+   prepare the database ahead of time instead, run
+   `bun run db:migrate` inside `portable/` with `DATABASE_URL` set, or
+   paste that SQL file into the Supabase SQL editor.
+6. Open the deployed site, go to **Login** and use **"প্রথম অ্যাডমিন
+   অ্যাকাউন্ট সেটআপ করুন"** to claim the first admin account — the same
+   first-run setup as the platform build.
+
+**Required environment variables:**
+
+| Variable       | Required | What it is |
+| -------------- | -------- | ---------- |
+| `DATABASE_URL` | Yes      | Postgres connection string. For Supabase use the **Transaction pooler** URI (port 6543), e.g. `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`. Set it only in Vercel's environment settings or a local `.env` file — never commit it. |
+
+No other environment variables are needed. Local development of the
+portable edition: copy `portable/.env.example` to `portable/.env`, fill
+in `DATABASE_URL`, then `bun install && bun run dev` inside `portable/`.
 
 ## Design system
 

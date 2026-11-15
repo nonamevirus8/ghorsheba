@@ -1,0 +1,57 @@
+// Vercel serverless function: the single RPC endpoint for all app actions.
+//
+// The browser client POSTs `{ action, args }` JSON here; the matching
+// handler from `server/src/actions.ts` runs against Postgres (DATABASE_URL)
+// and the result is returned as JSON. Handler errors are returned as
+// `{ error: string }` with a 4xx status, mirroring the behaviour of the
+// original Muse-platform runtime.
+
+import { Actions } from "../server/src/actions";
+import { getDb } from "../server/src/db";
+import { createCtx, dispatchAction } from "../server/src/runtime";
+
+interface Req {
+  method?: string;
+  body?: unknown;
+}
+
+interface Res {
+  status(code: number): Res;
+  json(body: unknown): void;
+  setHeader(name: string, value: string): void;
+}
+
+export default async function handler(req: Req, res: Res): Promise<void> {
+  res.setHeader("cache-control", "no-store");
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "শুধুমাত্র POST অনুরোধ গ্রহণ করা হয়।" });
+    return;
+  }
+  let payload: { action?: unknown; args?: unknown } = {};
+  try {
+    payload =
+      typeof req.body === "string"
+        ? (JSON.parse(req.body) as typeof payload)
+        : ((req.body ?? {}) as typeof payload);
+  } catch {
+    res.status(400).json({ error: "অনুরোধের তথ্য সঠিক নয় — আবার চেষ্টা করুন।" });
+    return;
+  }
+  if (typeof payload.action !== "string") {
+    res.status(400).json({ error: "অনুরোধের তথ্য সঠিক নয় — আবার চেষ্টা করুন।" });
+    return;
+  }
+  try {
+    const db = await getDb();
+    const result = await dispatchAction(
+      Actions,
+      createCtx(db),
+      payload.action,
+      payload.args ?? {},
+    );
+    res.status(result.status).json(result.body);
+  } catch (err) {
+    console.error("[ghorsheba] actions endpoint failed", err);
+    res.status(500).json({ error: "সার্ভারে সমস্যা হয়েছে — আবার চেষ্টা করুন।" });
+  }
+}
