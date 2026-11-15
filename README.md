@@ -126,10 +126,15 @@ the platform's SQLite + blob storage. Uploaded photos are stored in a
 
 **Steps:**
 
-1. **Create a Postgres database.** A free [Supabase](https://supabase.com)
-   project is enough: create the project, then open **Settings →
-   Database → Connection string → Transaction pooler** and copy the URI.
-   (Any other Postgres — Neon, Railway, self-hosted — works too.)
+1. **Use the Supabase Postgres database.** The project for this
+   deployment already exists: **https://veygdvejfgkjvsxeztsz.supabase.co**
+   (project ref `veygdvejfgkjvsxeztsz`, database host
+   `db.veygdvejfgkjvsxeztsz.supabase.co`). In Supabase → **Settings →
+   Database** you can copy the connection string — either the direct URI
+   (`postgresql://postgres:<your-password>@db.veygdvejfgkjvsxeztsz.supabase.co:5432/postgres`)
+   or the **Transaction pooler** URI (recommended for serverless). Only
+   you know the database password; it is never stored in this repository.
+   (Any other Postgres — Neon, Railway, self-hosted — would also work.)
 2. **Import this repository in Vercel** (Add New → Project → select
    `nonamevirus8/ghorsheba`).
 3. **Set the Root Directory to `portable`** — in the import screen, or
@@ -150,15 +155,20 @@ the platform's SQLite + blob storage. Uploaded photos are stored in a
    অ্যাকাউন্ট সেটআপ করুন"** to claim the first admin account — the same
    first-run setup as the platform build.
 
-**Required environment variables:**
+**Environment variables (set in Vercel → Settings → Environment Variables):**
 
-| Variable       | Required | What it is |
-| -------------- | -------- | ---------- |
-| `DATABASE_URL` | Yes      | Postgres connection string. For Supabase use the **Transaction pooler** URI (port 6543), e.g. `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`. Set it only in Vercel's environment settings or a local `.env` file — never commit it. |
+| Variable                  | Required | What it is |
+| ------------------------- | -------- | ---------- |
+| `DATABASE_URL`            | Yes      | Postgres connection string for the Supabase project above: `postgresql://postgres:<your-password>@db.veygdvejfgkjvsxeztsz.supabase.co:5432/postgres`, or the Transaction pooler URI (port 6543) from Supabase → Settings → Database. |
+| `SUPABASE_URL`            | No       | `https://veygdvejfgkjvsxeztsz.supabase.co` — the project URL (public, not a secret). Reserved for future Supabase features; the app does not read it yet. |
+| `SUPABASE_ANON_KEY`       | No       | The project's anon/public API key (Supabase → Settings → API). Reserved for future use; the app does not read it yet. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No     | The project's service-role API key (Supabase → Settings → API). **Secret** — reserved for future server-side use; the app does not read it yet. |
 
-No other environment variables are needed. Local development of the
-portable edition: copy `portable/.env.example` to `portable/.env`, fill
-in `DATABASE_URL`, then `bun install && bun run dev` inside `portable/`.
+Only `DATABASE_URL` is needed for the app to run today. Set real values
+only in Vercel's environment settings or a local `.env` file — never in
+chat, code or this repository. Local development of the portable
+edition: copy `portable/.env.example` to `portable/.env`, fill in
+`DATABASE_URL`, then `bun install && bun run dev` inside `portable/`.
 
 ## Design system
 
