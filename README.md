@@ -10,6 +10,19 @@ contractors — through an admin-coordinated booking workflow.
 The site is primarily in Bengali (বাংলা) with English as a secondary language,
 and all prices are in Bangladeshi Taka (৳).
 
+## Live site
+
+**https://ghorsheba-bd.vercel.app** — the production site (the portable
+edition in `portable/`, deployed on Vercel). The older deployment address
+https://ghorsheba-ashen.vercel.app still works too.
+
+The live site is also an **installable app (PWA)** — no Play Store / App
+Store needed. Open the **"অ্যাপ ডাউনলোড করুন"** page at
+https://ghorsheba-bd.vercel.app/#/download-app: on Android, tap the
+install button in Chrome; on iPhone/iPad, use Safari's Share →
+**Add to Home Screen**. Once installed, GhorSheba opens full-screen from
+the phone's home screen like a regular app.
+
 ## How it works
 
 1. A customer registers and submits a booking request for a service.
