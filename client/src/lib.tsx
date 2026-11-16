@@ -400,6 +400,24 @@ export const Icon = {
       <path d="M12 6c-1.8-1.5-4-2-8-2v14c4 0 6.2.5 8 2 1.8-1.5 4-2 8-2V4c-4 0-6.2.5-8 2zm0 0v14" />,
       c ?? "w-5 h-5",
     ),
+  smartphone: (c?: string) =>
+    svg(
+      <>
+        <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
+        <path d="M10.8 18.8h2.4" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
+  download: (c?: string) =>
+    svg(
+      <path d="M12 4v10.5m0 0 4.3-4.3M12 14.5 7.7 10.2M4.5 19.5h15" />,
+      c ?? "w-5 h-5",
+    ),
+  share: (c?: string) =>
+    svg(
+      <path d="M12 3.5v10.5M12 3.5 8.9 6.6M12 3.5l3.1 3.1M6.5 10h-1A1.5 1.5 0 0 0 4 11.5v8A1.5 1.5 0 0 0 5.5 21h13A1.5 1.5 0 0 0 20 19.5v-8A1.5 1.5 0 0 0 18.5 10h-1" />,
+      c ?? "w-5 h-5",
+    ),
 };
 
 export function ServiceIcon({ icon, className }: { icon: string; className?: string }) {
