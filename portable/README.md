@@ -58,6 +58,10 @@ bun run dev            # or: npm run dev
   `SUPABASE_SERVICE_ROLE_KEY` are optional and currently unused by the
   app. Real values belong only in Vercel's environment settings or a
   local `.env` file — never in code or in this repository.
-- The six photos under `client/src/assets/` are binary files; if they are
-  missing from a checkout, the affected spots render the app's icon
-  treatment instead (the components already handle absent images).
+- The six photos are binary files that were never pushed to this
+  repository (text-only push), and importing them broke the Vite build.
+  The hero, mistri banner and four service headers therefore use inline
+  SVG illustrations from `client/src/illustrations.ts` (text-only data
+  URIs, no binary files needed). To restore the real photos, add them
+  with a regular git client and import them in `client/src/App.tsx`
+  again.

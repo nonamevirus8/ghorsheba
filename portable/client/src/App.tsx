@@ -30,12 +30,17 @@ type Pro,
 type Review,
 type Service,
 } from "./lib";
-import heroImg from "./assets/hero-team.webp";
-import mistriImg from "./assets/mistri-portrait.webp";
-import svcElectrician from "./assets/svc-electrician.webp";
-import svcPlumber from "./assets/svc-plumber.jpg";
-import svcMason from "./assets/svc-mason.webp";
-import svcPainter from "./assets/svc-painter.webp";
+// Inline SVG illustrations (text-only data URIs) instead of the binary
+// photos in ./assets: the GitHub repo has no binary files (the connector
+// pushes text only), so importing them broke the Vercel build.
+import {
+  heroImg,
+  mistriImg,
+  svcElectrician,
+  svcMason,
+  svcPainter,
+  svcPlumber,
+} from "./illustrations";
 import { BookingDetailPage, BookingPage } from "./booking";
 import { AdminPanel, CustomerDashboard, ProDashboard } from "./panels";
 
@@ -566,7 +571,7 @@ function HomePage() {
           <div className="relative mx-auto w-full max-w-[520px]">
             <img
               src={heroImg}
-              alt="নির্মাণাধীন বাড়ির সামনে হাসিমুখে দাঁড়িয়ে চারজন মিস্ত্রি"
+              alt="নির্মাণাধীন বাড়ির সামনে মিস্ত্রিদের ইলাস্ট্রেশন"
               className="w-full aspect-[4/3] lg:aspect-[5/4] object-cover rounded-[26px] shadow-[0_18px_44px_rgba(6,75,39,0.22)]"
             />
             <div className="absolute -top-1 right-4 sm:right-6 bg-[#064B27] text-white text-center px-4 pt-2.5 pb-4 rounded-b-2xl shadow-lg">
@@ -696,7 +701,7 @@ function HomePage() {
           )}
         </div>
         <div className="relative overflow-hidden rounded-3xl bg-[#087A35] text-white">
-          <img src={mistriImg} alt="হাসিমুখে টুলবক্স হাতে একজন মিস্ত্রি" className="absolute inset-0 w-full h-full object-cover opacity-25" loading="lazy" />
+          <img src={mistriImg} alt="টুলবক্স হাতে একজন মিস্ত্রির ইলাস্ট্রেশন" className="absolute inset-0 w-full h-full object-cover opacity-25" loading="lazy" />
           <div className="relative p-7 sm:p-8">
             <h2 className="text-[24px] sm:text-[28px] font-bold leading-snug">আপনি কি একজন দক্ষ মিস্ত্রি?</h2>
             <p className="mt-2 text-white/85 text-[15.5px]">GhorSheba-তে যুক্ত হয়ে আপনার কাজের সুযোগ বাড়ান।</p>
