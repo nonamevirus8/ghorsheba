@@ -5,6 +5,17 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./theme.css";
 
+// PWA: register the service worker (public/sw.js) so the site is
+// installable and the app shell is cached. Guarded — browsers without
+// service-worker support simply skip it.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* offline/install support unavailable in this browser */
+    });
+  });
+}
+
 const rootEl = document.querySelector<HTMLElement>("[data-generated-space-root]");
 if (!rootEl) {
   throw new Error("missing generated space root element");

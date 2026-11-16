@@ -1,7 +1,7 @@
 // GhorSheba — app shell, routing, homepage and public pages.
 // Dashboards live in ./panels; booking flow in ./booking.
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import {
@@ -76,6 +76,71 @@ function saveLocation(v: string) {
   }
 }
 
+// ------------------------------------------------------- PWA install state
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+const installListeners = new Set<() => void>();
+function emitInstallChange() {
+  installListeners.forEach((f) => f());
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    // Keep the event so the download page's Install button can fire it.
+    e.preventDefault();
+    deferredInstallPrompt = e as BeforeInstallPromptEvent;
+    emitInstallChange();
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    emitInstallChange();
+  });
+}
+
+function isStandaloneApp(): boolean {
+  try {
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true
+    );
+  } catch {
+    return false;
+  }
+}
+
+function useInstallState() {
+  const [, setTick] = useState(0);
+  const [installed, setInstalled] = useState(isStandaloneApp());
+  useEffect(() => {
+    const onChange = () => {
+      setTick((t) => t + 1);
+      setInstalled(isStandaloneApp());
+    };
+    installListeners.add(onChange);
+    return () => {
+      installListeners.delete(onChange);
+    };
+  }, []);
+  return { canPrompt: deferredInstallPrompt !== null, installed };
+}
+
+async function promptInstall(): Promise<boolean> {
+  const ev = deferredInstallPrompt;
+  if (!ev) return false;
+  await ev.prompt();
+  const choice = await ev.userChoice;
+  if (choice.outcome === "accepted") {
+    deferredInstallPrompt = null;
+    emitInstallChange();
+    return true;
+  }
+  return false;
+}
+
 // ------------------------------------------------------------------- App
 
 export function App() {
@@ -134,6 +199,9 @@ export function App() {
     case "how":
       content = <HowPage />;
       break;
+    case "download-app":
+      content = <DownloadAppPage />;
+      break;
     case "about":
       content = <AboutPage />;
       break;
@@ -183,6 +251,20 @@ export function App() {
       {catalog.data?.announcement && (
         <div className="bg-[#FF8A00] text-white text-center text-sm font-medium px-4 py-2">
           {catalog.data.announcement}
+        </div>
+      )}
+      {page === "" && !isStandaloneApp() && (
+        <div className="bg-[#064B27] text-white">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-sm">
+            <span className="text-[#FF8A00]">{Icon.smartphone("w-5 h-5")}</span>
+            <p className="font-medium">GhorSheba এখন মোবাইল অ্যাপ হিসেবেও ইনস্টল করা যায়</p>
+            <a
+              href="#/download-app"
+              className="shrink-0 bg-[#FF8A00] hover:bg-[#E67A00] text-white font-semibold px-3.5 py-1.5 rounded-lg"
+            >
+              অ্যাপ ডাউনলোড করুন
+            </a>
+          </div>
         </div>
       )}
       <main className="flex-1 pb-20 lg:pb-0">{content}</main>
@@ -365,6 +447,7 @@ function Header({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
               ["#/contact", "যোগাযোগ"],
               ["#/help", "সহায়তা"],
               ["#/join", "মিস্ত্রি হিসেবে যোগ দিন"],
+              ["#/download-app", "অ্যাপ ডাউনলোড করুন"],
             ].map(([href, label]) => (
               <a key={href} href={href} className="px-3 py-2.5 rounded-lg font-medium hover:bg-[#F0FAF2] hover:text-[#087A35]">
                 {label}
@@ -424,6 +507,7 @@ function Footer({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
             <li><a className="hover:text-white" href="#/services">সার্ভিসসমূহ</a></li>
             <li><a className="hover:text-white" href="#/how">কিভাবে কাজ করে</a></li>
             <li><a className="hover:text-white" href="#/join">প্রফেশনাল নিবন্ধন</a></li>
+            <li><a className="hover:text-white" href="#/download-app">অ্যাপ ডাউনলোড করুন</a></li>
             <li><a className="hover:text-white" href="#/contact">যোগাযোগ</a></li>
           </ul>
         </nav>
@@ -473,6 +557,210 @@ function Footer({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
         </p>
       </div>
     </footer>
+  );
+}
+
+// ------------------------------------------------------- Download app page
+
+function DownloadAppPage() {
+  const { canPrompt, installed } = useInstallState();
+  const [justInstalled, setJustInstalled] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+  const isAndroid = /android/i.test(ua);
+
+  async function onInstallClick() {
+    if (!canPrompt) {
+      // No native prompt in this browser (iOS, or Chrome has not offered
+      // it yet): show the manual steps instead of a dead button.
+      setShowSteps(true);
+      document
+        .getElementById(isIOS ? "ios-steps" : "android-steps")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const ok = await promptInstall();
+      if (ok) setJustInstalled(true);
+      else setShowSteps(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const benefits: { icon: ReactNode; title: string; body: string }[] = [
+    {
+      icon: Icon.bolt("w-6 h-6"),
+      title: "ঝটপট খোলে",
+      body: "হোম স্ক্রিন থেকে এক ট্যাপেই অ্যাপ খুলে যায় — প্রতিবার ব্রাউজারে ঠিকানা লিখতে হয় না।",
+    },
+    {
+      icon: Icon.smartphone("w-6 h-6"),
+      title: "আসল অ্যাপের মতো অভিজ্ঞতা",
+      body: "পুরো স্ক্রিন জুড়ে চলে, ব্রাউজারের ঠিকানার বার থাকে না — দেখতে ও ব্যবহারে ঠিক একটি অ্যাপের মতো।",
+    },
+    {
+      icon: Icon.checkCircle("w-6 h-6"),
+      title: "দুর্বল ইন্টারনেটেও চলে",
+      body: "একবার খুললে অ্যাপের মূল অংশ ফোনেই সংরক্ষিত থাকে, তাই ধীর বা অস্থির সংযোগেও দ্রুত খোলে।",
+    },
+    {
+      icon: Icon.shield("w-6 h-6"),
+      title: "হালকা ও নিরাপদ",
+      body: "ফোনের জায়গা প্রায় নেয় না বললেই চলে, আর আলাদা কোনো ফাইল ডাউনলোড করতে হয় না — সরাসরি এই ওয়েবসাইট থেকেই ইনস্টল হয়।",
+    },
+  ];
+
+  return (
+    <div>
+      {/* Hero */}
+      <section className="bg-[#F0FAF2]">
+        <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+          <div className="flex justify-center">
+            <span className="grid place-items-center w-24 h-24 rounded-[26px] bg-[#087A35] shadow-lg shadow-[#087A35]/25">
+              <svg viewBox="0 0 48 48" className="w-16 h-16" aria-hidden="true">
+                <path d="M6 22 24 7l18 15" fill="none" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" />
+                <path d="M11 20v16a2 2 0 0 0 2 2h22a2 2 0 0 0 2-2V20" fill="none" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" />
+                <path d="M24 33c-4.5-1.2-6.5-4.3-6.5-8.5 4.2 0 7.3 2 8.6 6.3" fill="#FF8A00" />
+                <path d="M24 33c.4-3.9 2.3-6.6 6-8-.3 4-2 7-6 8z" fill="#ffffff" />
+              </svg>
+            </span>
+          </div>
+          <h1 className="mt-6 text-3xl sm:text-4xl font-bold text-[#064B27] leading-snug">
+            GhorSheba অ্যাপ ইনস্টল করুন
+          </h1>
+          <p className="mt-3 text-[#737B73] text-[16px] leading-relaxed max-w-xl mx-auto">
+            অ্যাপটি সরাসরি এই ওয়েবসাইট থেকেই ইনস্টল হয় —{" "}
+            <strong className="text-[#064B27]">Play Store বা App Store-এ যাওয়ার দরকার নেই</strong>,
+            কোনো টাকাও লাগে না। ইনস্টল করতে মাত্র কয়েক সেকেন্ড সময় লাগবে।
+          </p>
+          {installed || justInstalled ? (
+            <p className="mt-7 inline-flex items-center gap-2 bg-[#087A35] text-white font-semibold px-6 py-3.5 rounded-2xl">
+              {Icon.checkCircle("w-6 h-6")}
+              অ্যাপটি আপনার ফোনে ইনস্টল করা আছে — হোম স্ক্রিন থেকে খুলুন
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={onInstallClick}
+              disabled={busy}
+              className="mt-7 inline-flex items-center gap-2.5 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white text-lg font-bold px-8 py-4 rounded-2xl shadow-lg shadow-[#087A35]/25"
+            >
+              {Icon.download("w-6 h-6")}
+              {busy ? "ইনস্টল হচ্ছে..." : "অ্যাপ ইনস্টল করুন"}
+            </button>
+          )}
+          {!canPrompt && !installed && !justInstalled && (
+            <p className="mt-3 text-sm text-[#737B73]">
+              আপনার ব্রাউজারে সরাসরি ইনস্টল বাটন না এলে নিচের ধাপগুলো অনুসরণ করুন।
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Why install */}
+      <section className="max-w-6xl mx-auto px-4 py-12">
+        <SectionTitle sub="একই GhorSheba, তবে আরও দ্রুত আর সহজে">কেন অ্যাপটি ইনস্টল করবেন?</SectionTitle>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {benefits.map((b) => (
+            <div key={b.title} className="flex gap-4 bg-white border border-[#E5EAE5] rounded-2xl p-5">
+              <span className="shrink-0 grid place-items-center w-12 h-12 rounded-xl bg-[#F0FAF2] text-[#087A35]">
+                {b.icon}
+              </span>
+              <span>
+                <span className="block font-bold text-[#064B27] text-[17px]">{b.title}</span>
+                <span className="block mt-1 text-[15px] text-[#737B73] leading-relaxed">{b.body}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Android steps */}
+      <section id="android-steps" className="bg-[#F0FAF2]">
+        <div className="max-w-4xl mx-auto px-4 py-12">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="grid place-items-center w-11 h-11 rounded-xl bg-[#087A35] text-white">
+              {Icon.smartphone("w-6 h-6")}
+            </span>
+            <h2 className="text-2xl font-bold text-[#064B27]">Android ফোনে ইনস্টল করুন</h2>
+          </div>
+          <p className="text-[#737B73] text-[15px] mb-6">
+            Samsung, Xiaomi, Vivo, Oppo, Realme — সব Android ফোনেই একই পদ্ধতি।
+            {isAndroid && " আপনি Android ফোন থেকে দেখছেন — উপরের বাটনেই ইনস্টল করা যাবে।"}
+          </p>
+          {!installed && !justInstalled && (
+            <button
+              type="button"
+              onClick={onInstallClick}
+              disabled={busy}
+              className="mb-7 inline-flex items-center gap-2.5 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-7 py-3.5 rounded-2xl"
+            >
+              {Icon.download("w-5 h-5")}
+              {busy ? "ইনস্টল হচ্ছে..." : "এখনই ইনস্টল করুন"}
+            </button>
+          )}
+          <div className={showSteps ? "rounded-2xl ring-2 ring-[#FF8A00] ring-offset-4 ring-offset-[#F0FAF2]" : ""}>
+            <h3 className="font-bold text-[#064B27] mb-3">বাটন কাজ না করলে হাতে করে ইনস্টল করুন:</h3>
+            <ol className="space-y-3">
+              {[
+                "Chrome ব্রাউজারে এই ওয়েবসাইটটি (ghorsheba-bd.vercel.app) খুলুন।",
+                "ব্রাউজারের উপরের ডানদিকের ⋮ (তিন ডট) মেনুতে চাপুন।",
+                "“অ্যাপ ইনস্টল করুন” (Install app) অথবা “হোম স্ক্রিনে যোগ করুন” (Add to Home screen) অপশনটি বেছে নিন।",
+                "“ইনস্টল” বাটনে চাপুন — GhorSheba আইকনটি আপনার হোম স্ক্রিনে চলে আসবে।",
+              ].map((step, i) => (
+                <li key={i} className="flex gap-3 bg-white border border-[#E5EAE5] rounded-xl px-4 py-3">
+                  <span className="shrink-0 grid place-items-center w-7 h-7 rounded-full bg-[#087A35] text-white text-sm font-bold">
+                    {i + 1}
+                  </span>
+                  <span className="text-[15px] leading-relaxed">{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      {/* iOS steps */}
+      <section id="ios-steps">
+        <div className="max-w-4xl mx-auto px-4 py-12">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="grid place-items-center w-11 h-11 rounded-xl bg-[#064B27] text-white">
+              {Icon.share("w-6 h-6")}
+            </span>
+            <h2 className="text-2xl font-bold text-[#064B27]">iPhone / iPad-এ ইনস্টল করুন</h2>
+          </div>
+          <p className="text-[#737B73] text-[15px] mb-6">
+            iPhone-এ ইনস্টল করতে Safari ব্রাউজার লাগবে (Chrome থেকে হয় না)।
+            {isIOS && " আপনি iPhone/iPad থেকে দেখছেন — নিচের ধাপগুলোই আপনার জন্য।"}
+          </p>
+          <ol className="space-y-3">
+            {[
+              "Safari ব্রাউজারে এই ওয়েবসাইটটি (ghorsheba-bd.vercel.app) খুলুন।",
+              "নিচের Share বাটনে (বাক্স থেকে তীর ওঠা আইকন) চাপুন।",
+              "তালিকা থেকে “Add to Home Screen” / “হোম স্ক্রিনে যোগ করুন” বেছে নিন।",
+              "ডানদিকের উপরে “Add” চাপুন — GhorSheba আইকন হোম স্ক্রিনে যোগ হয়ে যাবে।",
+            ].map((step, i) => (
+              <li key={i} className="flex gap-3 bg-white border border-[#E5EAE5] rounded-xl px-4 py-3">
+                <span className="shrink-0 grid place-items-center w-7 h-7 rounded-full bg-[#064B27] text-white text-sm font-bold">
+                  {i + 1}
+                </span>
+                <span className="text-[15px] leading-relaxed">{step}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-8 bg-[#F0FAF2] border border-[#cfe3d3] rounded-2xl px-5 py-4 text-[15px] leading-relaxed text-[#064B27]">
+            মনে রাখুন: এটি কোনো আলাদা ডাউনলোড নয় — অ্যাপটি এই ওয়েবসাইটেরই ইনস্টল-করা সংস্করণ।
+            সব সার্ভিস, বুকিং আর আপনার অ্যাকাউন্ট ঠিক ওয়েবসাইটের মতোই কাজ করবে, আর নতুন আপডেট
+            এলে তা নিজে নিজেই পৌঁছে যাবে।
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

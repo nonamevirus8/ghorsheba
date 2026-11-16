@@ -8,9 +8,16 @@
     <meta property="og:title" content="GhorSheba | টাঙ্গাইলের নির্ভরযোগ্য হোম সার্ভিস" />
     <meta property="og:description" content="টাঙ্গাইলে যাচাই করা দক্ষ মিস্ত্রি খুঁজুন সহজে, দ্রুত এবং নিরাপদে।" />
     <meta property="og:type" content="website" />
-    <!-- Empty inline icon: stops the browser fetching /favicon.ico, which
-         lives outside the space's routes and fails auth. -->
-    <link rel="icon" href="data:," />
+    <!-- PWA: installable from the browser (see /manifest.webmanifest and
+         the service worker registered in client/src/main.tsx). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#087A35" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="GhorSheba" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>GhorSheba | টাঙ্গাইলের নির্ভরযোগ্য হোম সার্ভিস</title>
     <script src="/client/src/main.tsx" type="module"></script>
   </head>

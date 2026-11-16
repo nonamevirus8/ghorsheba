@@ -6,9 +6,15 @@
 // `{ error: string }` with a 4xx status, mirroring the behaviour of the
 // original Muse-platform runtime.
 
-import { Actions } from "../server/src/actions";
-import { getDb } from "../server/src/db";
-import { createCtx, dispatchAction } from "../server/src/runtime";
+// The server code is imported from `./_server/` — deployment copies that
+// live inside `api/` so Vercel's file tracer always includes them in the
+// function bundle, referenced with explicit `.js` ESM specifiers. (The
+// previous cross-directory, extensionless imports of `../server/src/*`
+// were not bundled, and the function crashed at import time with
+// ERR_MODULE_NOT_FOUND.)
+import { Actions } from "./_server/actions.js";
+import { getDb } from "./_server/db.js";
+import { createCtx, dispatchAction } from "./_server/runtime.js";
 
 interface Req {
   method?: string;

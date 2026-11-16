@@ -41,6 +41,62 @@ The Supabase project for this deployment already exists:
    সেটআপ করুন"** to claim the first admin account (shown only while no
    admin exists).
 
+## How the API functions are laid out (Vercel fix, 2026-11-16)
+
+The first live deployment served the site but every `POST /api/actions`
+failed with `500 FUNCTION_INVOCATION_FAILED`. Vercel's Runtime Logs
+showed the function dying at import time:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+'/var/task/portable/server/src/actions' imported from
+/var/task/portable/api/actions.js
+```
+
+The database was never the problem: `api/actions.ts` imported
+`../server/src/actions` with an extensionless specifier, and Vercel's
+file tracer did not include the cross-directory server modules in the
+function bundle, so Node's ESM loader crashed before any code ran.
+
+The fix, now in place:
+
+- `api/_server/` holds deployment copies of `server/src/actions.ts`,
+  `server/src/db.ts` and `server/src/runtime.ts` — inside `api/`, where
+  the tracer always includes them — importing the shared schema from
+  `../../server/src/schema.js` with explicit `.js` ESM specifiers.
+  **Keep `api/_server/*` in sync with `server/src/*`** (identical except
+  import paths, plus a more defensive migrations-directory lookup in
+  `db.ts`).
+- `vercel.json` sets `includeFiles: "drizzle/**"` for both functions so
+  the migration/seed SQL ships inside the function bundle (the app
+  applies it automatically on first request).
+- Verified locally by compiling the `api/` tree to plain JS in the same
+  layout Vercel produces, importing it with Node ESM (no missing-module
+  error), and running the compiled handler end-to-end against a real
+  PostgreSQL server: catalog (12 services + 12 locations), registration
+  and login, professional verification, the full booking journey
+  (pending → assigned → accepted → in progress → done → completed),
+  a ৳800 cash payment, review moderation and role enforcement — all
+  passing.
+
+## Mobile app (PWA) + download page
+
+GhorSheba is an installable Progressive Web App — no Play Store / App
+Store account needed:
+
+- `public/manifest.webmanifest` — name GhorSheba, `display: standalone`,
+  theme/background `#087A35`, start URL `/`.
+- Icons: `public/icon.svg` is the brand mark; the PNG icons (192, 512,
+  maskable 512, apple-touch 180) are **generated from code at build
+  time** by `scripts/generate-icons.mjs` (run as part of
+  `npm run build`) into `dist/` — no binary icon files live in the repo.
+- `public/sw.js` — service worker caching the app shell (never the API),
+  registered from `client/src/main.tsx`.
+- `#/download-app` — a Bengali landing page (linked from the homepage
+  banner, the mobile menu and the footer as "অ্যাপ ডাউনলোড করুন") with a
+  working Android install button (`beforeinstallprompt`), manual
+  Android steps, and iPhone/iPad Safari "Add to Home Screen" steps.
+
 ## Run locally
 
 ```bash

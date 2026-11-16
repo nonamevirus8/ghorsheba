@@ -2,8 +2,10 @@
 // Postgres `blobs` table. URLs look like `/api/blob?key=profiles%2F...` and
 // are produced by the server actions (profile photos, booking photos).
 
-import { getDb } from "../server/src/db";
-import { readBlob } from "../server/src/runtime";
+// See `api/actions.ts`: server code comes from the `./_server/` deployment
+// copies inside `api/`, with explicit `.js` ESM specifiers.
+import { getDb } from "./_server/db.js";
+import { readBlob } from "./_server/runtime.js";
 
 interface Req {
   method?: string;
