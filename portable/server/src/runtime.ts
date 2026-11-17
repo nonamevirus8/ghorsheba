@@ -36,6 +36,9 @@ export interface Ctx {
   db<T extends Record<string, unknown> = typeof schema>(): PostgresJsDatabase<T>;
   blobs: BlobStore;
   invalidateQueries(): void;
+  /** Client IP as seen by the serverless function (x-forwarded-for),
+   *  used only for login / admin-claim rate limiting. */
+  clientIp?: string;
 }
 
 /** A single action definition, with its Zod schemas preserved as generics
@@ -94,11 +97,12 @@ export async function readBlob(
 
 // ------------------------------------------------------------------ context
 
-export function createCtx(db: AppDb): Ctx {
+export function createCtx(db: AppDb, clientIp?: string): Ctx {
   return {
     db: <T extends Record<string, unknown>>() => db as unknown as PostgresJsDatabase<T>,
     blobs: makeBlobStore(db),
     invalidateQueries: () => undefined,
+    clientIp,
   };
 }
 

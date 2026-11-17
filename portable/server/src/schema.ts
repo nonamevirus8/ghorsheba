@@ -28,6 +28,12 @@ export const users = pgTable("users", {
   role: text("role", { enum: ["customer", "professional", "admin"] })
     .notNull()
     .default("customer"),
+  // Admin permission level (Master Phase 2). Null for non-admins; admins
+  // created before levels existed are treated as "super" by the server
+  // (see adminLevelOf in actions.ts). The first claimed admin is "super".
+  adminLevel: text("admin_level", {
+    enum: ["super", "operations", "finance", "support"],
+  }),
   status: text("status", { enum: ["active", "suspended"] })
     .notNull()
     .default("active"),
@@ -51,7 +57,11 @@ export const professionals = pgTable("professionals", {
   address: text("address"),
   email: text("email"),
   bio: text("bio"),
-  // Collected for admin verification only; never returned by public actions.
+  // Collected at registration together with the identity document
+  // photos (see identity_documents), per the owner's NID policy.
+  // Visible to admins only (adminListProfessionals, operations/super
+  // level) — never returned by any public, customer or professional
+  // action.
   nidNumber: text("nid_number"),
   status: text("status", {
     enum: ["pending", "verified", "rejected", "suspended"],
@@ -67,6 +77,28 @@ export const professionals = pgTable("professionals", {
   withdrawalNumber: text("withdrawal_number"),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
+});
+
+
+// Professional identity documents (owner's NID policy, decided
+// 2026-11-17): the NID front photo and the NID back photo, uploaded
+// at registration. The image bytes live ONLY
+// in this table (base64 text) — never in the blob store — so no public
+// URL (including /api/blob) can serve them; the getIdentityDocument
+// action is the only way to read them (owning professional, or an
+// operations/super admin whose view is written to the admin log).
+// Retention: documents are kept while the professional's account
+// exists; the owner has not set a time limit — that decision is
+// still open.
+export const identityDocuments = pgTable("identity_documents", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  professionalId: integer("professional_id")
+    .notNull()
+    .references(() => professionals.id),
+  kind: text("kind", { enum: ["nid_front", "nid_back"] }).notNull(),
+  contentType: text("content_type").notNull(),
+  dataBase64: text("data_base64").notNull(),
+  createdAt: ts("created_at"),
 });
 
 export const services = pgTable("services", {
@@ -272,6 +304,21 @@ export const adminLogs = pgTable("admin_logs", {
   action: text("action").notNull(),
   detail: text("detail"),
   createdAt: ts("created_at"),
+});
+
+// Login / admin-claim throttling (Master Phase 2). One row per
+// (scope, key): scope is "login_phone" | "login_ip" | "claim" |
+// "claim_ip"; count is the failures/attempts inside the current window;
+// lockedUntil is set once the limit is hit. Rows are deleted on a
+// successful login; locks expire on their own.
+export const authAttempts = pgTable("auth_attempts", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  scope: text("scope").notNull(),
+  key: text("key").notNull(),
+  count: integer("count").notNull().default(0),
+  windowStart: ts("window_start"),
+  lockedUntil: timestamp("locked_until", { mode: "date" }),
+  updatedAt: ts("updated_at"),
 });
 
 export const sessions = pgTable("sessions", {

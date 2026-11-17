@@ -19,6 +19,7 @@ import { createCtx, dispatchAction } from "./_server/runtime.js";
 interface Req {
   method?: string;
   body?: unknown;
+  headers?: Record<string, string | string[] | undefined>;
 }
 
 interface Res {
@@ -49,9 +50,13 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   }
   try {
     const db = await getDb();
+    // Client IP for login / admin-claim rate limiting (Vercel sets
+    // x-forwarded-for; the first entry is the original client).
+    const fwd = req.headers?.["x-forwarded-for"];
+    const clientIp = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim() || undefined;
     const result = await dispatchAction(
       Actions,
-      createCtx(db),
+      createCtx(db, clientIp),
       payload.action,
       payload.args ?? {},
     );

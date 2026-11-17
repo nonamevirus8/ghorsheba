@@ -1731,7 +1731,7 @@ function RegisterPage({ params }: { params: URLSearchParams }) {
         </div>
         <div>
           <label className={labelCls} htmlFor="reg-pass">পাসওয়ার্ড *</label>
-          <input id="reg-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="কমপক্ষে ৬ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          <input id="reg-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} />
         </div>
         <div>
           <label className={labelCls} htmlFor="reg-loc">আপনার উপজেলা</label>
@@ -1780,6 +1780,10 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
   const [address, setAddress] = useState("");
   const [bio, setBio] = useState("");
   const [nid, setNid] = useState("");
+  const [nidFront, setNidFront] = useState<{ dataBase64: string; mimeType: string } | undefined>();
+  const [nidFrontName, setNidFrontName] = useState("");
+  const [nidBack, setNidBack] = useState<{ dataBase64: string; mimeType: string } | undefined>();
+  const [nidBackName, setNidBackName] = useState("");
   const [photo, setPhoto] = useState<{ dataBase64: string; mimeType: string } | undefined>();
   const [photoName, setPhotoName] = useState("");
   const [error, setError] = useState("");
@@ -1798,7 +1802,9 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
         areas,
         address: address || undefined,
         bio: bio || undefined,
-        nidNumber: nid || undefined,
+        nidNumber: nid.trim(),
+        nidFrontPhoto: nidFront,
+        nidBackPhoto: nidBack,
         photo,
       }),
     onSuccess: (r) => redirect(r.token, r.user.role, params.get("next")),
@@ -1821,6 +1827,8 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
               setError("");
               if (!category) return setError("আপনার কাজের ক্যাটাগরি বেছে নিন।");
               if (areas.length === 0) return setError("কমপক্ষে একটি সেবার এলাকা বেছে নিন।");
+              if (!nid.trim()) return setError("যাচাইয়ের জন্য আপনার NID নম্বর দিন।");
+              if (!nidFront || !nidBack) return setError("পরিচয় যাচাইয়ের জন্য NID কার্ডের সামনের ও পেছনের ছবি দিন।");
               reg.mutate();
             }}
           >
@@ -1834,7 +1842,7 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-pass">পাসওয়ার্ড *</label>
-              <input id="jp-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="কমপক্ষে ৬ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+              <input id="jp-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} />
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-email">ইমেইল (ঐচ্ছিক)</label>
@@ -1883,9 +1891,29 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
               <input id="jp-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="গ্রাম / এলাকা, উপজেলা" />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelCls} htmlFor="jp-nid">জাতীয় পরিচয়পত্র (NID) নম্বর</label>
+              <label className={labelCls} htmlFor="jp-nid">জাতীয় পরিচয়পত্র (NID) নম্বর *</label>
               <input id="jp-nid" className={inputCls} inputMode="numeric" value={nid} onChange={(e) => setNid(e.target.value)} placeholder="যাচাইয়ের জন্য NID নম্বর" />
-              <p className="mt-1 text-[13px] text-[#737B73]">আপনার NID নম্বর শুধুমাত্র অ্যাডমিন যাচাইয়ের জন্য ব্যবহার হবে — কখনো প্রকাশ্যে দেখানো হবে না।</p>
+              <p className="mt-1 text-[13px] text-[#737B73]">আপনার NID নম্বর ও ডকুমেন্ট শুধুমাত্র অ্যাডমিন যাচাইয়ের জন্য ব্যবহার হবে — গ্রাহক বা অন্য কারো কাছে কখনো দেখানো হবে না।</p>
+            </div>
+            <div className="sm:col-span-2">
+              <PhotoField
+                label="NID কার্ডের সামনের ছবি *"
+                fileName={nidFrontName}
+                onPick={(img) => {
+                  setNidFront(img);
+                  setNidFrontName(img ? "ছবি যুক্ত হয়েছে" : "");
+                }}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <PhotoField
+                label="NID কার্ডের পেছনের ছবি *"
+                fileName={nidBackName}
+                onPick={(img) => {
+                  setNidBack(img);
+                  setNidBackName(img ? "ছবি যুক্ত হয়েছে" : "");
+                }}
+              />
             </div>
             <div className="sm:col-span-2">
               <label className={labelCls} htmlFor="jp-bio">সংক্ষিপ্ত পরিচিতি</label>
@@ -1960,7 +1988,7 @@ function AdminSetupPage() {
         </div>
         <div>
           <label className={labelCls} htmlFor="as-pass">পাসওয়ার্ড</label>
-          <input id="as-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="শক্তিশালী পাসওয়ার্ড দিন" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          <input id="as-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="শক্তিশালী পাসওয়ার্ড দিন" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} />
         </div>
         {error && <ErrorBox message={error} />}
         <button type="submit" disabled={claim.isPending} className="w-full bg-[#064B27] hover:bg-[#043A1E] disabled:opacity-60 text-white font-bold py-3 rounded-xl">
@@ -2114,12 +2142,12 @@ function PrivacyPage() {
   return (
     <PageShell title="গোপনীয়তা নীতি" sub="সর্বশেষ হালনাগাদ: ১৪ নভেম্বর ২০২৬">
       <h2 className="text-xl font-bold text-[#064B27]">আমরা কোন তথ্য সংগ্রহ করি</h2>
-      <p>অ্যাকাউন্ট তৈরির সময় নাম, মোবাইল নম্বর ও ঠিকানা; বুকিংয়ের সময় কাজের বিবরণ, ঠিকানা ও পছন্দের সময়; এবং প্রফেশনালদের ক্ষেত্রে যাচাইয়ের জন্য জাতীয় পরিচয়পত্রের তথ্য সংগ্রহ করা হয়।</p>
+      <p>অ্যাকাউন্ট তৈরির সময় নাম, মোবাইল নম্বর ও ঠিকানা; বুকিংয়ের সময় কাজের বিবরণ, ঠিকানা ও পছন্দের সময়; এবং প্রফেশনালদের ক্ষেত্রে যাচাইয়ের জন্য জাতীয় পরিচয়পত্রের নম্বর ও ডকুমেন্টের ছবি সংগ্রহ করা হয়।</p>
       <h2 className="text-xl font-bold text-[#064B27]">তথ্য কীভাবে ব্যবহার হয়</h2>
       <ul className="list-disc list-inside space-y-2">
         <li>বুকিং প্রক্রিয়া সম্পন্ন করা ও প্রফেশনাল অ্যাসাইন করা।</li>
         <li>বুকিংয়ের অবস্থা সম্পর্কে নোটিফিকেশন পাঠানো।</li>
-        <li>প্রফেশনালদের পরিচয় যাচাই করা (NID তথ্য শুধু অ্যাডমিনের জন্য দৃশ্যমান, কখনো প্রকাশ্যে নয়)।</li>
+        <li>প্রফেশনালদের পরিচয় যাচাই করা (NID নম্বর ও ডকুমেন্ট শুধু অ্যাডমিনের জন্য দৃশ্যমান, কখনো প্রকাশ্যে নয়)।</li>
       </ul>
       <h2 className="text-xl font-bold text-[#064B27]">তথ্য ভাগাভাগি</h2>
       <p>আপনার ব্যক্তিগত তথ্য কোনো তৃতীয় পক্ষের কাছে বিক্রি করা হয় না। বুকিং সম্পন্নের জন্য প্রয়োজনীয় তথ্য (নাম, ফোন, ঠিকানা) শুধুমাত্র আপনাকে অ্যাসাইন করা প্রফেশনালের সাথে ভাগ করা হয়।</p>

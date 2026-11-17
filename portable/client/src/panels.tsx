@@ -553,6 +553,81 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
   );
 }
 
+type DocKind = "nid_front" | "nid_back";
+
+const DOC_KIND_BN: { kind: DocKind; label: string }[] = [
+  { kind: "nid_front", label: "NID সামনের ছবি" },
+  { kind: "nid_back", label: "NID পেছনের ছবি" },
+];
+
+// Identity documents are fetched one at a time through the
+// getIdentityDocument action (never a public URL): the server allows
+// only the owning professional or an operations/super admin, and logs
+// every admin view.
+function IdentityDocViewer({
+  token,
+  professionalId,
+  documents,
+}: {
+  token: string;
+  professionalId: number;
+  documents?: { nidFront: boolean; nidBack: boolean };
+}) {
+  const [view, setView] = useState<{ kind: DocKind; url: string } | null>(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const has = (kind: DocKind) => !documents || (kind === "nid_front" ? documents.nidFront : documents.nidBack);
+  const open = async (kind: DocKind) => {
+    setBusy(kind);
+    setError("");
+    try {
+      const r = await api.getIdentityDocument({ token, professionalId, kind });
+      setView({ kind, url: `data:${r.mimeType};base64,${r.dataBase64}` });
+    } catch (e) {
+      setError(errMsg(e));
+    }
+    setBusy("");
+  };
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap gap-2">
+        {DOC_KIND_BN.map(({ kind, label }) =>
+          has(kind) ? (
+            <button
+              key={kind}
+              type="button"
+              disabled={busy === kind}
+              onClick={() => open(kind)}
+              className="border border-[#E5EAE5] font-semibold text-[13px] px-3 py-1.5 rounded-lg hover:bg-[#F0FAF2] disabled:opacity-60"
+            >
+              {busy === kind ? "লোড হচ্ছে…" : label}
+            </button>
+          ) : (
+            <span key={kind} className="text-[13px] text-[#737B73] border border-dashed border-[#E5EAE5] px-3 py-1.5 rounded-lg">
+              {label}: জমা হয়নি
+            </span>
+          ),
+        )}
+      </div>
+      {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
+      {view && (
+        <div className="mt-3">
+          <img
+            src={view.url}
+            alt={DOC_KIND_BN.find((d) => d.kind === view.kind)?.label ?? "পরিচয় ডকুমেন্ট"}
+            className="max-h-72 w-auto rounded-xl border border-[#E5EAE5] object-contain"
+          />
+          <div>
+            <button type="button" onClick={() => setView(null)} className="mt-2 text-[13px] font-semibold text-[#087A35] hover:underline">
+              ছবি বন্ধ করুন
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProProfileTab({ me, token }: { me: Me; token: string }) {
   const qc = useQueryClient();
   const catalog = useCatalog();
@@ -650,6 +725,11 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
         />
       </label>
       <div className="sm:col-span-2">
+        <span className={labelCls}>আমার পরিচয় ডকুমেন্ট</span>
+        <IdentityDocViewer token={token} professionalId={pro.id} />
+        <p className="mt-1 text-[13px] text-[#737B73]">এই ডকুমেন্টগুলো শুধু আপনি ও অ্যাডমিন দেখতে পারবেন — কোনো পাবলিক লিংক নেই।</p>
+      </div>
+      <div className="sm:col-span-2">
         <PhotoField
           label="নতুন প্রোফাইল ছবি"
           fileName={photoName}
@@ -681,7 +761,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
   const tabRaw = params.get("tab") ?? "overview";
-  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "settings", "logs"].includes(tabRaw)
+  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "settings", "staff", "logs"].includes(tabRaw)
     ? tabRaw
     : "overview";
   const overview = useQuery({
@@ -703,39 +783,57 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
     );
   }
   const ov = overview.data;
-  const tabs = [
+  // Tabs follow the admin's permission level; the server enforces the
+  // same levels on every action, so a hidden tab is only a shortcut —
+  // the API itself stays closed to levels without permission.
+  const level = me.data!.user.adminLevel ?? "super";
+  const canOps = level === "super" || level === "operations";
+  const canSupport = level === "super" || level === "support";
+  const canFinance = level === "super" || level === "finance";
+  const tabs: { key: string; label: string; badge?: number }[] = [
     { key: "overview", label: "ওভারভিউ" },
-    { key: "bookings", label: "বুকিং", badge: ov?.pendingBookings },
-    { key: "professionals", label: "প্রফেশনাল", badge: ov?.pendingVerifications },
-    { key: "customers", label: "গ্রাহক" },
-    { key: "services", label: "সার্ভিস" },
-    { key: "locations", label: "এলাকা" },
-    { key: "reviews", label: "রিভিউ", badge: ov?.pendingReviews },
-    { key: "complaints", label: "অভিযোগ", badge: ov?.openComplaints },
-    { key: "settings", label: "সেটিংস" },
-    { key: "logs", label: "কার্যকলাপ লগ" },
+    ...(canOps
+      ? [
+          { key: "bookings", label: "বুকিং", badge: ov?.pendingBookings },
+          { key: "professionals", label: "প্রফেশনাল", badge: ov?.pendingVerifications },
+          { key: "customers", label: "গ্রাহক" },
+          { key: "services", label: "সার্ভিস" },
+          { key: "locations", label: "এলাকা" },
+        ]
+      : []),
+    ...(canOps || canSupport ? [{ key: "reviews", label: "রিভিউ", badge: ov?.pendingReviews }] : []),
+    ...(canSupport ? [{ key: "complaints", label: "অভিযোগ", badge: ov?.openComplaints }] : []),
+    ...(canFinance ? [{ key: "settings", label: "সেটিংস" }] : []),
+    ...(level === "super"
+      ? [
+          { key: "staff", label: "অ্যাডমিন টিম" },
+          { key: "logs", label: "কার্যকলাপ লগ" },
+        ]
+      : []),
   ];
+  const shownTab = tabs.some((t) => t.key === tab) ? tab : "overview";
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <span className="grid place-items-center w-11 h-11 rounded-2xl bg-[#064B27] text-white">{Icon.settings("w-5 h-5")}</span>
         <div>
           <h1 className="text-[24px] font-bold text-[#064B27] leading-tight">অ্যাডমিন প্যানেল</h1>
-          <p className="text-sm text-[#737B73]">{me.data!.user.name} • পুরো প্ল্যাটফর্মের নিয়ন্ত্রণ</p>
+          <p className="text-sm text-[#737B73]">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
         </div>
       </div>
-      <TabsBar tabs={tabs} active={tab} href={(k) => `#/admin?tab=${k}`} />
+      <TabsBar tabs={tabs} active={shownTab} href={(k) => `#/admin?tab=${k}`} />
       <div className="mt-6">
-        {tab === "overview" && <AdminOverview token={token} />}
-        {tab === "bookings" && <AdminBookings token={token} />}
-        {tab === "professionals" && <AdminProfessionals token={token} />}
-        {tab === "customers" && <AdminCustomers token={token} />}
-        {tab === "services" && <AdminServices token={token} />}
-        {tab === "locations" && <AdminLocations token={token} />}
-        {tab === "reviews" && <AdminReviews token={token} />}
-        {tab === "complaints" && <AdminComplaints token={token} />}
-        {tab === "settings" && <AdminSettings token={token} />}
-        {tab === "logs" && <AdminLogs token={token} />}
+        {shownTab === "overview" && <AdminOverview token={token} />}
+        {shownTab === "bookings" && <AdminBookings token={token} />}
+        {shownTab === "professionals" && <AdminProfessionals token={token} />}
+        {shownTab === "customers" && <AdminCustomers token={token} />}
+        {shownTab === "services" && <AdminServices token={token} />}
+        {shownTab === "locations" && <AdminLocations token={token} />}
+        {shownTab === "reviews" && <AdminReviews token={token} />}
+        {shownTab === "complaints" && <AdminComplaints token={token} />}
+        {shownTab === "settings" && <AdminSettings token={token} />}
+        {shownTab === "staff" && <AdminStaff token={token} />}
+        {shownTab === "logs" && <AdminLogs token={token} />}
       </div>
     </div>
   );
@@ -1033,6 +1131,7 @@ function AdminProfessionals({ token }: { token: string }) {
             <AdminProCard
               key={p.id}
               p={p}
+              token={token}
               onStatus={(s) => setStatus.mutate({ id: p.id, status: s })}
               onUserStatus={(s) => setUserStatus.mutate({ userId: p.userId, status: s })}
               busy={setStatus.isPending || setUserStatus.isPending}
@@ -1046,11 +1145,13 @@ function AdminProfessionals({ token }: { token: string }) {
 
 function AdminProCard({
   p,
+  token,
   onStatus,
   onUserStatus,
   busy,
 }: {
   p: AdminPro;
+  token: string;
   onStatus: (s: "verified" | "rejected" | "suspended" | "pending") => void;
   onUserStatus: (s: "active" | "suspended") => void;
   busy: boolean;
@@ -1077,6 +1178,7 @@ function AdminProCard({
               NID (শুধু যাচাইয়ের জন্য): <span className="font-en font-semibold">{p.nidNumber}</span>
             </p>
           )}
+          <IdentityDocViewer token={token} professionalId={p.id} documents={p.documents} />
           <p className="text-[13.5px] text-[#737B73]">
             সম্পন্ন কাজ: {p.completedJobs} • রেটিং: {p.avgRating != null ? `${p.avgRating} (${p.reviewCount}টি রিভিউ)` : "এখনো নেই"}
             {p.userStatus === "suspended" ? " • অ্যাকাউন্ট স্থগিত" : ""}
@@ -1610,6 +1712,125 @@ function AdminSettings({ token }: { token: string }) {
       </button>
       <p className="text-[13px] text-[#737B73]">দ্রষ্টব্য: অনলাইন পেমেন্ট (বিকাশ/নগদ/কার্ড) এখন বন্ধ আছে — পেমেন্ট গেটওয়ের আসল তথ্য পেলে তবেই চালু করা হবে। আপাতত ক্যাশ পেমেন্টই প্রযোজ্য।</p>
     </form>
+  );
+}
+
+const ADMIN_LEVEL_OPTIONS: { key: "super" | "operations" | "finance" | "support"; label: string }[] = [
+  { key: "super", label: "সুপার অ্যাডমিন" },
+  { key: "operations", label: "অপারেশনস অ্যাডমিন" },
+  { key: "finance", label: "ফাইন্যান্স অ্যাডমিন" },
+  { key: "support", label: "সাপোর্ট অ্যাডমিন" },
+];
+
+const ADMIN_LEVEL_BN: Record<string, string> = {
+  super: "সুপার অ্যাডমিন",
+  operations: "অপারেশনস অ্যাডমিন",
+  finance: "ফাইন্যান্স অ্যাডমিন",
+  support: "সাপোর্ট অ্যাডমিন",
+};
+
+function AdminStaff({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const staff = useQuery({ queryKey: ["admin-staff"], queryFn: () => api.adminListStaff({ token }) });
+  const customers = useQuery({ queryKey: ["admin-customers"], queryFn: () => api.adminListCustomers({ token }) });
+  const [pick, setPick] = useState<Record<number, string>>({});
+  const [error, setError] = useState("");
+  const setLevel = useMutation({
+    mutationFn: (v: { userId: number; level: "super" | "operations" | "finance" | "support" }) =>
+      api.adminSetAdminLevel({ token, userId: v.userId, level: v.level }),
+    onSuccess: () => {
+      setError("");
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      qc.invalidateQueries({ queryKey: ["admin-customers"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const levelSelect = (userId: number, current: string, label: string) => (
+    <select
+      aria-label={label}
+      className={`${inputCls} !w-auto`}
+      value={pick[userId] ?? current}
+      onChange={(e) => setPick((p) => ({ ...p, [userId]: e.target.value }))}
+    >
+      {ADMIN_LEVEL_OPTIONS.map((l) => (
+        <option key={l.key} value={l.key}>
+          {l.label}
+        </option>
+      ))}
+    </select>
+  );
+  return (
+    <div className="space-y-8">
+      <section>
+        <h2 className="text-lg font-bold text-[#064B27]">অ্যাডমিন টিম</h2>
+        <p className="mt-1 text-sm text-[#737B73]">
+          প্রতিটি স্তরের অনুমতি সার্ভার থেকে যাচাই করা হয় — ফাইন্যান্স অ্যাডমিন পেমেন্ট যাচাই করতে পারবেন কিন্তু কারো স্তর বদলাতে পারবেন না; সাপোর্ট অ্যাডমিন অভিযোগ সামলাবেন কিন্তু পেআউট অনুমোদন করতে পারবেন না।
+        </p>
+        {error && (
+          <div className="mt-3">
+            <ErrorBox message={error} />
+          </div>
+        )}
+        {staff.isPending ? (
+          <Spinner />
+        ) : (
+          <div className="mt-4 space-y-3">
+            {(staff.data?.staff ?? []).map((s) => (
+              <div key={s.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4 flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold">
+                    {s.name}{" "}
+                    <span className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle bg-[#064B27] text-white">
+                      {ADMIN_LEVEL_BN[s.adminLevel] ?? s.adminLevel}
+                    </span>
+                    {s.status === "suspended" && <span className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle bg-red-100 text-red-700">স্থগিত</span>}
+                  </p>
+                  <p className="text-[13.5px] text-[#737B73] font-en">{s.phone}</p>
+                </div>
+                {levelSelect(s.id, s.adminLevel, `${s.name}-এর অ্যাডমিন স্তর`)}
+                <button
+                  type="button"
+                  disabled={setLevel.isPending || (pick[s.id] ?? s.adminLevel) === s.adminLevel}
+                  onClick={() => setLevel.mutate({ userId: s.id, level: (pick[s.id] ?? s.adminLevel) as "super" | "operations" | "finance" | "support" })}
+                  className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
+                >
+                  স্তর সংরক্ষণ করুন
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <section>
+        <h2 className="text-lg font-bold text-[#064B27]">গ্রাহককে অ্যাডমিন করুন</h2>
+        <p className="mt-1 text-sm text-[#737B73]">নিবন্ধিত গ্রাহকদের মধ্য থেকে বেছে নিয়ে নির্দিষ্ট স্তরের অ্যাডমিন দায়িত্ব দিন।</p>
+        {customers.isPending ? (
+          <Spinner />
+        ) : (customers.data?.customers ?? []).length === 0 ? (
+          <EmptyState title="কোনো গ্রাহক নেই" body="গ্রাহক নিবন্ধন করলে এখানে দেখা যাবে।" />
+        ) : (
+          <div className="mt-4 space-y-3">
+            {(customers.data?.customers ?? []).map((c) => (
+              <div key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4 flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold">{c.name}</p>
+                  <p className="text-[13.5px] text-[#737B73] font-en">{c.phone}</p>
+                </div>
+                {levelSelect(c.id, "support", `${c.name}-এর নতুন অ্যাডমিন স্তর`)}
+                <button
+                  type="button"
+                  disabled={setLevel.isPending}
+                  onClick={() => setLevel.mutate({ userId: c.id, level: (pick[c.id] ?? "support") as "super" | "operations" | "finance" | "support" })}
+                  className="border-[1.5px] border-[#087A35] text-[#087A35] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60"
+                >
+                  অ্যাডমিন করুন
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 

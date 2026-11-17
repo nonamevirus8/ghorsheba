@@ -12,6 +12,7 @@ import {
   type DualPaymentRates,
   type PaymentBreakdown,
 } from "./payments";
+import bcrypt from "bcryptjs";
 
 // ---------------------------------------------------------------- helpers
 
@@ -35,12 +36,28 @@ function randomHex(bytes: number): string {
   return [...arr].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Password hashing (Master Phase 2): bcrypt via the pure-JS bcryptjs
+// package — a slow hash with no native bindings, so it runs unchanged
+// in the Vercel serverless runtime and in this artifact's runtime.
+// Accounts created under the previous scheme hold `salt$sha256hex`;
+// those hashes still verify below and are transparently re-hashed to
+// bcrypt on the owner's next successful login (see `login`).
 async function hashPassword(password: string): Promise<string> {
-  const salt = randomHex(8);
-  return `${salt}$${await sha256Hex(`${salt}:${password}`)}`;
+  return bcrypt.hash(password, 10);
+}
+
+function isLegacyPasswordHash(stored: string): boolean {
+  return !stored.startsWith("$2");
 }
 
 async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  if (!isLegacyPasswordHash(stored)) {
+    try {
+      return await bcrypt.compare(password, stored);
+    } catch {
+      return false;
+    }
+  }
   const [salt = "", hash = ""] = stored.split("$");
   return (await sha256Hex(`${salt}:${password}`)) === hash;
 }
@@ -90,6 +107,143 @@ async function requireAdmin(ctx: Ctx, token: string): Promise<UserRow> {
   return user;
 }
 
+// ----------------------------------------------------- admin levels
+//
+// Admin permission levels (Master Phase 2). The level is read from the
+// signed-in admin's own database row on every call — never from
+// anything the client sends. "super" passes every check; the other
+// levels must be listed explicitly per action:
+//   super      — everything, including admin staff & levels
+//   operations — bookings, services, locations, professionals, verification
+//   finance    — payment verification, payment lists, rate settings
+//   support    — complaints / support, review moderation
+// Admins created before levels existed have admin_level NULL and are
+// treated as super (the owner's first claimed account is set to super
+// explicitly at claim time).
+
+type AdminLevel = "super" | "operations" | "finance" | "support";
+
+function adminLevelOf(user: UserRow): AdminLevel {
+  return user.adminLevel ?? "super";
+}
+
+async function requireAdminLevel(
+  ctx: Ctx,
+  token: string,
+  levels: readonly AdminLevel[],
+): Promise<UserRow> {
+  const user = await requireAdmin(ctx, token);
+  const level = adminLevelOf(user);
+  if (level !== "super" && !levels.includes(level)) {
+    throw new Error("আপনার অ্যাডমিন স্তরে এই কাজটি করার অনুমতি নেই।");
+  }
+  return user;
+}
+
+// ------------------------------------------- login / claim throttling
+//
+// Failed logins and admin-claim attempts are counted in `auth_attempts`
+// inside a rolling window; reaching the limit locks the key until the
+// lock expires. Logins are keyed by phone number and — where the
+// runtime exposes it (the Vercel edition passes the client IP through
+// ctx) — by IP as well. Claim attempts are keyed globally and by IP.
+
+const LOGIN_MAX_FAILURES = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const CLAIM_MAX_ATTEMPTS = 5;
+const CLAIM_WINDOW_MS = 60 * 60 * 1000;
+const CLAIM_LOCK_MS = 60 * 60 * 1000;
+
+type AttemptRow = typeof schema.authAttempts.$inferSelect;
+
+function clientIpOf(ctx: Ctx): string | null {
+  const ip = (ctx as unknown as { clientIp?: unknown }).clientIp;
+  return typeof ip === "string" && ip.length > 0 ? ip : null;
+}
+
+async function attemptRow(ctx: Ctx, scope: string, key: string): Promise<AttemptRow | null> {
+  const db = dbOf(ctx);
+  const rows = await db
+    .select()
+    .from(schema.authAttempts)
+    .where(and(eq(schema.authAttempts.scope, scope), eq(schema.authAttempts.key, key)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+function lockActive(row: AttemptRow | null): boolean {
+  return !!row?.lockedUntil && row.lockedUntil.getTime() > Date.now();
+}
+
+async function bumpAttempt(
+  ctx: Ctx,
+  scope: string,
+  key: string,
+  windowMs: number,
+  maxCount: number,
+  lockMs: number,
+): Promise<void> {
+  const db = dbOf(ctx);
+  const now = new Date();
+  const row = await attemptRow(ctx, scope, key);
+  if (!row) {
+    await db.insert(schema.authAttempts).values({ scope, key, count: 1, windowStart: now, updatedAt: now });
+    return;
+  }
+  const inWindow = now.getTime() - row.windowStart.getTime() < windowMs;
+  const count = inWindow ? row.count + 1 : 1;
+  await db
+    .update(schema.authAttempts)
+    .set({
+      count,
+      windowStart: inWindow ? row.windowStart : now,
+      lockedUntil: count >= maxCount ? new Date(now.getTime() + lockMs) : row.lockedUntil,
+      updatedAt: now,
+    })
+    .where(eq(schema.authAttempts.id, row.id));
+}
+
+async function assertLoginAllowed(ctx: Ctx, phone: string, ip: string | null): Promise<void> {
+  if (lockActive(await attemptRow(ctx, "login_phone", phone))) {
+    throw new Error("অনেকবার ভুল পাসওয়ার্ড দেওয়া হয়েছে — এই নম্বর দিয়ে লগইন সাময়িকভাবে বন্ধ আছে। কিছুক্ষণ পর আবার চেষ্টা করুন।");
+  }
+  if (ip && lockActive(await attemptRow(ctx, "login_ip", ip))) {
+    throw new Error("এই ডিভাইস থেকে অনেকবার ভুল লগইন চেষ্টা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।");
+  }
+}
+
+async function recordLoginFailure(ctx: Ctx, phone: string, ip: string | null): Promise<void> {
+  await bumpAttempt(ctx, "login_phone", phone, LOGIN_WINDOW_MS, LOGIN_MAX_FAILURES, LOGIN_LOCK_MS);
+  if (ip) await bumpAttempt(ctx, "login_ip", ip, LOGIN_WINDOW_MS, LOGIN_MAX_FAILURES, LOGIN_LOCK_MS);
+}
+
+async function clearLoginAttempts(ctx: Ctx, phone: string, ip: string | null): Promise<void> {
+  const db = dbOf(ctx);
+  await db
+    .delete(schema.authAttempts)
+    .where(and(eq(schema.authAttempts.scope, "login_phone"), eq(schema.authAttempts.key, phone)));
+  if (ip) {
+    await db
+      .delete(schema.authAttempts)
+      .where(and(eq(schema.authAttempts.scope, "login_ip"), eq(schema.authAttempts.key, ip)));
+  }
+}
+
+async function assertClaimAllowed(ctx: Ctx, ip: string | null): Promise<void> {
+  if (lockActive(await attemptRow(ctx, "claim", "global"))) {
+    throw new Error("অ্যাডমিন সেটআপের অনেক চেষ্টা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।");
+  }
+  if (ip && lockActive(await attemptRow(ctx, "claim_ip", ip))) {
+    throw new Error("এই ডিভাইস থেকে অ্যাডমিন সেটআপের অনেক চেষ্টা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন।");
+  }
+}
+
+async function recordClaimAttempt(ctx: Ctx, ip: string | null): Promise<void> {
+  await bumpAttempt(ctx, "claim", "global", CLAIM_WINDOW_MS, CLAIM_MAX_ATTEMPTS, CLAIM_LOCK_MS);
+  if (ip) await bumpAttempt(ctx, "claim_ip", ip, CLAIM_WINDOW_MS, CLAIM_MAX_ATTEMPTS, CLAIM_LOCK_MS);
+}
+
 async function myProfessional(ctx: Ctx, userId: number) {
   const db = dbOf(ctx);
   const rows = await db
@@ -125,6 +279,24 @@ async function storeImage(
   const key = `${prefix}/${Date.now()}-${randomHex(4)}`;
   await ctx.blobs.put(key, bytes, { contentType: img.mimeType });
   return key;
+}
+
+// Identity document images (NID front and back photos) are
+// validated like other uploads but stored in the identity_documents
+// table — never in the blob store — so no public URL can ever serve
+// them (see getIdentityDocument for the access rules).
+function validateIdentityImage(
+  img: { dataBase64: string; mimeType: string } | undefined,
+  label: string,
+): { dataBase64: string; mimeType: string } {
+  if (!img) throw new Error(`${label} দিন।`);
+  if (!["image/jpeg", "image/png", "image/webp"].includes(img.mimeType)) {
+    throw new Error("শুধুমাত্র JPG, PNG বা WebP ছবি দেওয়া যাবে।");
+  }
+  if (img.dataBase64.length > 4_500_000) {
+    throw new Error("ছবিটি খুব বড় — ৩ MB-এর নিচের ছবি দিন।");
+  }
+  return img;
 }
 
 async function notify(
@@ -245,6 +417,7 @@ const userOut = z.object({
   name: z.string(),
   phone: z.string(),
   role: z.string(),
+  adminLevel: z.string().nullable(),
   status: z.string(),
   address: z.string().nullable(),
   location: z.string().nullable(),
@@ -260,6 +433,7 @@ async function toUserOut(ctx: Ctx, u: UserRow): Promise<UserOut> {
     name: u.name,
     phone: u.phone,
     role: u.role,
+    adminLevel: u.role === "admin" ? adminLevelOf(u) : null,
     status: u.status,
     address: u.address,
     location: u.location,
@@ -805,7 +979,7 @@ export const Actions = {
     request: z.object({
       name: z.string().min(2).max(80),
       phone: z.string(),
-      password: z.string().min(6).max(64),
+      password: z.string().min(12).max(64),
       address: z.string().max(300).optional(),
       location: z.string().max(80).optional(),
       photo: imageInput,
@@ -846,11 +1020,11 @@ export const Actions = {
   }),
 
   registerProfessional: defineAction({
-    description: "Registers a professional (mistri) account in Pending Verification status.",
+    description: "Registers a professional (mistri) account in Pending Verification status. The NID number and the NID front/back photos are required and stored for admin-only verification.",
     request: z.object({
       name: z.string().min(2).max(80),
       phone: z.string(),
-      password: z.string().min(6).max(64),
+      password: z.string().min(12).max(64),
       email: z.string().max(120).optional(),
       categorySlug: z.string(),
       experienceYears: z.number().int().min(0).max(60),
@@ -858,7 +1032,9 @@ export const Actions = {
       areas: z.array(z.string()).min(1),
       address: z.string().max(300).optional(),
       bio: z.string().max(600).optional(),
-      nidNumber: z.string().max(20).optional(),
+      nidNumber: z.string().min(5).max(20),
+      nidFrontPhoto: imageInput,
+      nidBackPhoto: imageInput,
       photo: imageInput,
     }),
     response: sessionOut,
@@ -873,6 +1049,10 @@ export const Actions = {
         .where(eq(schema.services.slug, args.categorySlug))
         .limit(1);
       if (!svc.length) throw new Error("সার্ভিস ক্যাটাগরি সঠিক নয়।");
+      // Identity documents are required at registration (owner's NID
+      // policy): the NID front photo and the NID back photo.
+      const nidFront = validateIdentityImage(args.nidFrontPhoto, "NID কার্ডের সামনের ছবি");
+      const nidBack = validateIdentityImage(args.nidBackPhoto, "NID কার্ডের পেছনের ছবি");
       const existing = await db
         .select()
         .from(schema.users)
@@ -895,18 +1075,32 @@ export const Actions = {
         .returning();
       const user = inserted[0];
       if (!user) throw new Error("অ্যাকাউন্ট তৈরি করা যায়নি।");
-      await db.insert(schema.professionals).values({
-        userId: user.id,
-        categorySlug: args.categorySlug,
-        experienceYears: args.experienceYears,
-        skills: args.skills ?? null,
-        areas: JSON.stringify(args.areas),
-        address: args.address ?? null,
-        email: args.email ?? null,
-        bio: args.bio ?? null,
-        nidNumber: args.nidNumber ?? null,
-        status: "pending",
-      });
+      const proInserted = await db
+        .insert(schema.professionals)
+        .values({
+          userId: user.id,
+          categorySlug: args.categorySlug,
+          experienceYears: args.experienceYears,
+          skills: args.skills ?? null,
+          areas: JSON.stringify(args.areas),
+          address: args.address ?? null,
+          email: args.email ?? null,
+          bio: args.bio ?? null,
+          // NID number: visible to admins only — no public, customer
+          // or professional action ever returns it.
+          nidNumber: args.nidNumber,
+          status: "pending",
+        })
+        .returning();
+      const proRow = proInserted[0];
+      if (!proRow) throw new Error("অ্যাকাউন্ট তৈরি করা যায়নি।");
+      // Document bytes live only in identity_documents (never the blob
+      // store), so no public URL can serve them; see
+      // getIdentityDocument for the access rules.
+      await db.insert(schema.identityDocuments).values([
+        { professionalId: proRow.id, kind: "nid_front", contentType: nidFront.mimeType, dataBase64: nidFront.dataBase64 },
+        { professionalId: proRow.id, kind: "nid_back", contentType: nidBack.mimeType, dataBase64: nidBack.dataBase64 },
+      ]);
       await notify(ctx, {
         targetRole: "admin",
         type: "pro_application",
@@ -920,22 +1114,43 @@ export const Actions = {
   }),
 
   claimAdmin: defineAction({
-    description: "First-run setup: creates the platform admin account, only while no admin exists.",
+    description: "First-run setup: creates the platform's Super Admin account. Server-side gated — rejected once any admin exists; attempts are rate-limited and every attempt is written to the admin log.",
     request: z.object({
       name: z.string().min(2).max(80),
       phone: z.string(),
-      password: z.string().min(6).max(64),
+      password: z.string().min(12).max(64),
     }),
     response: sessionOut,
     async handler(ctx, args) {
       const db = dbOf(ctx);
+      const ip = clientIpOf(ctx);
+      // Every claim attempt — successful or not — is written to the
+      // admin log; counted attempts feed the rate limit above.
+      const logAttempt = async (result: string, adminId: number | null = null) => {
+        await db.insert(schema.adminLogs).values({
+          adminId,
+          action: "admin_claim_attempt",
+          detail: `phone=${args.phone} result=${result}`,
+        });
+      };
+      try {
+        await assertClaimAllowed(ctx, ip);
+      } catch (e) {
+        await logAttempt("rate_limited");
+        throw e;
+      }
+      await recordClaimAttempt(ctx, ip);
       const admins = await db
         .select()
         .from(schema.users)
         .where(eq(schema.users.role, "admin"))
         .limit(1);
-      if (admins.length) throw new Error("অ্যাডমিন অ্যাকাউন্ট ইতিমধ্যে তৈরি হয়ে গেছে।");
+      if (admins.length) {
+        await logAttempt("rejected_admin_exists");
+        throw new Error("অ্যাডমিন অ্যাকাউন্ট ইতিমধ্যে তৈরি হয়ে গেছে।");
+      }
       if (!PHONE_RE.test(args.phone)) {
+        await logAttempt("rejected_bad_phone");
         throw new Error("সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (01XXXXXXXXX)।");
       }
       const existing = await db
@@ -943,7 +1158,10 @@ export const Actions = {
         .from(schema.users)
         .where(eq(schema.users.phone, args.phone))
         .limit(1);
-      if (existing.length) throw new Error("এই নম্বর দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে।");
+      if (existing.length) {
+        await logAttempt("rejected_phone_in_use");
+        throw new Error("এই নম্বর দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে।");
+      }
       const inserted = await db
         .insert(schema.users)
         .values({
@@ -951,11 +1169,13 @@ export const Actions = {
           phone: args.phone,
           passwordHash: await hashPassword(args.password),
           role: "admin",
+          adminLevel: "super",
         })
         .returning();
       const user = inserted[0];
       if (!user) throw new Error("অ্যাডমিন অ্যাকাউন্ট তৈরি করা যায়নি।");
-      await logAdmin(ctx, user.id, "admin_setup", "প্রথম অ্যাডমিন অ্যাকাউন্ট তৈরি হয়েছে");
+      await logAttempt("success", user.id);
+      await logAdmin(ctx, user.id, "admin_setup", "প্রথম অ্যাডমিন (সুপার অ্যাডমিন) অ্যাকাউন্ট তৈরি হয়েছে");
       const token = await createSession(ctx, user.id);
       ctx.invalidateQueries();
       return { token, user: await toUserOut(ctx, user) };
@@ -963,23 +1183,39 @@ export const Actions = {
   }),
 
   login: defineAction({
-    description: "Logs in with mobile number and password, returning a session token and role.",
+    description: "Logs in with mobile number and password. Failed attempts are rate-limited with a temporary lockout; a successful login rotates the session token and transparently upgrades legacy password hashes to bcrypt.",
     request: z.object({ phone: z.string(), password: z.string().min(1) }),
     response: sessionOut,
     async handler(ctx, args) {
       const db = dbOf(ctx);
+      const phone = args.phone.trim();
+      const ip = clientIpOf(ctx);
+      await assertLoginAllowed(ctx, phone, ip);
       const rows = await db
         .select()
         .from(schema.users)
-        .where(eq(schema.users.phone, args.phone.trim()))
+        .where(eq(schema.users.phone, phone))
         .limit(1);
       const user = rows[0];
       if (!user || !(await verifyPassword(args.password, user.passwordHash))) {
+        await recordLoginFailure(ctx, phone, ip);
         throw new Error("মোবাইল নম্বর বা পাসওয়ার্ড সঠিক নয়।");
       }
       if (user.status === "suspended") {
         throw new Error("এই অ্যাকাউন্টটি স্থগিত আছে — সাপোর্টে যোগাযোগ করুন।");
       }
+      await clearLoginAttempts(ctx, phone, ip);
+      // Transparent hash upgrade: accounts created under the old
+      // salted SHA-256 scheme are re-hashed to bcrypt on this login.
+      if (isLegacyPasswordHash(user.passwordHash)) {
+        await db
+          .update(schema.users)
+          .set({ passwordHash: await hashPassword(args.password), updatedAt: new Date() })
+          .where(eq(schema.users.id, user.id));
+      }
+      // Session rotation: a fresh login invalidates every older
+      // session for this account before issuing the new token.
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, user.id));
       const token = await createSession(ctx, user.id);
       return { token, user: await toUserOut(ctx, user) };
     },
@@ -1750,7 +1986,7 @@ export const Actions = {
     request: z.object({ token: z.string(), status: z.string().optional() }),
     response: z.object({ bookings: z.array(bookingOut) }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db.select().from(schema.bookings).orderBy(desc(schema.bookings.id));
       const names = await serviceNameMap(ctx);
@@ -1784,7 +2020,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db
         .select()
@@ -1908,32 +2144,62 @@ export const Actions = {
   }),
 
   adminListProfessionals: defineAction({
-    description: "Admin: lists all professional applications with verification status and NID for verification.",
+    description: "Admin: lists all professional applications with verification status, NID number and identity-document presence for verification. This is the only action that returns NID numbers.",
     request: z.object({ token: z.string() }),
     response: z.object({
       professionals: z.array(
         proOut.extend({
           email: z.string().nullable(),
           nidNumber: z.string().nullable(),
+          documents: z.object({
+            nidFront: z.boolean(),
+            nidBack: z.boolean(),
+          }),
           userStatus: z.string(),
         }),
       ),
     }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const names = await serviceNameMap(ctx);
       const pros = await db.select().from(schema.professionals).orderBy(desc(schema.professionals.id));
       const users = await db.select().from(schema.users);
       const byId = new Map(users.map((u) => [u.id, u]));
+      // Document presence only (kinds, never the bytes or URLs) so the
+      // verification view can offer a view button per document.
+      const docRows = await db
+        .select({ professionalId: schema.identityDocuments.professionalId, kind: schema.identityDocuments.kind })
+        .from(schema.identityDocuments);
+      const docMap = new Map<number, Set<string>>();
+      for (const d of docRows) {
+        const set = docMap.get(d.professionalId) ?? new Set<string>();
+        set.add(d.kind);
+        docMap.set(d.professionalId, set);
+      }
       const out: z.infer<typeof proOut>[] = [];
-      const full: (z.infer<typeof proOut> & { email: string | null; nidNumber: string | null; userStatus: string })[] = [];
+      const full: (z.infer<typeof proOut> & {
+        email: string | null;
+        nidNumber: string | null;
+        documents: { nidFront: boolean; nidBack: boolean };
+        userStatus: string;
+      })[] = [];
       for (const p of pros) {
         const u = byId.get(p.userId);
         if (!u) continue;
         const card = await toProOut(ctx, p, u, names.get(p.categorySlug) ?? p.categorySlug);
         out.push(card);
-        full.push({ ...card, email: p.email, nidNumber: p.nidNumber, userStatus: u.status });
+        const docs = docMap.get(p.id) ?? new Set<string>();
+        full.push({
+          ...card,
+          email: p.email,
+          nidNumber: p.nidNumber,
+          documents: {
+            nidFront: docs.has("nid_front"),
+            nidBack: docs.has("nid_back"),
+          },
+          userStatus: u.status,
+        });
       }
       return { professionals: full };
     },
@@ -1948,7 +2214,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db
         .select()
@@ -1978,6 +2244,51 @@ export const Actions = {
     },
   }),
 
+  getIdentityDocument: defineAction({
+    description: "Returns one professional identity document image (NID front or NID back photo) as base64. Only the owning professional or an operations/super admin may view it; every admin view is written to the admin log. Documents are never exposed through any public URL or blob endpoint.",
+    request: z.object({
+      token: z.string(),
+      professionalId: z.number().int(),
+      kind: z.enum(["nid_front", "nid_back"]),
+    }),
+    response: z.object({ dataBase64: z.string(), mimeType: z.string() }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.professionals)
+        .where(eq(schema.professionals.id, args.professionalId))
+        .limit(1);
+      const pro = rows[0];
+      if (!pro) throw new Error("প্রফেশনাল পাওয়া যায়নি।");
+      if (user.role === "admin") {
+        const lvl = adminLevelOf(user);
+        if (lvl !== "super" && lvl !== "operations") {
+          throw new Error("আপনার অ্যাডমিন স্তরে পরিচয় ডকুমেন্ট দেখার অনুমতি নেই।");
+        }
+        await logAdmin(ctx, user.id, "identity_document_view", `professional #${pro.id} document=${args.kind}`);
+      } else if (user.role === "professional") {
+        if (pro.userId !== user.id) throw new Error("অন্যের ডকুমেন্ট দেখার অনুমতি নেই।");
+      } else {
+        throw new Error("এই ডকুমেন্ট দেখার অনুমতি নেই।");
+      }
+      const docs = await db
+        .select()
+        .from(schema.identityDocuments)
+        .where(
+          and(
+            eq(schema.identityDocuments.professionalId, pro.id),
+            eq(schema.identityDocuments.kind, args.kind),
+          ),
+        )
+        .limit(1);
+      const doc = docs[0];
+      if (!doc) throw new Error("এই ডকুমেন্টটি জমা দেওয়া হয়নি।");
+      return { dataBase64: doc.dataBase64, mimeType: doc.contentType };
+    },
+  }),
+
   adminListCustomers: defineAction({
     description: "Admin: lists all customer accounts with booking counts.",
     request: z.object({ token: z.string() }),
@@ -1987,7 +2298,7 @@ export const Actions = {
       ),
     }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db
         .select()
@@ -2017,7 +2328,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db.select().from(schema.users).where(eq(schema.users.id, args.userId)).limit(1);
       const u = rows[0];
@@ -2053,7 +2364,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       if (args.id) {
         await db
@@ -2107,7 +2418,7 @@ export const Actions = {
     request: z.object({ token: z.string() }),
     response: z.object({ services: z.array(serviceOut) }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db.select().from(schema.services).orderBy(asc(schema.services.sortOrder));
       return { services: rows.map(toServiceOut) };
@@ -2119,7 +2430,7 @@ export const Actions = {
     request: z.object({ token: z.string() }),
     response: z.object({ locations: z.array(locationOut) }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const rows = await db.select().from(schema.locations).orderBy(asc(schema.locations.id));
       return {
@@ -2146,7 +2457,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       if (args.id) {
         await db
@@ -2174,7 +2485,7 @@ export const Actions = {
     request: z.object({ token: z.string() }),
     response: z.object({ reviews: z.array(reviewOut) }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations", "support"]);
       const db = dbOf(ctx);
       const names = await serviceNameMap(ctx);
       const proNames = await proNameMap(ctx);
@@ -2211,7 +2522,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["operations", "support"]);
       const db = dbOf(ctx);
       await db
         .update(schema.reviews)
@@ -2242,7 +2553,7 @@ export const Actions = {
       ),
     }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["support"]);
       const db = dbOf(ctx);
       const rows = await db.select().from(schema.complaints).orderBy(desc(schema.complaints.id));
       const users = await db.select().from(schema.users);
@@ -2272,7 +2583,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["support"]);
       const db = dbOf(ctx);
       const rows = await db
         .select()
@@ -2350,7 +2661,7 @@ export const Actions = {
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["finance"]);
       const db = dbOf(ctx);
       const st = await db.select().from(schema.settings).limit(1);
       const cur = st[0];
@@ -2394,7 +2705,7 @@ export const Actions = {
       ),
     }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, []);
       const db = dbOf(ctx);
       const rows = await db
         .select()
@@ -2412,6 +2723,79 @@ export const Actions = {
     },
   }),
 
+  adminListStaff: defineAction({
+    description: "Super Admin only: lists all admin staff accounts with their permission levels.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      staff: z.array(
+        z.object({
+          id: z.number(),
+          name: z.string(),
+          phone: z.string(),
+          adminLevel: z.string(),
+          status: z.string(),
+          createdAt: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, []);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.role, "admin"))
+        .orderBy(asc(schema.users.id));
+      return {
+        staff: rows.map((u) => ({
+          id: u.id,
+          name: u.name,
+          phone: u.phone,
+          adminLevel: adminLevelOf(u),
+          status: u.status,
+          createdAt: u.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  adminSetAdminLevel: defineAction({
+    description: "Super Admin only: sets an admin's permission level (super / operations / finance / support), or promotes an existing user to admin with that level. The last remaining Super Admin cannot be demoted.",
+    request: z.object({
+      token: z.string(),
+      userId: z.number().int(),
+      level: z.enum(["super", "operations", "finance", "support"]),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, []);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.id, args.userId))
+        .limit(1);
+      const target = rows[0];
+      if (!target) throw new Error("ব্যবহারকারী পাওয়া যায়নি।");
+      if (target.role === "admin" && adminLevelOf(target) === "super" && args.level !== "super") {
+        const admins = await db
+          .select()
+          .from(schema.users)
+          .where(eq(schema.users.role, "admin"));
+        if (admins.filter((u) => adminLevelOf(u) === "super").length <= 1) {
+          throw new Error("শেষ সুপার অ্যাডমিনের স্তর বদলানো যাবে না — আগে আরেকজনকে সুপার অ্যাডমিন করুন।");
+        }
+      }
+      await db
+        .update(schema.users)
+        .set({ role: "admin", adminLevel: args.level, updatedAt: new Date() })
+        .where(eq(schema.users.id, target.id));
+      await logAdmin(ctx, admin.id, "admin_level_set", `user #${target.id} (${target.phone}) -> admin/${args.level}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
   adminListVerifiedPros: defineAction({
     description: "Admin: lists verified professionals of one category for booking assignment.",
     request: z.object({ token: z.string(), category: z.string() }),
@@ -2421,7 +2805,7 @@ export const Actions = {
       ),
     }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
       const pros = await db
         .select()
@@ -2649,7 +3033,7 @@ export const Actions = {
     }),
     response: z.object({ payment: paymentOut }),
     async handler(ctx, args) {
-      const admin = await requireAdmin(ctx, args.token);
+      const admin = await requireAdminLevel(ctx, args.token, ["finance"]);
       const db = dbOf(ctx);
       const reason = args.reason?.trim() ?? "";
       if (args.decision === "reject" && !reason) {
@@ -2848,7 +3232,7 @@ export const Actions = {
     request: z.object({ token: z.string(), status: z.string().optional() }),
     response: z.object({ payments: z.array(paymentOut) }),
     async handler(ctx, args) {
-      await requireAdmin(ctx, args.token);
+      await requireAdminLevel(ctx, args.token, ["finance"]);
       const db = dbOf(ctx);
       const rows = await db
         .select()
