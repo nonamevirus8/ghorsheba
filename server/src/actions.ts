@@ -18,6 +18,11 @@ import {
   exportTokenAuthorized,
   type ExportPayload,
 } from "./export";
+import {
+  buildFullBackup,
+  fullBackupResponse,
+  type FullBackupDownload,
+} from "./backup";
 import { Privileged } from "@space/privileged";
 import bcrypt from "bcryptjs";
 
@@ -3295,6 +3300,20 @@ export const Actions = {
         throw new Error("Not found");
       }
       return buildExport(dbOf(ctx));
+    },
+  }),
+
+  downloadFullBackup: defineAction({
+    description:
+      "Super Admin only: builds a complete restorable backup of every database table except sessions (live session tokens are never exported) and returns it as base64-encoded gzipped JSON for the admin panel's download button. Gated by the caller's own logged-in session — no token in any URL. Read-only: it never writes, updates or deletes anything.",
+    request: z.object({
+      token: z.string(),
+    }),
+    response: fullBackupResponse,
+    async handler(ctx, args): Promise<FullBackupDownload> {
+      // Empty level list = Super Admin only (see requireAdminLevel).
+      await requireAdminLevel(ctx, args.token, []);
+      return buildFullBackup(dbOf(ctx));
     },
   }),
 } satisfies ActionsModule;

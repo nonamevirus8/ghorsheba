@@ -824,6 +824,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
       <TabsBar tabs={tabs} active={shownTab} href={(k) => `#/admin?tab=${k}`} />
       <div className="mt-6">
         {shownTab === "overview" && <AdminOverview token={token} />}
+        {shownTab === "overview" && level === "super" && <FullBackupCard token={token} />}
         {shownTab === "bookings" && <AdminBookings token={token} />}
         {shownTab === "professionals" && <AdminProfessionals token={token} />}
         {shownTab === "customers" && <AdminCustomers token={token} />}
@@ -835,6 +836,67 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
         {shownTab === "staff" && <AdminStaff token={token} />}
         {shownTab === "logs" && <AdminLogs token={token} />}
       </div>
+    </div>
+  );
+}
+
+// Super Admin only: downloads a complete restorable backup of the
+// whole database as one gzipped JSON file. The server builds it only
+// for the caller's own logged-in Super Admin session (the token goes
+// in the action request body — never in a URL) and the backup never
+// contains live session tokens. This component only turns the
+// returned base64 gzip bytes into a file download.
+function FullBackupCard({ token }: { token: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  async function download() {
+    setBusy(true);
+    setError("");
+    setDone("");
+    try {
+      const res = await api.downloadFullBackup({ token });
+      const bin = atob(res.gzipBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/gzip" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      const tableCount = Object.keys(res.tableCounts).length;
+      const rowTotal = Object.values(res.tableCounts).reduce((s, n) => s + n, 0);
+      setDone(`ব্যাকআপ ডাউনলোড হয়েছে — ${tableCount}টি টেবিল, মোট ${rowTotal}টি রো। ফাইলটি নিরাপদ জায়গায় রাখুন: এতে পাসওয়ার্ড হ্যাশ ও পরিচয়পত্রের তথ্য আছে।`);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-6 rounded-2xl border border-[#E5EAE5] bg-white p-5">
+      <h2 className="font-bold text-[#064B27]">ডাটাবেস ব্যাকআপ</h2>
+      <p className="mt-1 text-sm text-[#737B73]">
+        পুরো ডাটাবেসের একটি সম্পূর্ণ ব্যাকআপ (সব টেবিল ও সব রো) gzip-compressed JSON ফাইল হিসেবে ডাউনলোড করুন। লগইন সেশন টোকেন ব্যাকআপে থাকে না। শুধুমাত্র সুপার অ্যাডমিন এই ডাউনলোড করতে পারবেন।
+      </p>
+      <button
+        type="button"
+        onClick={download}
+        disabled={busy}
+        className="mt-3 inline-flex items-center gap-2 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+      >
+        {Icon.download("w-4 h-4")}
+        {busy ? "ব্যাকআপ তৈরি হচ্ছে…" : "Full backup download"}
+      </button>
+      {error && (
+        <div className="mt-3">
+          <ErrorBox message={error} />
+        </div>
+      )}
+      {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
     </div>
   );
 }
