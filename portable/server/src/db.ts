@@ -38,7 +38,27 @@ function connect(): { sql: postgres.Sql; db: AppDb } {
   return cached;
 }
 
-async function runMigrations(sql: postgres.Sql): Promise<void> {
+// Postgres error codes that mean "this object is already there" — the
+// migration is written to be idempotent (IF NOT EXISTS / ON CONFLICT DO
+// NOTHING), but a database that was partially set up by an earlier,
+// crashed run can still surface these. They are never fatal: the object
+// the statement wanted to create exists, which is the desired end state.
+const ALREADY_EXISTS_CODES = new Set(["42P07", "42710", "42P06", "42723"]);
+
+function isAlreadyExistsError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { code?: unknown; message?: unknown };
+  if (typeof e.code === "string" && ALREADY_EXISTS_CODES.has(e.code)) {
+    return true;
+  }
+  return (
+    typeof e.message === "string" && /already exists/i.test(e.message)
+  );
+}
+
+type SqlLike = postgres.Sql | postgres.ReservedSql;
+
+async function runMigrations(sql: SqlLike): Promise<void> {
   await sql`CREATE TABLE IF NOT EXISTS _ghorsheba_migrations (
     name TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -56,9 +76,16 @@ async function runMigrations(sql: postgres.Sql): Promise<void> {
       .map((s) => s.trim())
       .filter(Boolean);
     for (const stmt of statements) {
-      await sql.unsafe(stmt);
+      try {
+        await sql.unsafe(stmt);
+      } catch (err) {
+        // Idempotency guard: a table/index/type left behind by a previous
+        // partial run must not fail the whole startup. Skip and continue.
+        if (isAlreadyExistsError(err)) continue;
+        throw err;
+      }
     }
-    await sql`INSERT INTO _ghorsheba_migrations (name) VALUES (${file})`;
+    await sql`INSERT INTO _ghorsheba_migrations (name) VALUES (${file}) ON CONFLICT (name) DO NOTHING`;
   }
 }
 
@@ -66,15 +93,42 @@ export function getDb(): Promise<AppDb> {
   if (!ready) {
     ready = (async () => {
       const { sql, db } = connect();
+      // Run the lock AND the migrations on one reserved connection.
+      // Previously the advisory lock was taken on the reserved connection
+      // while the migrations ran through the pool — different backends —
+      // so the lock protected nothing and the unlock warned
+      // "you don't own a lock of type ExclusiveLock".
+      //
+      // Behind Supabase's transaction pooler (port 6543) a session-level
+      // advisory lock may not be grantable at all, so use the try-variant:
+      // if we get the lock, hold it for the migration and unlock only
+      // then; if we don't, proceed anyway — the migrations are
+      // idempotent, so concurrent cold starts converge safely.
       const lock = await sql.reserve();
+      let locked = false;
       try {
-        await lock`SELECT pg_advisory_lock(727272)`;
-        await runMigrations(sql);
+        for (let attempt = 0; attempt < 20 && !locked; attempt++) {
+          try {
+            const rows = await lock`SELECT pg_try_advisory_lock(727272) AS locked`;
+            locked = rows[0]?.locked === true;
+          } catch {
+            // Pooler refused the lock call entirely — run unlocked.
+            locked = false;
+            break;
+          }
+          if (!locked) {
+            await new Promise((r) => setTimeout(r, 250));
+          }
+        }
+        await runMigrations(lock);
       } finally {
-        try {
-          await lock`SELECT pg_advisory_unlock(727272)`;
-        } catch {
-          // Connection is being released anyway.
+        if (locked) {
+          try {
+            await lock`SELECT pg_advisory_unlock(727272)`;
+          } catch {
+            // Only unlock when we hold the lock; a pooler warning or a
+            // dropped backend here must never fail startup.
+          }
         }
         lock.release();
       }

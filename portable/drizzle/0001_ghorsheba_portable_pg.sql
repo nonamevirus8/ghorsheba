@@ -11,7 +11,7 @@
 -- `_ghorsheba_migrations`); it can also be run by hand in the Supabase
 -- SQL editor or with `psql "$DATABASE_URL" -f <this file>`.
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   name TEXT NOT NULL,
   phone TEXT NOT NULL UNIQUE,
@@ -25,7 +25,7 @@ CREATE TABLE users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE professionals (
+CREATE TABLE IF NOT EXISTS professionals (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
   category_slug TEXT NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE professionals (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE services (
+CREATE TABLE IF NOT EXISTS services (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   slug TEXT NOT NULL UNIQUE,
   name_bn TEXT NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE services (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE locations (
+CREATE TABLE IF NOT EXISTS locations (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   name_en TEXT NOT NULL UNIQUE,
   name_bn TEXT NOT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE locations (
   active INTEGER NOT NULL DEFAULT 1
 );
 --> statement-breakpoint
-CREATE TABLE bookings (
+CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   code TEXT NOT NULL UNIQUE,
   customer_id INTEGER NOT NULL REFERENCES users(id),
@@ -98,7 +98,7 @@ CREATE TABLE bookings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE booking_events (
+CREATE TABLE IF NOT EXISTS booking_events (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   booking_id INTEGER NOT NULL REFERENCES bookings(id),
   status TEXT NOT NULL,
@@ -107,7 +107,7 @@ CREATE TABLE booking_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE reviews (
+CREATE TABLE IF NOT EXISTS reviews (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   booking_id INTEGER NOT NULL UNIQUE REFERENCES bookings(id),
   customer_id INTEGER NOT NULL REFERENCES users(id),
@@ -119,7 +119,7 @@ CREATE TABLE reviews (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   user_id INTEGER REFERENCES users(id),
   target_role TEXT,
@@ -131,7 +131,7 @@ CREATE TABLE notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE complaints (
+CREATE TABLE IF NOT EXISTS complaints (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   customer_id INTEGER NOT NULL REFERENCES users(id),
   booking_code TEXT,
@@ -143,7 +143,7 @@ CREATE TABLE complaints (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE settings (
+CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY,
   commission_percent INTEGER NOT NULL DEFAULT 10,
   support_phone TEXT,
@@ -153,7 +153,7 @@ CREATE TABLE settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE admin_logs (
+CREATE TABLE IF NOT EXISTS admin_logs (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   admin_id INTEGER REFERENCES users(id),
   action TEXT NOT NULL,
@@ -161,14 +161,14 @@ CREATE TABLE admin_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE blobs (
+CREATE TABLE IF NOT EXISTS blobs (
   key TEXT PRIMARY KEY,
   content_type TEXT NOT NULL,
   data BYTEA NOT NULL,
@@ -187,7 +187,8 @@ INSERT INTO locations (name_en, name_bn, district, active) VALUES
   ('Delduar', 'দেলদুয়ার', 'টাঙ্গাইল', 1),
   ('Bhuapur', 'ভূঞাপুর', 'টাঙ্গাইল', 1),
   ('Gopalpur', 'গোপালপুর', 'টাঙ্গাইল', 1),
-  ('Dhanbari', 'ধনবাড়ী', 'টাঙ্গাইল', 1);
+  ('Dhanbari', 'ধনবাড়ী', 'টাঙ্গাইল', 1)
+ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 INSERT INTO services (slug, name_bn, name_en, tagline, description, icon, sort_order, created_at, updated_at) VALUES
   ('electrician', 'ইলেকট্রিশিয়ান', 'Electrician', 'ওয়ারিং, লাইট, ফ্যান ও সুইচের সব কাজ', 'বাসা-বাড়ির নতুন ওয়ারিং, লাইট-ফ্যান স্থাপন, সুইচ-সকেট মেরামত, লোড বণ্টন ও বৈদ্যুতিক ত্রুটি নির্ণয়।', 'bolt', 1, now(), now()),
@@ -201,6 +202,8 @@ INSERT INTO services (slug, name_bn, name_en, tagline, description, icon, sort_o
   ('cleaning', 'ক্লিনিং', 'Cleaning', 'বাসা, অফিস ও ডিপ ক্লিনিং', 'বাসা-বাড়ি, অফিস, রান্নাঘর ও বাথরুমের নিয়মিত ও ডিপ ক্লিনিং সেবা।', 'sparkle', 9, now(), now()),
   ('glass-aluminium', 'গ্লাস ও অ্যালুমিনিয়াম', 'Glass & Aluminium', 'জানালা, দরজা ও পার্টিশন', 'অ্যালুমিনিয়াম জানালা-দরজা, গ্লাস পার্টিশন, থাই গ্লাস ও সংশ্লিষ্ট ফিটিংসের কাজ।', 'window', 10, now(), now()),
   ('renovation', 'বাড়ি সংস্কার', 'Renovation', 'সম্পূর্ণ বাড়ি সংস্কার', 'পুরনো বাড়ির সম্পূর্ণ সংস্কার — মিস্ত্রি, রং, টাইলস, প্লাম্বিং ও ইলেকট্রিক কাজের সমন্বিত সেবা।', 'home', 11, now(), now()),
-  ('pest-control', 'পেস্ট কন্ট্রোল', 'Pest Control', 'পোকামাকড় দমন', 'তেলাপোকা, উইপোকা, ইঁদুর ও অন্যান্য পোকামাকড় দমনের নিরাপদ সেবা।', 'shield', 12, now(), now());
+  ('pest-control', 'পেস্ট কন্ট্রোল', 'Pest Control', 'পোকামাকড় দমন', 'তেলাপোকা, উইপোকা, ইঁদুর ও অন্যান্য পোকামাকড় দমনের নিরাপদ সেবা।', 'shield', 12, now(), now())
+ON CONFLICT DO NOTHING;
 --> statement-breakpoint
-INSERT INTO settings (id, commission_percent, updated_at) VALUES (1, 10, now());
+INSERT INTO settings (id, commission_percent, updated_at) VALUES (1, 10, now())
+ON CONFLICT DO NOTHING;
