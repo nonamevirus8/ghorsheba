@@ -37,7 +37,18 @@ function connect(): { sql: postgres.Sql; db: AppDb } {
   }
   // `prepare: false` keeps the client compatible with Supabase's transaction
   // pooler (port 6543). A small pool fits serverless concurrency limits.
-  const sql = postgres(url, { prepare: false, max: 5 });
+  // `connect_timeout` is firm and short: a stalled TCP/TLS connect to the
+  // pooler must fail in seconds, not sit until the serverless platform
+  // kills the invocation (the /api/export 300s timeout was a cold-start
+  // connect/query stall with no bound at all). `idle_timeout` recycles
+  // pooled connections before the pooler drops them silently, so a later
+  // request never inherits a half-dead socket.
+  const sql = postgres(url, {
+    prepare: false,
+    max: 5,
+    connect_timeout: 15,
+    idle_timeout: 20,
+  });
   const db = drizzle(sql, { schema });
   cached = { sql, db };
   return cached;

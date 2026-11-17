@@ -21,6 +21,26 @@
 import { getDb } from "./_server/db.js";
 import { buildExport, exportTokenAuthorized } from "./_server/export.js";
 
+// Hard ceiling for the whole export (connect + migrations check +
+// queries). The database work carries its own firm timeouts (see
+// `_server/db.ts` connect_timeout and the SET LOCAL statement/lock
+// timeouts in `_server/export.ts`); this deadline is the last line of
+// defence so ANY stall answers a clear 500 within seconds instead of
+// hanging until Vercel kills the invocation at 300s — the failure
+// this endpoint shipped with.
+const EXPORT_DEADLINE_MS = 25_000;
+
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Export timed out after ${ms}ms`)),
+      ms,
+    );
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 interface Req {
   method?: string;
   query?: Record<string, string | string[] | undefined>;
@@ -49,8 +69,16 @@ export default async function handler(req: Req, res: Res): Promise<void> {
     return;
   }
   try {
-    const db = await getDb();
-    const payload = await buildExport(db);
+    // Same shared database client as /api/actions (`getDb` from
+    // `_server/db.ts`) — the export deliberately has no connection
+    // path of its own.
+    const payload = await withDeadline(
+      (async () => {
+        const db = await getDb();
+        return buildExport(db);
+      })(),
+      EXPORT_DEADLINE_MS,
+    );
     res.status(200).json(payload);
   } catch (err) {
     console.error("[ghorsheba] export endpoint failed", err);
