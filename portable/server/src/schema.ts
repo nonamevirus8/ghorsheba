@@ -59,6 +59,12 @@ export const professionals = pgTable("professionals", {
     .notNull()
     .default("pending"),
   available: integer("available").notNull().default(1),
+  // Dual Payment (Phase 1): the professional's chosen payout destination
+  // for withdrawal requests. Set by the professional, never by an admin.
+  withdrawalMethod: text("withdrawal_method", {
+    enum: ["bkash", "nagad", "bank", "pathao_pay"],
+  }),
+  withdrawalNumber: text("withdrawal_number"),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
 });
@@ -131,6 +137,45 @@ export const bookings = pgTable("bookings", {
   paymentStatus: text("payment_status", { enum: ["unpaid", "cash_paid"] })
     .notNull()
     .default("unpaid"),
+  // Dual Payment (Phase 1) snapshot — written by the server when the
+  // price is confirmed / a payment is submitted, from the rates in
+  // effect at that moment. Later rate changes never alter these values.
+  // All amounts are integer BDT. `calcBase` is the eligible
+  // service/labour charge the fee + commission were calculated on
+  // (itemized materials / approved transport excluded unless agreed).
+  paymentModel: text("payment_model", {
+    enum: ["full_online", "split_50_50"],
+  }),
+  customerFeePercent: integer("customer_fee_percent"),
+  proCommissionPercent: integer("pro_commission_percent"),
+  calcBase: integer("calc_base"),
+  onlineAmount: integer("online_amount"),
+  cashAmount: integer("cash_amount"),
+  customerFee: integer("customer_fee"),
+  proCommission: integer("pro_commission"),
+  heldBalance: integer("held_balance"),
+  // Extended payment-workflow status (Dual Payment §6). The legacy
+  // `payment_status` column above is unchanged and keeps its old domain.
+  extendedPaymentStatus: text("extended_payment_status", {
+    enum: [
+      "unpaid",
+      "payment_initiated",
+      "payment_pending",
+      "payment_verified",
+      "held_settlement_pending",
+      "payout_requested",
+      "admin_verification",
+      "paid",
+      "failed",
+      "cancelled",
+      "disputed",
+      "refund_pending",
+      "refunded",
+      "rejected",
+    ],
+  })
+    .notNull()
+    .default("unpaid"),
   adminNote: text("admin_note"),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
@@ -197,6 +242,23 @@ export const complaints = pgTable("complaints", {
 export const settings = pgTable("settings", {
   id: integer("id").primaryKey(),
   commissionPercent: integer("commission_percent").notNull().default(10),
+  // Dual Payment commission settings, one rate pair per payment model
+  // (Dual Payment §7). Bookings snapshot these rates when their price is
+  // confirmed, so editing them here only affects future bookings.
+  fullOnlineCustomerFeePercent: integer("full_online_customer_fee_percent")
+    .notNull()
+    .default(0),
+  fullOnlineProCommissionPercent: integer(
+    "full_online_pro_commission_percent",
+  )
+    .notNull()
+    .default(10),
+  splitCustomerFeePercent: integer("split_customer_fee_percent")
+    .notNull()
+    .default(3),
+  splitProCommissionPercent: integer("split_pro_commission_percent")
+    .notNull()
+    .default(6),
   supportPhone: text("support_phone"),
   supportWhatsapp: text("support_whatsapp"),
   supportEmail: text("support_email"),
@@ -219,6 +281,105 @@ export const sessions = pgTable("sessions", {
     .references(() => users.id),
   createdAt: ts("created_at"),
   expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Dual Payment (Phase 1) — payments, immutable ledger, withdrawal requests.
+//
+// Money rules enforced by the server actions (see `payments.ts` for the
+// math): amounts are integer BDT computed server-side only; a manual
+// payment is just a customer-submitted claim until an admin verifies it;
+// ledger rows are append-only — no action updates or deletes them, and
+// corrections are made with new `adjustment` entries.
+
+export const payments = pgTable("payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  bookingId: integer("booking_id")
+    .notNull()
+    .references(() => bookings.id),
+  paymentModel: text("payment_model", {
+    enum: ["full_online", "split_50_50"],
+  }).notNull(),
+  // Phase 1 supports the manual TrxID route only. Gateway methods
+  // (SSLCOMMERZ) and the Pathao Pay placeholder arrive in later phases.
+  method: text("method", { enum: ["manual_trxid"] })
+    .notNull()
+    .default("manual_trxid"),
+  provider: text("provider", {
+    enum: ["bkash", "nagad", "rocket", "pathao_pay"],
+  }).notNull(),
+  providerTrxId: text("provider_trx_id").notNull().unique(),
+  senderNumber: text("sender_number"),
+  amount: integer("amount").notNull(), // BDT the customer claims to have paid online
+  currency: text("currency").notNull().default("BDT"),
+  status: text("status", {
+    enum: ["initiated", "pending", "verified", "failed", "cancelled", "refunded"],
+  })
+    .notNull()
+    .default("pending"),
+  // Client-generated key making payment submission safe to retry; a
+  // second submission with the same key returns the original payment.
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  submittedBy: integer("submitted_by")
+    .notNull()
+    .references(() => users.id),
+  verifiedBy: integer("verified_by").references(() => users.id),
+  verifiedAt: timestamp("verified_at", { mode: "date" }),
+  rejectionReason: text("rejection_reason"),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+export const paymentLedger = pgTable("payment_ledger", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  bookingId: integer("booking_id")
+    .notNull()
+    .references(() => bookings.id),
+  paymentId: integer("payment_id").references(() => payments.id),
+  entryType: text("entry_type", {
+    enum: [
+      "online_collection",
+      "customer_fee",
+      "commission_due",
+      "commission_collected",
+      "held_balance",
+      "payout",
+      "refund",
+      "adjustment",
+    ],
+  }).notNull(),
+  amount: integer("amount").notNull(), // BDT, always positive; direction is in entryType
+  actorRole: text("actor_role").notNull(),
+  adminId: integer("admin_id").references(() => users.id),
+  reference: text("reference"),
+  note: text("note"),
+  createdAt: ts("created_at"),
+});
+
+export const withdrawalRequests = pgTable("withdrawal_requests", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  professionalId: integer("professional_id")
+    .notNull()
+    .references(() => professionals.id),
+  bookingId: integer("booking_id").references(() => bookings.id),
+  amount: integer("amount").notNull(), // BDT
+  withdrawalMethod: text("withdrawal_method", {
+    enum: ["bkash", "nagad", "bank", "pathao_pay"],
+  }).notNull(),
+  withdrawalNumber: text("withdrawal_number").notNull(),
+  status: text("status", {
+    enum: ["requested", "approved", "rejected", "paid"],
+  })
+    .notNull()
+    .default("requested"),
+  adminId: integer("admin_id").references(() => users.id),
+  transactionReference: text("transaction_reference"),
+  rejectionReason: text("rejection_reason"),
+  requestedAt: ts("requested_at"),
+  decidedAt: timestamp("decided_at", { mode: "date" }),
+  paidAt: timestamp("paid_at", { mode: "date" }),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
 });
 
 // Uploaded photos (profile pictures, booking photos). Replaces the Muse

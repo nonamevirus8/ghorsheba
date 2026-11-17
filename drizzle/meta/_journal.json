@@ -15,6 +15,13 @@
       "when": 1794677765964,
       "tag": "0002_ghorsheba_core_tables_and_catalog_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794932972773,
+      "tag": "0003_dual_payment",
+      "breakpoints": true
     }
   ]
 }
