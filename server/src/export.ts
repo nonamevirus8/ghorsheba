@@ -4,7 +4,7 @@
 //
 // The artifact runtime exposes server actions rather than raw HTTP
 // routes, so here the export is the `exportData` action in
-// `actions.ts`: it takes the export token (and an optional mode) and
+// `actions.ts`: it takes the export token and
 // returns exactly the payload the portable endpoint returns. A missing
 // or wrong token — or the EXPORT_TOKEN environment variable being
 // unset — fails with a plain "Not found" error, so the export's
@@ -27,8 +27,7 @@
 // authorized.
 
 import { z, type SpaceDb } from "@hatch/space-sdk";
-import { asc, getTableColumns } from "drizzle-orm";
-import type { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { asc } from "drizzle-orm";
 import * as schema from "./schema";
 
 type ExportDb = SpaceDb<typeof schema>;
@@ -68,7 +67,8 @@ export const exportProfessionalRow = z.object({
   name: z.string(),
   mobile: z.string(),
   serviceName: z.string(),
-  upazilas: z.array(z.string()),
+  upazila: z.string().nullable(), // primary (first) service area
+  upazilas: z.array(z.string()), // all service areas
   status: z.string(),
   joinedAt: z.string(), // ISO 8601
   completedJobs: z.number(),
@@ -108,34 +108,15 @@ export const exportPayloadSchema = z.object({
 
 export type ExportPayload = z.infer<typeof exportPayloadSchema>;
 
-// ---------------------------------------------------------------------
-// Full backup (mode=full)
-//
-// Unlike the business export above — which is shaped for a shared
-// spreadsheet and deliberately omits credentials — the full backup is
-// the owner's private, restorable copy of the whole database: EVERY
-// table, EVERY column, including password hashes, session tokens, NID
-// numbers and identity-document data. It sits behind the same
-// constant-time token gate and the same not-found behaviour, and it is
-// just as read-only. Timestamps are ISO 8601 strings; any binary value
-// would be base64-encoded (this SQLite schema stores document photos
-// as base64 text already, and uploaded photos live in the platform
-// blob store, not in a table).
-
-export const fullBackupSchema = z.object({
-  exportedAt: z.string(), // ISO 8601
-  mode: z.literal("full"),
-  tables: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))),
-});
-
-export type FullBackupPayload = z.infer<typeof fullBackupSchema>;
-
-export const exportResponseSchema = z.union([
-  exportPayloadSchema,
-  fullBackupSchema,
-]);
-
-export type ExportResponse = z.infer<typeof exportResponseSchema>;
+// NOTE: there is deliberately no full-database mode here. An earlier
+// revision offered `mode=full` (every table and column, including
+// password hashes, live session tokens and identity documents) behind
+// the same token; the security review rejected it — one leaked token
+// would have yielded full account-takeover material plus every
+// professional's identity documents. This export stays limited to the
+// field-filtered business payload above; restorable backups belong in
+// a separate owner-only channel (e.g. a database dump), never in this
+// action.
 
 // Ledger amounts are stored unsigned; the direction is a property of
 // the entry type. "in" = money (or a claim on money) coming into
@@ -295,12 +276,14 @@ export async function buildExport(db: ExportDb): Promise<ExportPayload> {
     }),
     professionals: proRows.map((p) => {
       const user = userById.get(p.userId);
+      const areas = parseAreas(p.areas);
       return {
         id: p.id,
         name: user?.name ?? "",
         mobile: user?.phone ?? "",
         serviceName: serviceName.get(p.categorySlug) ?? p.categorySlug,
-        upazilas: parseAreas(p.areas),
+        upazila: areas[0] ?? null,
+        upazilas: areas,
         status: p.status,
         joinedAt: p.createdAt.toISOString(),
         completedJobs: completedByPro.get(p.id) ?? 0,
@@ -330,53 +313,3 @@ export async function buildExport(db: ExportDb): Promise<ExportPayload> {
   };
 }
 
-// Every table in the schema, keyed by its database table name so the
-// backup file maps 1:1 onto the database it came from.
-const FULL_BACKUP_TABLES: ReadonlyArray<readonly [string, SQLiteTable]> = [
-  ["users", schema.users],
-  ["professionals", schema.professionals],
-  ["identity_documents", schema.identityDocuments],
-  ["services", schema.services],
-  ["locations", schema.locations],
-  ["bookings", schema.bookings],
-  ["booking_events", schema.bookingEvents],
-  ["reviews", schema.reviews],
-  ["notifications", schema.notifications],
-  ["complaints", schema.complaints],
-  ["settings", schema.settings],
-  ["admin_logs", schema.adminLogs],
-  ["auth_attempts", schema.authAttempts],
-  ["sessions", schema.sessions],
-  ["payments", schema.payments],
-  ["payment_ledger", schema.paymentLedger],
-  ["withdrawal_requests", schema.withdrawalRequests],
-];
-
-function backupValue(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (value instanceof Uint8Array) {
-    let binary = "";
-    for (const byte of value) binary += String.fromCharCode(byte);
-    return btoa(binary);
-  }
-  return value;
-}
-
-export async function buildFullBackup(db: ExportDb): Promise<FullBackupPayload> {
-  const tables: Record<string, Record<string, unknown>[]> = {};
-  for (const [name, table] of FULL_BACKUP_TABLES) {
-    // Rows come back keyed by the schema's property names; remap them
-    // to the real database column names so the backup maps 1:1 onto
-    // the tables it would be restored into.
-    const columns = getTableColumns(table);
-    const rows = (await db.select().from(table)) as Array<Record<string, unknown>>;
-    tables[name] = rows.map((row) => {
-      const out: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(row)) {
-        out[columns[key]?.name ?? key] = backupValue(value);
-      }
-      return out;
-    });
-  }
-  return { exportedAt: new Date().toISOString(), mode: "full", tables };
-}

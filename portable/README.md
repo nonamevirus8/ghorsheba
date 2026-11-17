@@ -105,23 +105,22 @@ Store account needed:
   Android steps, and iPhone/iPad Safari "Add to Home Screen" steps.
   On the live site: https://ghorsheba-bd.vercel.app/#/download-app
 
-## Data export & backup (owner only)
+## Data export (owner only)
 
 With the optional `EXPORT_TOKEN` environment variable set (see
-`.env.example`), two read-only JSON endpoints are available:
+`.env.example`), one read-only JSON endpoint is available:
 
 - `GET /api/export?token=<EXPORT_TOKEN>` — business records for the
   owner's spreadsheet sync: bookings, payments, professionals, reviews
   and the financial ledger. This feed never contains password hashes,
   session tokens, NID numbers or identity-document data.
-- `GET /api/export?token=<EXPORT_TOKEN>&mode=full` — every table and
-  every column (binary columns base64-encoded): a complete restorable
-  backup. Keep this file private — it includes credentials and
-  identity documents by design.
 
 The token is compared in constant time. While `EXPORT_TOKEN` is unset,
 or when the token is missing or wrong, the endpoint answers 404 as if
-it did not exist. Neither mode ever writes to the database.
+it did not exist. It never writes to the database. There is
+deliberately no full-database mode: restorable backups belong in a
+separate owner-only channel (e.g. a database dump), not behind a
+query-string token.
 
 ## Run locally
 

@@ -14,10 +14,9 @@ import {
 } from "./payments";
 import {
   buildExport,
-  buildFullBackup,
-  exportResponseSchema,
+  exportPayloadSchema,
   exportTokenAuthorized,
-  type ExportResponse,
+  type ExportPayload,
 } from "./export";
 import { Privileged } from "@space/privileged";
 import bcrypt from "bcryptjs";
@@ -3279,14 +3278,13 @@ export const Actions = {
 
   exportData: defineAction({
     description:
-      "Read-only data export for the owner's spreadsheet sync and private backups, mirroring the portable edition's GET /api/export endpoint. Default mode returns business records only (bookings, payments, professionals, reviews, ledger — never password hashes, session tokens, NID numbers or identity documents). Mode 'full' returns every table and column as a restorable backup. Both modes require the EXPORT_TOKEN secret, compared in constant time; a missing or wrong token, or the variable being unset, fails with a plain not-found error so the export's existence is not revealed.",
+      "Read-only data export for the owner's spreadsheet sync, mirroring the portable edition's GET /api/export endpoint. Returns business records only (bookings, payments, professionals, reviews, ledger — never password hashes, session tokens, NID numbers or identity documents). Requires the EXPORT_TOKEN secret, compared in constant time; a missing or wrong token, or the variable being unset, fails with a plain not-found error so the export's existence is not revealed.",
     request: z.object({
       token: z.string().optional(),
-      mode: z.string().optional(),
     }),
-    response: exportResponseSchema,
+    response: exportPayloadSchema,
     privileged: [Privileged.readExportToken],
-    async handler(ctx, args): Promise<ExportResponse> {
+    async handler(ctx, args): Promise<ExportPayload> {
       // The expected token lives in the host environment; sandboxed
       // action code reads it only through the privileged host function.
       const { token: expected } = await ctx.executePrivileged(
@@ -3296,10 +3294,7 @@ export const Actions = {
       if (!(await exportTokenAuthorized(args.token, expected))) {
         throw new Error("Not found");
       }
-      const db = dbOf(ctx);
-      return args.mode === "full"
-        ? await buildFullBackup(db)
-        : await buildExport(db);
+      return buildExport(dbOf(ctx));
     },
   }),
 } satisfies ActionsModule;

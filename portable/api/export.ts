@@ -1,27 +1,25 @@
 // Vercel serverless function: read-only data export for the owner's
-// spreadsheet sync and private backups.
+// spreadsheet sync.
 //
 //   GET /api/export?token=<EXPORT_TOKEN>
 //     → { exportedAt, bookings, payments, professionals, reviews,
 //         ledger } — business records only, shaped for the shared
 //         Google Sheet. Never contains password hashes, session
-//         tokens, NID numbers or identity-document data.
-//
-//   GET /api/export?token=<EXPORT_TOKEN>&mode=full
-//     → { exportedAt, mode: "full", tables: { … } } — EVERY table and
-//         column, binary columns base64-encoded: a complete restorable
-//         backup for the owner's private file only.
+//         tokens, NID numbers or identity-document data. (There is
+//         deliberately no full-database mode: a credential-bearing
+//         dump does not belong behind a query-string token — see
+//         `_server/export.ts`.)
 //
 // The token is compared in constant time against the EXPORT_TOKEN
 // environment variable (see `_server/export.ts`). When the env var is
 // unset, or the token is missing or wrong, the function answers 404 —
-// it does not reveal that an export endpoint exists. Both modes only
-// ever read; the handler never writes, updates or deletes.
+// it does not reveal that an export endpoint exists. The handler only
+// ever reads; it never writes, updates or deletes.
 
 // See `api/actions.ts`: server code comes from the `./_server/`
 // deployment copies inside `api/`, with explicit `.js` ESM specifiers.
 import { getDb } from "./_server/db.js";
-import { buildExport, buildFullBackup, exportTokenAuthorized } from "./_server/export.js";
+import { buildExport, exportTokenAuthorized } from "./_server/export.js";
 
 interface Req {
   method?: string;
@@ -43,12 +41,8 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   }
   let token = req.query?.token;
   if (Array.isArray(token)) token = token[0];
-  let mode = req.query?.mode;
-  if (Array.isArray(mode)) mode = mode[0];
-  if (req.url) {
-    const params = new URL(req.url, "http://localhost").searchParams;
-    if (!token) token = params.get("token") ?? undefined;
-    if (!mode) mode = params.get("mode") ?? undefined;
+  if (!token && req.url) {
+    token = new URL(req.url, "http://localhost").searchParams.get("token") ?? undefined;
   }
   if (!exportTokenAuthorized(token)) {
     res.status(404).json({ error: "Not found" });
@@ -56,7 +50,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   }
   try {
     const db = await getDb();
-    const payload = mode === "full" ? await buildFullBackup(db) : await buildExport(db);
+    const payload = await buildExport(db);
     res.status(200).json(payload);
   } catch (err) {
     console.error("[ghorsheba] export endpoint failed", err);

@@ -17,8 +17,7 @@
 // authorized.
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { asc, getTableColumns } from "drizzle-orm";
-import type { PgTable } from "drizzle-orm/pg-core";
+import { asc } from "drizzle-orm";
 import * as schema from "./schema";
 import type { AppDb } from "./runtime";
 
@@ -57,7 +56,8 @@ export interface ExportProfessionalRow {
   name: string;
   mobile: string;
   serviceName: string;
-  upazilas: string[];
+  upazila: string | null; // primary (first) service area
+  upazilas: string[]; // all service areas
   status: string;
   joinedAt: string; // ISO 8601
   completedJobs: number;
@@ -95,24 +95,15 @@ export interface ExportPayload {
   ledger: ExportLedgerRow[];
 }
 
-// ---------------------------------------------------------------------
-// Full backup (mode=full)
-//
-// Unlike the business export above — which is shaped for a shared
-// spreadsheet and deliberately omits credentials — the full backup is
-// the owner's private, restorable copy of the whole database: EVERY
-// table, EVERY column, including password hashes, session tokens, NID
-// numbers and identity-document data. It sits behind the same
-// constant-time token gate and the same 404-on-failure behaviour, and
-// it is just as read-only. Binary columns (the `blobs.data` bytea) are
-// base64-encoded strings; timestamps are ISO 8601 strings; everything
-// else keeps its stored value.
-
-export interface FullBackupPayload {
-  exportedAt: string; // ISO 8601
-  mode: "full";
-  tables: Record<string, Record<string, unknown>[]>;
-}
+// NOTE: there is deliberately no full-database mode here. An earlier
+// revision offered `mode=full` (every table and column, including
+// password hashes, live session tokens and identity documents) behind
+// the same query-string token; the security review rejected it — one
+// leaked token would have yielded full account-takeover material plus
+// every professional's identity documents. This export stays limited
+// to the field-filtered business payload above; restorable backups
+// belong in a separate owner-only channel (e.g. a database dump),
+// never in this endpoint.
 
 // Ledger amounts are stored unsigned; the direction is a property of
 // the entry type. "in" = money (or a claim on money) coming into
@@ -254,12 +245,14 @@ export async function buildExport(db: AppDb): Promise<ExportPayload> {
     }),
     professionals: proRows.map((p) => {
       const user = userById.get(p.userId);
+      const areas = parseAreas(p.areas);
       return {
         id: p.id,
         name: user?.name ?? "",
         mobile: user?.phone ?? "",
         serviceName: serviceName.get(p.categorySlug) ?? p.categorySlug,
-        upazilas: parseAreas(p.areas),
+        upazila: areas[0] ?? null,
+        upazilas: areas,
         status: p.status,
         joinedAt: p.createdAt.toISOString(),
         completedJobs: completedByPro.get(p.id) ?? 0,
@@ -289,52 +282,3 @@ export async function buildExport(db: AppDb): Promise<ExportPayload> {
   };
 }
 
-// Every table in the schema, keyed by its database table name so the
-// backup file maps 1:1 onto the database it came from.
-const FULL_BACKUP_TABLES: ReadonlyArray<readonly [string, PgTable]> = [
-  ["users", schema.users],
-  ["professionals", schema.professionals],
-  ["identity_documents", schema.identityDocuments],
-  ["services", schema.services],
-  ["locations", schema.locations],
-  ["bookings", schema.bookings],
-  ["booking_events", schema.bookingEvents],
-  ["reviews", schema.reviews],
-  ["notifications", schema.notifications],
-  ["complaints", schema.complaints],
-  ["settings", schema.settings],
-  ["admin_logs", schema.adminLogs],
-  ["auth_attempts", schema.authAttempts],
-  ["sessions", schema.sessions],
-  ["payments", schema.payments],
-  ["payment_ledger", schema.paymentLedger],
-  ["withdrawal_requests", schema.withdrawalRequests],
-  ["blobs", schema.blobs],
-];
-
-function backupValue(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  // bytea columns (blobs.data) arrive as Buffer/Uint8Array — encode
-  // them as base64 strings so the backup is plain JSON.
-  if (value instanceof Uint8Array) return Buffer.from(value).toString("base64");
-  return value;
-}
-
-export async function buildFullBackup(db: AppDb): Promise<FullBackupPayload> {
-  const tables: Record<string, Record<string, unknown>[]> = {};
-  for (const [name, table] of FULL_BACKUP_TABLES) {
-    // Rows come back keyed by the schema's property names; remap them
-    // to the real database column names so the backup maps 1:1 onto
-    // the tables it would be restored into.
-    const columns = getTableColumns(table);
-    const rows = (await db.select().from(table)) as Array<Record<string, unknown>>;
-    tables[name] = rows.map((row) => {
-      const out: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(row)) {
-        out[columns[key]?.name ?? key] = backupValue(value);
-      }
-      return out;
-    });
-  }
-  return { exportedAt: new Date().toISOString(), mode: "full", tables };
-}
