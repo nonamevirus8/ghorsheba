@@ -3,7 +3,7 @@
 // complaints, locations, platformSettings, adminLogs) plus sessions
 // and booking status-history events.
 
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const ts = (name: string) =>
   integer(name, { mode: "timestamp_ms" })
@@ -285,6 +285,16 @@ export const settings = sqliteTable("settings", {
   supportWhatsapp: text("support_whatsapp"),
   supportEmail: text("support_email"),
   announcement: text("announcement"),
+  // Manual-payment receiving number (Master Phase 3): the GhorSheba
+  // MFS number customers send their online payment to before submitting
+  // the TrxID at checkout. Set by a finance/super admin in Platform
+  // Settings; null until the owner configures a real number — the
+  // checkout then honestly says the number is not set yet instead of
+  // inventing one.
+  paymentReceiveNumber: text("payment_receive_number"),
+  paymentReceiveProvider: text("payment_receive_provider", {
+    enum: ["bkash", "nagad", "rocket"],
+  }),
   updatedAt: ts("updated_at"),
 });
 
@@ -305,7 +315,9 @@ export const adminLogs = sqliteTable("admin_logs", {
 // ledger rows are append-only — no action updates or deletes them, and
 // corrections are made with new `adjustment` entries.
 
-export const payments = sqliteTable("payments", {
+export const payments = sqliteTable(
+  "payments",
+  {
   id: integer("id").primaryKey({ autoIncrement: true }),
   bookingId: integer("booking_id")
     .notNull()
@@ -321,7 +333,10 @@ export const payments = sqliteTable("payments", {
   provider: text("provider", {
     enum: ["bkash", "nagad", "rocket", "pathao_pay"],
   }).notNull(),
-  providerTrxId: text("provider_trx_id").notNull().unique(),
+  // Audit fix D-1 (Master Phase 3): a TrxID is unique PER PROVIDER, not
+  // globally — the same TrxID string on a different provider is a
+  // different payment. Enforced by the composite unique index below.
+  providerTrxId: text("provider_trx_id").notNull(),
   senderNumber: text("sender_number"),
   amount: integer("amount").notNull(), // BDT the customer claims to have paid online
   currency: text("currency").notNull().default("BDT"),
@@ -341,7 +356,12 @@ export const payments = sqliteTable("payments", {
   rejectionReason: text("rejection_reason"),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
-});
+  },
+  (t) => [
+    // D-1: TrxID unique per provider (see providerTrxId comment above).
+    uniqueIndex("payments_provider_trx_unique").on(t.provider, t.providerTrxId),
+  ],
+);
 
 export const paymentLedger = sqliteTable("payment_ledger", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -417,4 +437,76 @@ export const sessions = sqliteTable("sessions", {
     .references(() => users.id),
   createdAt: ts("created_at"),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// Master Phase 3 — customer dashboard: saved addresses, refund requests,
+// account-deletion requests.
+
+// Saved service addresses for a customer account (dashboard "প্রোফাইল"
+// tab). Owned rows only: every action filters by the caller's user id.
+export const addresses = sqliteTable("addresses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  label: text("label").notNull(), // e.g. "বাসা", "অফিস"
+  upazila: text("upazila").notNull(),
+  area: text("area"),
+  address: text("address").notNull(),
+  phone: text("phone"),
+  isDefault: integer("is_default").notNull().default(0),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// Customer refund requests against a booking's online payment. A
+// request is only a request: no money moves here. Admin review and any
+// actual refund happen in Master Phase 9; the status the customer sees
+// is whatever an admin later records (requested → approved/rejected →
+// refunded). One open (requested) request per booking at a time.
+export const refundRequests = sqliteTable("refund_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  bookingId: integer("booking_id")
+    .notNull()
+    .references(() => bookings.id),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => users.id),
+  paymentId: integer("payment_id").references(() => payments.id),
+  reason: text("reason", {
+    enum: [
+      "work_not_completed",
+      "poor_quality",
+      "incorrect_price",
+      "professional_no_show",
+      "other",
+    ],
+  }).notNull(),
+  detail: text("detail").notNull(),
+  status: text("status", {
+    enum: ["requested", "approved", "rejected", "refunded"],
+  })
+    .notNull()
+    .default("requested"),
+  adminNote: text("admin_note"),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// Account-deletion requests (dashboard security tab). Submitting one
+// only records the request and notifies admins — the account is NOT
+// deleted by this action; an admin processes it later, respecting
+// financial-record retention (Master Task 16/20).
+export const accountDeletionRequests = sqliteTable("account_deletion_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  reason: text("reason"),
+  status: text("status", { enum: ["pending", "approved", "rejected"] })
+    .notNull()
+    .default("pending"),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
 });

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, type ApiResponse } from "./api";
 import {
 Avatar,
 EmptyState,
@@ -11,6 +11,7 @@ Icon,
 Spinner,
 Stars,
 STATUS_BN,
+bdt,
 errMsg,
 fileToImage,
 fmtDate,
@@ -291,6 +292,315 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
   );
 }
 
+// ------------------------------------------------- dual payment checkout
+//
+// The customer-facing half of the Dual Payment system (Master Phase 3).
+// Every taka figure below comes from the server (`getPaymentQuote` /
+// the submit response) — the client never computes a breakdown itself.
+// Manual TrxID only: the customer sends money to GhorSheba's MFS number
+// (set by an admin in Platform Settings) and submits the TrxID; an admin
+// verifies it before anything counts as paid.
+
+export type PaymentBreakdownView = ApiResponse<typeof api, "getPaymentQuote">["options"][number];
+export type PaymentView = ApiResponse<typeof api, "getMyPayments">["payments"][number];
+
+export const PROVIDER_BN: Record<string, string> = {
+  bkash: "বিকাশ",
+  nagad: "নগদ",
+  rocket: "রকেট",
+  pathao_pay: "Pathao Pay",
+};
+
+export const PAYMENT_MODEL_BN: Record<string, string> = {
+  full_online: "সম্পূর্ণ অনলাইন পেমেন্ট",
+  split_50_50: "৫০% অনলাইন + ৫০% ক্যাশ",
+};
+
+export const PAYMENT_STATUS_BN: Record<string, string> = {
+  initiated: "শুরু হয়েছে",
+  pending: "যাচাইয়ের অপেক্ষায়",
+  verified: "যাচাইকৃত",
+  failed: "বাতিল হয়েছে",
+  cancelled: "বাতিল",
+  refunded: "রিফান্ড হয়েছে",
+};
+
+export function PaymentStatusChip({ status }: { status: string }) {
+  const cls =
+    status === "verified"
+      ? "bg-[#087A35] text-white"
+      : status === "pending" || status === "initiated"
+        ? "bg-amber-100 text-amber-800"
+        : status === "refunded"
+          ? "bg-sky-100 text-sky-800"
+          : "bg-red-100 text-red-700";
+  return (
+    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${cls}`}>
+      {PAYMENT_STATUS_BN[status] ?? status}
+    </span>
+  );
+}
+
+/** Renders a server-computed breakdown as definition rows. */
+export function BreakdownRows({ bd }: { bd: PaymentBreakdownView }) {
+  const rows: { label: string; value: string; strong?: boolean }[] = [
+    { label: "মোট সার্ভিস বিল", value: bdt(bd.bill) },
+  ];
+  if (bd.paymentModel === "split_50_50") {
+    rows.push({ label: "অনলাইন অংশ (৫০%)", value: bdt(bd.onlineBase) });
+  }
+  if (bd.customerFee > 0) {
+    rows.push({
+      label: `প্ল্যাটফর্ম ফি (${bd.customerFeePercent}%)`,
+      value: bdt(bd.customerFee),
+    });
+  }
+  rows.push({
+    label: "অনলাইনে মোট দিতে হবে",
+    value: bdt(bd.customerPaysOnline),
+    strong: true,
+  });
+  if (bd.cashAmount > 0) {
+    rows.push({ label: "ক্যাশে প্রফেশনালকে দিতে হবে", value: bdt(bd.cashAmount) });
+  }
+  rows.push({
+    label: `প্রফেশনাল কমিশন (${bd.proCommissionPercent}%)`,
+    value: bdt(bd.proCommission),
+  });
+  rows.push({ label: "প্রফেশনাল মোট পাবেন", value: bdt(bd.proTotal) });
+  rows.push({ label: "ঘরসেবার আয় (ফি + কমিশন)", value: bdt(bd.ghorshebaRevenue) });
+  return (
+    <dl className="space-y-1.5 text-[14px]">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-baseline justify-between gap-4">
+          <dt className="text-[#737B73]">{r.label}</dt>
+          <dd className={`font-en whitespace-nowrap ${r.strong ? "font-bold text-[#064B27] text-[15px]" : "font-medium"}`}>
+            {r.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function newIdempotencyKey(): string {
+  return `cust-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+export function CheckoutPanel({ token, code }: { token: string; code: string }) {
+  const qc = useQueryClient();
+  const quote = useQuery({
+    queryKey: ["payment-quote", code],
+    queryFn: () => api.getPaymentQuote({ token, bookingCode: code }),
+    retry: false,
+  });
+  const [model, setModel] = useState<"full_online" | "split_50_50">("full_online");
+  const [modelTouched, setModelTouched] = useState(false);
+  const [provider, setProvider] = useState<"bkash" | "nagad" | "rocket">("bkash");
+  const [trxId, setTrxId] = useState("");
+  const [senderNumber, setSenderNumber] = useState("");
+  const [idemKey, setIdemKey] = useState(newIdempotencyKey);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const submit = useMutation({
+    mutationFn: (amount: number) =>
+      api.submitManualPayment({
+        token,
+        bookingCode: code,
+        paymentModel: model,
+        provider,
+        providerTrxId: trxId.trim(),
+        senderNumber: senderNumber.trim() || undefined,
+        amount,
+        currency: "BDT",
+        idempotencyKey: idemKey,
+      }),
+    onSuccess: () => {
+      setDone(true);
+      setIdemKey(newIdempotencyKey());
+      qc.invalidateQueries({ queryKey: ["payment-quote", code] });
+      qc.invalidateQueries({ queryKey: ["booking", code] });
+      qc.invalidateQueries({ queryKey: ["my-payments"] });
+      qc.invalidateQueries({ queryKey: ["my-bookings"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+
+  if (quote.isPending) return <Spinner label="পেমেন্টের হিসাব লোড হচ্ছে…" />;
+  if (quote.isError) {
+    return (
+      <div className="mt-8 border-t border-[#F0F3F0] pt-6">
+        <h2 className="font-bold text-[#064B27]">অনলাইন পেমেন্ট</h2>
+        <div className="mt-3">
+          <ErrorBox message={errMsg(quote.error)} />
+        </div>
+      </div>
+    );
+  }
+  const q = quote.data!;
+  const verified = q.payments.find((p) => p.status === "verified");
+  const live = q.payments.find((p) => p.status === "pending" || p.status === "initiated");
+  const chosenModel = (q.chosenModel as "full_online" | "split_50_50" | null) ?? null;
+  const activeModel = modelTouched ? model : (chosenModel ?? "full_online");
+  const selected = q.options.find((o) => o.paymentModel === activeModel) ?? q.options[0]!;
+
+  return (
+    <section className="mt-8 border-t border-[#F0F3F0] pt-6" aria-label="অনলাইন পেমেন্ট">
+      <h2 className="font-bold text-[#064B27]">অনলাইন পেমেন্ট</h2>
+
+      {verified ? (
+        <div className="mt-3 rounded-2xl border border-[#cfe3d3] bg-[#F0FAF2] p-4">
+          <p className="font-semibold text-[#064B27] flex items-center gap-2">
+            {Icon.checkCircle("w-5 h-5")} আপনার অনলাইন পেমেন্ট যাচাই সম্পন্ন হয়েছে
+          </p>
+          <p className="mt-1.5 text-sm text-[#4c584c]">
+            {bdt(verified.amount)} • {PROVIDER_BN[verified.provider] ?? verified.provider} • TrxID:{" "}
+            <span className="font-en">{verified.providerTrxId}</span> • {PAYMENT_MODEL_BN[verified.paymentModel]}
+          </p>
+          <a href="#/dashboard?tab=payments" className="mt-2 inline-block text-sm font-semibold text-[#087A35] hover:underline">
+            পেমেন্ট হিস্ট্রিতে রসিদ দেখুন
+          </a>
+        </div>
+      ) : live ? (
+        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-900 flex items-center gap-2">
+            {Icon.clock("w-5 h-5")} পেমেন্ট জমা হয়েছে — অ্যাডমিন যাচাইয়ের অপেক্ষায়
+          </p>
+          <p className="mt-1.5 text-sm text-amber-900/80">
+            {bdt(live.amount)} • {PROVIDER_BN[live.provider] ?? live.provider} • TrxID:{" "}
+            <span className="font-en">{live.providerTrxId}</span> • {PAYMENT_MODEL_BN[live.paymentModel]}।
+            যাচাই সম্পন্ন হলে নোটিফিকেশন পাবেন — তখনই পেমেন্টটি চূড়ান্ত বলে গণ্য হবে।
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="mt-1.5 text-sm text-[#737B73]">
+            দুটি পদ্ধতির যেকোনো একটি বেছে নিন। সব হিসাব সার্ভার থেকে এসেছে — মূল্য নিশ্চিত হওয়ার সময়ের হারেই হিসাব হয়েছে।
+          </p>
+          <div className="mt-4 grid md:grid-cols-2 gap-3.5" role="radiogroup" aria-label="পেমেন্ট পদ্ধতি">
+            {q.options.map((o) => {
+              const isActive = o.paymentModel === activeModel;
+              return (
+                <button
+                  key={o.paymentModel}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  onClick={() => {
+                    setModel(o.paymentModel as "full_online" | "split_50_50");
+                    setModelTouched(true);
+                  }}
+                  className={`text-left rounded-2xl border-2 p-4 transition-colors ${
+                    isActive ? "border-[#087A35] bg-[#F0FAF2]" : "border-[#E5EAE5] bg-white hover:border-[#cfe3d3]"
+                  }`}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-[#064B27]">{PAYMENT_MODEL_BN[o.paymentModel]}</span>
+                    {isActive && <span className="text-[#087A35]">{Icon.checkCircle("w-5 h-5")}</span>}
+                  </span>
+                  <span className="mt-3 block">
+                    <BreakdownRows bd={o} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {q.paymentReceiveNumber ? (
+            <div className="mt-4 rounded-2xl bg-[#F0FAF2] border border-[#cfe3d3] p-4 text-[15px]">
+              <p className="font-semibold text-[#064B27]">টাকা পাঠানোর নম্বর</p>
+              <p className="mt-1">
+                {q.paymentReceiveProvider ? `${PROVIDER_BN[q.paymentReceiveProvider] ?? q.paymentReceiveProvider} — ` : ""}
+                <b className="font-en text-[17px]">{q.paymentReceiveNumber}</b> (ঘরসেবার অফিসিয়াল নম্বর)
+              </p>
+              <p className="mt-1 text-sm text-[#4c584c]">
+                এই নম্বরে <b className="font-en">{bdt(selected.customerPaysOnline)}</b> পাঠিয়ে নিচে TrxID জমা দিন।
+                অ্যাডমিন যাচাই করার পরই পেমেন্ট সফল বলে গণ্য হবে।
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <ErrorBox message="অ্যাডমিন এখনো পেমেন্ট গ্রহণের নম্বর সেট করেননি — নম্বর সেট না হলে অনলাইনে টাকা পাঠাবেন না। সাপোর্টে যোগাযোগ করুন।" />
+            </div>
+          )}
+
+          <form
+            className="mt-4 grid sm:grid-cols-2 gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setError("");
+              setDone(false);
+              submit.mutate(selected.customerPaysOnline);
+            }}
+          >
+            <div>
+              <label className={labelCls} htmlFor="co-provider">কোন মাধ্যমে পাঠিয়েছেন *</label>
+              <select
+                id="co-provider"
+                className={inputCls}
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as "bkash" | "nagad" | "rocket")}
+              >
+                <option value="bkash">বিকাশ</option>
+                <option value="nagad">নগদ</option>
+                <option value="rocket">রকেট</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="co-amount">পাঠানো টাকার পরিমাণ</label>
+              <input id="co-amount" className={`${inputCls} font-en bg-[#F7FAF7]`} value={bdt(selected.customerPaysOnline)} readOnly aria-readonly="true" />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="co-trx">TrxID / Transaction ID *</label>
+              <input
+                id="co-trx"
+                className={`${inputCls} font-en`}
+                value={trxId}
+                onChange={(e) => setTrxId(e.target.value)}
+                required
+                minLength={6}
+                maxLength={40}
+                placeholder="যেমন: 9HX7K2LM1P"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="co-sender">যে নম্বর থেকে পাঠিয়েছেন</label>
+              <input
+                id="co-sender"
+                className={`${inputCls} font-en`}
+                value={senderNumber}
+                onChange={(e) => setSenderNumber(e.target.value)}
+                maxLength={20}
+                placeholder="01XXXXXXXXX"
+                inputMode="numeric"
+              />
+            </div>
+            {error && (
+              <div className="sm:col-span-2">
+                <ErrorBox message={error} />
+              </div>
+            )}
+            {done && (
+              <p className="sm:col-span-2 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+                পেমেন্ট জমা হয়েছে — অ্যাডমিন যাচাই করলে নোটিফিকেশন পাবেন।
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={submit.isPending || !q.paymentReceiveNumber}
+              className="sm:col-span-2 bg-[#FF8A00] hover:bg-[#E67A00] disabled:opacity-60 text-white font-bold py-3 rounded-xl"
+            >
+              {submit.isPending ? "জমা হচ্ছে…" : `TrxID জমা দিন — ${bdt(selected.customerPaysOnline)}`}
+            </button>
+          </form>
+        </>
+      )}
+    </section>
+  );
+}
+
 // --------------------------------------------------------- booking detail
 
 export function BookingDetailPage({ code }: { code: string }) {
@@ -509,6 +819,12 @@ export function BookingDetailPage({ code }: { code: string }) {
             <p className="text-sm text-[#737B73]">আপনি কাজ শেষ বলে জানিয়েছেন — গ্রাহকের নিশ্চিতকরণের অপেক্ষায়।</p>
           )}
         </div>
+
+        {/* checkout — only for the booking's own customer, only once the
+            price is confirmed, and never on a cancelled booking */}
+        {isOwner && role === "customer" && b.finalPrice != null && b.status !== "cancelled" && token && (
+          <CheckoutPanel token={token} code={b.code} />
+        )}
 
         {/* review */}
         {isOwner && b.status === "completed" && (

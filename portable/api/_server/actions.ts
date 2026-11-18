@@ -764,6 +764,91 @@ const breakdownOut = z.object({
   ghorshebaRevenue: z.number(),
 });
 
+// ------------------------------------------------- Phase 3 output shapes
+
+const ledgerEntryOut = z.object({
+  id: z.number(),
+  entryType: z.string(),
+  amount: z.number(),
+  reference: z.string().nullable(),
+  note: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+const addressOut = z.object({
+  id: z.number(),
+  label: z.string(),
+  upazila: z.string(),
+  area: z.string().nullable(),
+  address: z.string(),
+  phone: z.string().nullable(),
+  isDefault: z.boolean(),
+  createdAt: z.string(),
+});
+
+type AddressRow = typeof schema.addresses.$inferSelect;
+
+function toAddressOut(a: AddressRow): z.infer<typeof addressOut> {
+  return {
+    id: a.id,
+    label: a.label,
+    upazila: a.upazila,
+    area: a.area,
+    address: a.address,
+    phone: a.phone,
+    isDefault: a.isDefault === 1,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
+const refundRequestOut = z.object({
+  id: z.number(),
+  bookingId: z.number(),
+  bookingCode: z.string(),
+  paymentId: z.number().nullable(),
+  reason: z.string(),
+  detail: z.string(),
+  status: z.string(),
+  adminNote: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+type RefundRow = typeof schema.refundRequests.$inferSelect;
+
+function toRefundOut(
+  r: RefundRow,
+  bookingCode: string,
+): z.infer<typeof refundRequestOut> {
+  return {
+    id: r.id,
+    bookingId: r.bookingId,
+    bookingCode,
+    paymentId: r.paymentId,
+    reason: r.reason,
+    detail: r.detail,
+    status: r.status,
+    adminNote: r.adminNote,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+const sessionInfoOut = z.object({
+  // Opaque reference derived from the session token (a truncated hash)
+  // so the client can name a session to revoke without ever seeing or
+  // sending another session's raw token.
+  ref: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  current: z.boolean(),
+});
+
+const deletionRequestOut = z.object({
+  id: z.number(),
+  reason: z.string().nullable(),
+  status: z.string(),
+  createdAt: z.string(),
+});
+
 const reviewOut = z.object({
   id: z.number(),
   bookingId: z.number(),
@@ -814,6 +899,8 @@ export const Actions = {
       supportWhatsapp: z.string().nullable(),
       supportEmail: z.string().nullable(),
       announcement: z.string().nullable(),
+      paymentReceiveNumber: z.string().nullable(),
+      paymentReceiveProvider: z.string().nullable(),
     }),
     async handler(ctx) {
       const db = dbOf(ctx);
@@ -842,6 +929,8 @@ export const Actions = {
         supportWhatsapp: s?.supportWhatsapp ?? null,
         supportEmail: s?.supportEmail ?? null,
         announcement: s?.announcement ?? null,
+        paymentReceiveNumber: s?.paymentReceiveNumber ?? null,
+        paymentReceiveProvider: s?.paymentReceiveProvider ?? null,
       };
     },
   }),
@@ -2631,6 +2720,8 @@ export const Actions = {
       supportWhatsapp: z.string().nullable(),
       supportEmail: z.string().nullable(),
       announcement: z.string().nullable(),
+      paymentReceiveNumber: z.string().nullable(),
+      paymentReceiveProvider: z.string().nullable(),
     }),
     async handler(ctx, args) {
       await requireAdmin(ctx, args.token);
@@ -2648,6 +2739,8 @@ export const Actions = {
         supportWhatsapp: s?.supportWhatsapp ?? null,
         supportEmail: s?.supportEmail ?? null,
         announcement: s?.announcement ?? null,
+        paymentReceiveNumber: s?.paymentReceiveNumber ?? null,
+        paymentReceiveProvider: s?.paymentReceiveProvider ?? null,
       };
     },
   }),
@@ -2668,6 +2761,13 @@ export const Actions = {
       supportWhatsapp: z.string().max(30).nullable().optional(),
       supportEmail: z.string().max(120).nullable().optional(),
       announcement: z.string().max(300).nullable().optional(),
+      // Manual-payment receiving MFS number (Master Phase 3). Omitted
+      // fields keep their current values; pass null to clear.
+      paymentReceiveNumber: z.string().max(20).nullable().optional(),
+      paymentReceiveProvider: z
+        .enum(["bkash", "nagad", "rocket"])
+        .nullable()
+        .optional(),
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
@@ -2692,6 +2792,14 @@ export const Actions = {
           supportWhatsapp: args.supportWhatsapp ?? null,
           supportEmail: args.supportEmail ?? null,
           announcement: args.announcement ?? null,
+          paymentReceiveNumber:
+            args.paymentReceiveNumber !== undefined
+              ? args.paymentReceiveNumber
+              : (cur?.paymentReceiveNumber ?? null),
+          paymentReceiveProvider:
+            args.paymentReceiveProvider !== undefined
+              ? args.paymentReceiveProvider
+              : (cur?.paymentReceiveProvider ?? null),
           updatedAt: new Date(),
         })
         .where(eq(schema.settings.id, 1));
@@ -2924,13 +3032,22 @@ export const Actions = {
           "এই বুকিংয়ের জন্য ইতিমধ্যে অন্য পেমেন্ট পদ্ধতি নির্ধারিত আছে।",
         );
       }
+      // D-1 (Master Phase 3): a TrxID is unique per provider — the
+      // duplicate check (and the DB unique index) is scoped to
+      // (provider, provider_trx_id), so the same TrxID string on a
+      // different provider is a different, valid payment.
       const byTrx = await db
         .select()
         .from(schema.payments)
-        .where(eq(schema.payments.providerTrxId, trxId))
+        .where(
+          and(
+            eq(schema.payments.provider, args.provider),
+            eq(schema.payments.providerTrxId, trxId),
+          ),
+        )
         .limit(1);
       if (byTrx.length) {
-        throw new Error("এই TrxID দিয়ে আগেই একটি পেমেন্ট জমা হয়েছে।");
+        throw new Error("এই TrxID দিয়ে এই মাধ্যমে আগেই একটি পেমেন্ট জমা হয়েছে।");
       }
       const live = await db
         .select()
@@ -3256,6 +3373,571 @@ export const Actions = {
       const codeMap = new Map(bookings.map((x) => [x.id, x.code]));
       return {
         payments: rows.map((p) => toPaymentOut(p, codeMap.get(p.bookingId) ?? "")),
+      };
+    },
+  }),
+
+  // --------------------------------------- Phase 3: checkout + dashboard
+  getPaymentQuote: defineAction({
+    description:
+      "Customer checkout quote for their own price-confirmed booking: server-computed breakdowns for BOTH payment models (snapshotted rates when the booking already has them, current settings otherwise), the admin-configured MFS number to send money to, and the booking's existing payments. The client never computes money figures itself.",
+    request: z.object({ token: z.string(), bookingCode: z.string().min(4).max(40) }),
+    response: z.object({
+      bookingCode: z.string(),
+      bill: z.number(),
+      chosenModel: z.string().nullable(),
+      extendedPaymentStatus: z.string(),
+      options: z.array(breakdownOut),
+      payments: z.array(paymentOut),
+      paymentReceiveNumber: z.string().nullable(),
+      paymentReceiveProvider: z.string().nullable(),
+    }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই চেকআউট দেখতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.code, args.bookingCode.trim()))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) {
+        throw new Error("বুকিং পাওয়া যায়নি।");
+      }
+      if (b.status === "cancelled") {
+        throw new Error("বাতিল করা বুকিংয়ে পেমেন্ট করা যাবে না।");
+      }
+      if (b.finalPrice == null || b.finalPrice <= 0) {
+        throw new Error(
+          "এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি — অ্যাডমিন মূল্য নিশ্চিত করলেই পেমেন্ট করা যাবে।",
+        );
+      }
+      const stRows = await db.select().from(schema.settings).limit(1);
+      const st = stRows[0];
+      const rates = dualRatesFromSettings(st);
+      const bill = b.finalPrice;
+      const calcBase = b.calcBase ?? bill;
+      const options = (["full_online", "split_50_50"] as const).map((model) => {
+        if (b.paymentModel === model) {
+          const snap = breakdownFromBooking(b);
+          if (snap) return snap;
+        }
+        return computeBreakdown({
+          bill,
+          paymentModel: model,
+          calcBase,
+          rates,
+        });
+      });
+      const pays = await db
+        .select()
+        .from(schema.payments)
+        .where(eq(schema.payments.bookingId, b.id))
+        .orderBy(desc(schema.payments.id));
+      return {
+        bookingCode: b.code,
+        bill,
+        chosenModel: b.paymentModel,
+        extendedPaymentStatus: b.extendedPaymentStatus,
+        options,
+        payments: pays.map((p) => toPaymentOut(p, b.code)),
+        paymentReceiveNumber: st?.paymentReceiveNumber ?? null,
+        paymentReceiveProvider: st?.paymentReceiveProvider ?? null,
+      };
+    },
+  }),
+
+  getMyReceipt: defineAction({
+    description:
+      "Customer receipt for one of their own bookings: the booking's snapshotted server-computed breakdown, its payments, and the immutable ledger entries recorded for it. Another customer's booking is indistinguishable from a missing one.",
+    request: z.object({ token: z.string(), bookingCode: z.string().min(4).max(40) }),
+    response: z.object({
+      bookingCode: z.string(),
+      serviceName: z.string(),
+      bill: z.number().nullable(),
+      extendedPaymentStatus: z.string(),
+      breakdown: breakdownOut.nullable(),
+      payments: z.array(paymentOut),
+      ledger: z.array(ledgerEntryOut),
+    }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই নিজের রসিদ দেখতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.code, args.bookingCode.trim()))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) {
+        throw new Error("বুকিং পাওয়া যায়নি।");
+      }
+      const names = await serviceNameMap(ctx);
+      const pays = await db
+        .select()
+        .from(schema.payments)
+        .where(eq(schema.payments.bookingId, b.id))
+        .orderBy(asc(schema.payments.id));
+      const entries = await db
+        .select()
+        .from(schema.paymentLedger)
+        .where(eq(schema.paymentLedger.bookingId, b.id))
+        .orderBy(asc(schema.paymentLedger.id));
+      return {
+        bookingCode: b.code,
+        serviceName: names.get(b.serviceSlug) ?? b.serviceSlug,
+        bill: b.finalPrice,
+        extendedPaymentStatus: b.extendedPaymentStatus,
+        breakdown: breakdownFromBooking(b),
+        payments: pays.map((p) => toPaymentOut(p, b.code)),
+        ledger: entries.map((e) => ({
+          id: e.id,
+          entryType: e.entryType,
+          amount: e.amount,
+          reference: e.reference,
+          note: e.note,
+          createdAt: e.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  getMyReviews: defineAction({
+    description: "Returns the signed-in customer's own reviews with their moderation status, newest first.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ reviews: z.array(reviewOut) }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই নিজের রিভিউ দেখতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.reviews)
+        .where(eq(schema.reviews.customerId, user.id))
+        .orderBy(desc(schema.reviews.id));
+      const names = await serviceNameMap(ctx);
+      const proNames = await proNameMap(ctx);
+      return {
+        reviews: rows.map((r) => ({
+          id: r.id,
+          bookingId: r.bookingId,
+          customerName: user.name,
+          professionalId: r.professionalId,
+          professionalName: r.professionalId
+            ? (proNames.get(r.professionalId) ?? null)
+            : null,
+          serviceSlug: r.serviceSlug,
+          serviceName: names.get(r.serviceSlug) ?? r.serviceSlug,
+          rating: r.rating,
+          text: r.text,
+          status: r.status,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  submitRefundRequest: defineAction({
+    description:
+      "Customer submits a refund request for an online payment on their own booking. This only records the request and notifies admins — no money moves and no refund is promised; admin review and any actual refund are a later phase. One open request per booking.",
+    request: z.object({
+      token: z.string(),
+      bookingCode: z.string().min(4).max(40),
+      reason: z.enum([
+        "work_not_completed",
+        "poor_quality",
+        "incorrect_price",
+        "professional_no_show",
+        "other",
+      ]),
+      detail: z.string().min(5).max(1000),
+    }),
+    response: z.object({ request: refundRequestOut }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই রিফান্ডের অনুরোধ করতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.code, args.bookingCode.trim()))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) {
+        throw new Error("বুকিং পাওয়া যায়নি।");
+      }
+      const pays = await db
+        .select()
+        .from(schema.payments)
+        .where(eq(schema.payments.bookingId, b.id))
+        .orderBy(desc(schema.payments.id));
+      const target =
+        pays.find((p) => p.status === "verified") ??
+        pays.find((p) => p.status === "pending" || p.status === "initiated");
+      if (!target) {
+        throw new Error(
+          "এই বুকিংয়ে রিফান্ডের মতো কোনো অনলাইন পেমেন্ট নেই। ক্যাশ পেমেন্ট নিয়ে সমস্যা থাকলে অভিযোগ পাঠান।",
+        );
+      }
+      const open = await db
+        .select()
+        .from(schema.refundRequests)
+        .where(
+          and(
+            eq(schema.refundRequests.bookingId, b.id),
+            eq(schema.refundRequests.status, "requested"),
+          ),
+        )
+        .limit(1);
+      if (open.length) {
+        throw new Error("এই বুকিংয়ের জন্য ইতিমধ্যে একটি রিফান্ড অনুরোধ বিচারাধীন আছে।");
+      }
+      const inserted = await db
+        .insert(schema.refundRequests)
+        .values({
+          bookingId: b.id,
+          customerId: user.id,
+          paymentId: target.id,
+          reason: args.reason,
+          detail: args.detail.trim(),
+        })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error("অনুরোধ পাঠানো যায়নি।");
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "refund_requested",
+        title: "নতুন রিফান্ড অনুরোধ",
+        body: `কোড: ${b.code} — ৳${target.amount} (${target.provider} TrxID: ${target.providerTrxId})`,
+        bookingId: b.id,
+      });
+      ctx.invalidateQueries();
+      return { request: toRefundOut(row, b.code) };
+    },
+  }),
+
+  getMyRefundRequests: defineAction({
+    description: "Returns the signed-in customer's own refund requests with their status, newest first.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ requests: z.array(refundRequestOut) }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই নিজের রিফান্ড অনুরোধ দেখতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.refundRequests)
+        .where(eq(schema.refundRequests.customerId, user.id))
+        .orderBy(desc(schema.refundRequests.id));
+      const bookings = await db.select().from(schema.bookings);
+      const codeMap = new Map(bookings.map((x) => [x.id, x.code]));
+      return {
+        requests: rows.map((r) => toRefundOut(r, codeMap.get(r.bookingId) ?? "")),
+      };
+    },
+  }),
+
+  getMyAddresses: defineAction({
+    description: "Returns the signed-in customer's saved addresses.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ addresses: z.array(addressOut) }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.addresses)
+        .where(eq(schema.addresses.userId, user.id))
+        .orderBy(desc(schema.addresses.isDefault), asc(schema.addresses.id));
+      return { addresses: rows.map(toAddressOut) };
+    },
+  }),
+
+  saveMyAddress: defineAction({
+    description:
+      "Creates or updates one of the signed-in customer's saved addresses. Updating an id that belongs to someone else fails as not-found. Marking an address default clears the default flag on the customer's other addresses in the same transaction.",
+    request: z.object({
+      token: z.string(),
+      id: z.number().int().optional(),
+      label: z.string().min(1).max(40),
+      upazila: z.string().min(2).max(80),
+      area: z.string().max(120).optional(),
+      address: z.string().min(5).max(400),
+      phone: z.string().max(20).optional(),
+      isDefault: z.boolean().default(false),
+    }),
+    response: z.object({ address: addressOut }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const now = new Date();
+      const values = {
+        label: args.label.trim(),
+        upazila: args.upazila.trim(),
+        area: args.area?.trim() ? args.area.trim() : null,
+        address: args.address.trim(),
+        phone: args.phone?.trim() ? args.phone.trim() : null,
+        isDefault: args.isDefault ? 1 : 0,
+      };
+      let row: AddressRow | undefined;
+      if (args.id != null) {
+        const addressId = args.id;
+        const existing = await db
+          .select()
+          .from(schema.addresses)
+          .where(eq(schema.addresses.id, addressId))
+          .limit(1);
+        if (!existing[0] || existing[0].userId !== user.id) {
+          throw new Error("ঠিকানা পাওয়া যায়নি।");
+        }
+        // Postgres edition: the clear-default + update pair runs in a
+        // real transaction (the SQLite edition uses an atomic batch).
+        await db.transaction(async (tx) => {
+          if (args.isDefault) {
+            await tx
+              .update(schema.addresses)
+              .set({ isDefault: 0, updatedAt: now })
+              .where(eq(schema.addresses.userId, user.id));
+          }
+          await tx
+            .update(schema.addresses)
+            .set({ ...values, updatedAt: now })
+            .where(eq(schema.addresses.id, addressId));
+        });
+        const rows = await db
+          .select()
+          .from(schema.addresses)
+          .where(eq(schema.addresses.id, addressId))
+          .limit(1);
+        row = rows[0];
+      } else {
+        const count = await db
+          .select()
+          .from(schema.addresses)
+          .where(eq(schema.addresses.userId, user.id));
+        if (count.length >= 10) {
+          throw new Error("সর্বোচ্চ ১০টি ঠিকানা সংরক্ষণ করা যাবে।");
+        }
+        // The first saved address becomes the default automatically.
+        const makeDefault = args.isDefault || count.length === 0;
+        await db.transaction(async (tx) => {
+          if (makeDefault && count.length > 0) {
+            await tx
+              .update(schema.addresses)
+              .set({ isDefault: 0, updatedAt: now })
+              .where(eq(schema.addresses.userId, user.id));
+          }
+          await tx.insert(schema.addresses).values({
+            userId: user.id,
+            ...values,
+            isDefault: makeDefault ? 1 : 0,
+          });
+        });
+        const rows = await db
+          .select()
+          .from(schema.addresses)
+          .where(eq(schema.addresses.userId, user.id))
+          .orderBy(desc(schema.addresses.id))
+          .limit(1);
+        row = rows[0];
+      }
+      if (!row) throw new Error("ঠিকানা সংরক্ষণ করা যায়নি।");
+      ctx.invalidateQueries();
+      return { address: toAddressOut(row) };
+    },
+  }),
+
+  deleteMyAddress: defineAction({
+    description: "Deletes one of the signed-in customer's saved addresses (own rows only).",
+    request: z.object({ token: z.string(), id: z.number().int() }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.addresses)
+        .where(eq(schema.addresses.id, args.id))
+        .limit(1);
+      if (!rows[0] || rows[0].userId !== user.id) {
+        throw new Error("ঠিকানা পাওয়া যায়নি।");
+      }
+      await db.delete(schema.addresses).where(eq(schema.addresses.id, args.id));
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  changeMyPassword: defineAction({
+    description:
+      "Changes the signed-in user's password after verifying the current one. The new password is bcrypt-hashed (minimum 12 characters) and every OTHER session of the account is revoked; the current session stays signed in.",
+    request: z.object({
+      token: z.string(),
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(12).max(200),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      if (!(await verifyPassword(args.currentPassword, user.passwordHash))) {
+        throw new Error("বর্তমান পাসওয়ার্ড সঠিক নয়।");
+      }
+      if (args.newPassword === args.currentPassword) {
+        throw new Error("নতুন পাসওয়ার্ড বর্তমান পাসওয়ার্ডের চেয়ে আলাদা হতে হবে।");
+      }
+      const db = dbOf(ctx);
+      await db
+        .update(schema.users)
+        .set({ passwordHash: await hashPassword(args.newPassword), updatedAt: new Date() })
+        .where(eq(schema.users.id, user.id));
+      const mine = await db
+        .select()
+        .from(schema.sessions)
+        .where(eq(schema.sessions.userId, user.id));
+      for (const s of mine) {
+        if (s.token !== args.token) {
+          await db.delete(schema.sessions).where(eq(schema.sessions.token, s.token));
+        }
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  getMySessions: defineAction({
+    description:
+      "Lists the signed-in user's active (unexpired) sessions for the security tab. Raw tokens are never returned — each session is identified by a truncated hash reference used only for revocation.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ sessions: z.array(sessionInfoOut) }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.sessions)
+        .where(eq(schema.sessions.userId, user.id))
+        .orderBy(desc(schema.sessions.createdAt));
+      const now = Date.now();
+      const out: z.infer<typeof sessionInfoOut>[] = [];
+      for (const s of rows) {
+        if (s.expiresAt.getTime() < now) continue;
+        out.push({
+          ref: (await sha256Hex(s.token)).slice(0, 24),
+          createdAt: s.createdAt.toISOString(),
+          expiresAt: s.expiresAt.toISOString(),
+          current: s.token === args.token,
+        });
+      }
+      return { sessions: out };
+    },
+  }),
+
+  revokeMySession: defineAction({
+    description:
+      "Revokes one of the signed-in user's other sessions by its hash reference (from getMySessions). The current session cannot be revoked here — logging out ends it.",
+    request: z.object({ token: z.string(), ref: z.string().min(8).max(64) }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.sessions)
+        .where(eq(schema.sessions.userId, user.id));
+      for (const s of rows) {
+        if ((await sha256Hex(s.token)).slice(0, 24) === args.ref) {
+          if (s.token === args.token) {
+            throw new Error("বর্তমান সেশন এখান থেকে বাতিল করা যাবে না — লগআউট করুন।");
+          }
+          await db.delete(schema.sessions).where(eq(schema.sessions.token, s.token));
+          ctx.invalidateQueries();
+          return { ok: true };
+        }
+      }
+      throw new Error("সেশন পাওয়া যায়নি।");
+    },
+  }),
+
+  requestAccountDeletion: defineAction({
+    description:
+      "Records the signed-in user's account-deletion request and notifies admins. The account is NOT deleted by this action — an admin processes requests later, respecting financial-record retention. Only one pending request per account.",
+    request: z.object({ token: z.string(), reason: z.string().max(500).optional() }),
+    response: z.object({ request: deletionRequestOut }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const pending = await db
+        .select()
+        .from(schema.accountDeletionRequests)
+        .where(
+          and(
+            eq(schema.accountDeletionRequests.userId, user.id),
+            eq(schema.accountDeletionRequests.status, "pending"),
+          ),
+        )
+        .limit(1);
+      if (pending.length) {
+        throw new Error("আপনার একটি মুছে-ফেলার অনুরোধ ইতিমধ্যে বিচারাধীন আছে।");
+      }
+      const inserted = await db
+        .insert(schema.accountDeletionRequests)
+        .values({ userId: user.id, reason: args.reason?.trim() || null })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error("অনুরোধ পাঠানো যায়নি।");
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "account_deletion_requested",
+        title: "অ্যাকাউন্ট মুছে ফেলার অনুরোধ",
+        body: `${user.name} (${user.phone}) অ্যাকাউন্ট মুছে ফেলার অনুরোধ করেছেন।`,
+      });
+      ctx.invalidateQueries();
+      return {
+        request: {
+          id: row.id,
+          reason: row.reason,
+          status: row.status,
+          createdAt: row.createdAt.toISOString(),
+        },
+      };
+    },
+  }),
+
+  getMyDeletionRequest: defineAction({
+    description: "Returns the signed-in user's latest account-deletion request, or null when none exists.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ request: deletionRequestOut.nullable() }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.accountDeletionRequests)
+        .where(eq(schema.accountDeletionRequests.userId, user.id))
+        .orderBy(desc(schema.accountDeletionRequests.id))
+        .limit(1);
+      const row = rows[0];
+      return {
+        request: row
+          ? {
+              id: row.id,
+              reason: row.reason,
+              status: row.status,
+              createdAt: row.createdAt.toISOString(),
+            }
+          : null,
       };
     },
   }),

@@ -7,7 +7,7 @@
 // for uploaded photos. Column names and value domains are unchanged so the
 // server actions work identically.
 
-import { customType, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { customType, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 const ts = (name: string) =>
   timestamp(name, { mode: "date" })
@@ -295,6 +295,16 @@ export const settings = pgTable("settings", {
   supportWhatsapp: text("support_whatsapp"),
   supportEmail: text("support_email"),
   announcement: text("announcement"),
+  // Manual-payment receiving number (Master Phase 3): the GhorSheba
+  // MFS number customers send their online payment to before submitting
+  // the TrxID at checkout. Set by a finance/super admin in Platform
+  // Settings; null until the owner configures a real number — the
+  // checkout then honestly says the number is not set yet instead of
+  // inventing one.
+  paymentReceiveNumber: text("payment_receive_number"),
+  paymentReceiveProvider: text("payment_receive_provider", {
+    enum: ["bkash", "nagad", "rocket"],
+  }),
   updatedAt: ts("updated_at"),
 });
 
@@ -339,7 +349,9 @@ export const sessions = pgTable("sessions", {
 // ledger rows are append-only — no action updates or deletes them, and
 // corrections are made with new `adjustment` entries.
 
-export const payments = pgTable("payments", {
+export const payments = pgTable(
+  "payments",
+  {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   bookingId: integer("booking_id")
     .notNull()
@@ -355,7 +367,10 @@ export const payments = pgTable("payments", {
   provider: text("provider", {
     enum: ["bkash", "nagad", "rocket", "pathao_pay"],
   }).notNull(),
-  providerTrxId: text("provider_trx_id").notNull().unique(),
+  // Audit fix D-1 (Master Phase 3): a TrxID is unique PER PROVIDER, not
+  // globally — the same TrxID string on a different provider is a
+  // different payment. Enforced by the composite unique index below.
+  providerTrxId: text("provider_trx_id").notNull(),
   senderNumber: text("sender_number"),
   amount: integer("amount").notNull(), // BDT the customer claims to have paid online
   currency: text("currency").notNull().default("BDT"),
@@ -375,7 +390,12 @@ export const payments = pgTable("payments", {
   rejectionReason: text("rejection_reason"),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
-});
+  },
+  (t) => [
+    // D-1: TrxID unique per provider (see providerTrxId comment above).
+    uniqueIndex("payments_provider_trx_unique").on(t.provider, t.providerTrxId),
+  ],
+);
 
 export const paymentLedger = pgTable("payment_ledger", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -438,4 +458,76 @@ export const blobs = pgTable("blobs", {
   contentType: text("content_type").notNull(),
   data: bytea("data").notNull(),
   createdAt: ts("created_at"),
+});
+
+// ---------------------------------------------------------------------------
+// Master Phase 3 — customer dashboard: saved addresses, refund requests,
+// account-deletion requests.
+
+// Saved service addresses for a customer account (dashboard "প্রোফাইল"
+// tab). Owned rows only: every action filters by the caller's user id.
+export const addresses = pgTable("addresses", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  label: text("label").notNull(), // e.g. "বাসা", "অফিস"
+  upazila: text("upazila").notNull(),
+  area: text("area"),
+  address: text("address").notNull(),
+  phone: text("phone"),
+  isDefault: integer("is_default").notNull().default(0),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// Customer refund requests against a booking's online payment. A
+// request is only a request: no money moves here. Admin review and any
+// actual refund happen in Master Phase 9; the status the customer sees
+// is whatever an admin later records (requested → approved/rejected →
+// refunded). One open (requested) request per booking at a time.
+export const refundRequests = pgTable("refund_requests", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  bookingId: integer("booking_id")
+    .notNull()
+    .references(() => bookings.id),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => users.id),
+  paymentId: integer("payment_id").references(() => payments.id),
+  reason: text("reason", {
+    enum: [
+      "work_not_completed",
+      "poor_quality",
+      "incorrect_price",
+      "professional_no_show",
+      "other",
+    ],
+  }).notNull(),
+  detail: text("detail").notNull(),
+  status: text("status", {
+    enum: ["requested", "approved", "rejected", "refunded"],
+  })
+    .notNull()
+    .default("requested"),
+  adminNote: text("admin_note"),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// Account-deletion requests (dashboard security tab). Submitting one
+// only records the request and notifies admins — the account is NOT
+// deleted by this action; an admin processes it later, respecting
+// financial-record retention (Master Task 16/20).
+export const accountDeletionRequests = pgTable("account_deletion_requests", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  reason: text("reason"),
+  status: text("status", { enum: ["pending", "approved", "rejected"] })
+    .notNull()
+    .default("pending"),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
 });

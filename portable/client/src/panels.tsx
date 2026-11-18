@@ -11,6 +11,7 @@ Icon,
 PRO_STATUS_BN,
 Spinner,
 Stars,
+bdt,
 errMsg,
 fmtDate,
 fmtDateTime,
@@ -22,6 +23,13 @@ type Booking,
 type Me,
 } from "./lib";
 import { BookingStatusChip, PhotoField, inputCls, labelCls } from "./App";
+import {
+BreakdownRows,
+PAYMENT_MODEL_BN,
+PaymentStatusChip,
+PROVIDER_BN,
+type PaymentView,
+} from "./booking";
 
 type Notif = ApiResponse<typeof api, "getNotifications">["notifications"][number];
 
@@ -171,10 +179,15 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
   const tabRaw = params.get("tab") ?? "bookings";
-  const tab = ["bookings", "notifications", "support", "profile"].includes(tabRaw) ? tabRaw : "bookings";
+  const tab = ["bookings", "payments", "refunds", "reviews", "notifications", "support", "profile", "security"].includes(tabRaw) ? tabRaw : "bookings";
   const bookings = useQuery({
     queryKey: ["my-bookings"],
     queryFn: () => api.getMyBookings({ token }),
+    enabled: !!token && me.data?.user.role === "customer",
+  });
+  const refundsQ = useQuery({
+    queryKey: ["my-refunds"],
+    queryFn: () => api.getMyRefundRequests({ token }),
     enabled: !!token && me.data?.user.role === "customer",
   });
   const notifs = useQuery({
@@ -201,11 +214,16 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
   }
   const list = bookings.data?.bookings ?? [];
   const active = list.filter((b) => ["pending", "confirmed", "assigned", "in_progress"].includes(b.status));
+  const openRefunds = (refundsQ.data?.requests ?? []).filter((r) => r.status === "requested").length;
   const tabs = [
     { key: "bookings", label: "আমার বুকিং", badge: active.length },
+    { key: "payments", label: "পেমেন্ট ও রসিদ" },
+    { key: "refunds", label: "রিফান্ড", badge: openRefunds },
+    { key: "reviews", label: "আমার রিভিউ" },
     { key: "notifications", label: "নোটিফিকেশন", badge: me.data?.unreadNotifications },
     { key: "support", label: "সাপোর্ট / অভিযোগ" },
-    { key: "profile", label: "প্রোফাইল" },
+    { key: "profile", label: "প্রোফাইল ও ঠিকানা" },
+    { key: "security", label: "নিরাপত্তা" },
   ];
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -242,10 +260,14 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
               ))}
             </div>
           ))}
+        {tab === "payments" && <PaymentsTab token={token} />}
+        {tab === "refunds" && <RefundsTab token={token} />}
+        {tab === "reviews" && <ReviewsTab token={token} />}
         {tab === "notifications" &&
           (notifs.isPending ? <Spinner /> : <NotificationsList notifs={notifs.data?.notifications ?? []} token={token} />)}
         {tab === "support" && <SupportTab token={token} />}
         {tab === "profile" && <CustomerProfileTab me={me.data!} token={token} />}
+        {tab === "security" && <SecurityTab token={token} />}
       </div>
     </div>
   );
@@ -352,6 +374,7 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
     onError: (e) => setError(errMsg(e)),
   });
   return (
+    <div className="space-y-8">
     <form
       className="max-w-xl rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
       onSubmit={(e) => {
@@ -399,6 +422,618 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
         {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
       </button>
     </form>
+    <AddressesSection token={token} />
+    </div>
+  );
+}
+
+// ------------------------------------------- Phase 3 customer tab pieces
+
+const LEDGER_ENTRY_BN: Record<string, string> = {
+  online_collection: "অনলাইন সংগ্রহ",
+  customer_fee: "গ্রাহক প্ল্যাটফর্ম ফি",
+  commission_due: "প্রফেশনাল কমিশন পাওনা",
+  commission_collected: "কমিশন সংগ্রহ",
+  held_balance: "হেল্ড ব্যালেন্স",
+  payout: "প্রফেশনাল পেআউট",
+  refund: "রিফান্ড",
+  adjustment: "সমন্বয়",
+};
+
+function ReceiptView({ token, code }: { token: string; code: string }) {
+  const receipt = useQuery({
+    queryKey: ["my-receipt", code],
+    queryFn: () => api.getMyReceipt({ token, bookingCode: code }),
+    retry: false,
+  });
+  if (receipt.isPending) return <Spinner label="রসিদ লোড হচ্ছে…" />;
+  if (receipt.isError) return <ErrorBox message={errMsg(receipt.error)} />;
+  const r = receipt.data!;
+  return (
+    <div className="mt-3 rounded-2xl border border-[#cfe3d3] bg-[#FBFDFB] p-4">
+      <p className="font-bold text-[#064B27]">
+        রসিদ — {r.serviceName} • <span className="font-en">{r.bookingCode}</span>
+      </p>
+      {r.breakdown ? (
+        <div className="mt-3 max-w-md">
+          <BreakdownRows bd={r.breakdown} />
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-[#737B73]">এই বুকিংয়ের মূল্য হিসাব এখনো সংরক্ষিত হয়নি।</p>
+      )}
+      {r.ledger.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[13px] font-semibold text-[#737B73] mb-1.5">লেজার এন্ট্রি (যাচাইকৃত হিসাব)</p>
+          <ul className="space-y-1 text-sm">
+            {r.ledger.map((e) => (
+              <li key={e.id} className="flex items-baseline justify-between gap-4">
+                <span>
+                  {LEDGER_ENTRY_BN[e.entryType] ?? e.entryType}
+                  <span className="text-[#737B73]"> • {fmtDateTime(e.createdAt)}</span>
+                </span>
+                <span className="font-en font-medium">{bdt(e.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaymentsTab({ token }: { token: string }) {
+  const payments = useQuery({
+    queryKey: ["my-payments"],
+    queryFn: () => api.getMyPayments({ token }),
+  });
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  if (payments.isPending) return <Spinner />;
+  if (payments.isError) return <ErrorBox message={errMsg(payments.error)} />;
+  const list = payments.data?.payments ?? [];
+  if (list.length === 0) {
+    return (
+      <EmptyState
+        title="কোনো অনলাইন পেমেন্ট নেই"
+        body="মূল্য নিশ্চিত হওয়া বুকিংয়ের বিবরণ পেজ থেকে অনলাইন পেমেন্ট (বিকাশ/নগদ/রকেট — TrxID) জমা দিতে পারবেন।"
+        action={<a href="#/dashboard" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">আমার বুকিং দেখুন</a>}
+      />
+    );
+  }
+  const byBooking = new Map<string, PaymentView[]>();
+  for (const p of list) {
+    const arr = byBooking.get(p.bookingCode) ?? [];
+    arr.push(p);
+    byBooking.set(p.bookingCode, arr);
+  }
+  return (
+    <div className="space-y-3.5">
+      {list.map((p) => (
+        <div key={p.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-bold">
+                <span className="font-en">{bdt(p.amount)}</span> • {PROVIDER_BN[p.provider] ?? p.provider}
+              </p>
+              <p className="text-[13px] text-[#737B73]">
+                বুকিং <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a>
+                {" • "}{PAYMENT_MODEL_BN[p.paymentModel] ?? p.paymentModel}
+                {" • "}TrxID: <span className="font-en">{p.providerTrxId}</span>
+              </p>
+            </div>
+            <PaymentStatusChip status={p.status} />
+          </div>
+          <p className="mt-1.5 text-[12.5px] text-[#737B73]">
+            জমা: {fmtDateTime(p.createdAt)}
+            {p.verifiedAt ? ` • যাচাই: ${fmtDateTime(p.verifiedAt)}` : ""}
+          </p>
+          {p.status === "failed" && p.rejectionReason && (
+            <p className="mt-2 text-sm bg-red-50 text-red-700 rounded-lg px-3 py-2">বাতিলের কারণ: {p.rejectionReason}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => setReceiptFor(receiptFor === p.bookingCode ? null : p.bookingCode)}
+            className="mt-2.5 text-sm font-semibold text-[#087A35] hover:underline"
+            aria-expanded={receiptFor === p.bookingCode}
+          >
+            {receiptFor === p.bookingCode ? "রসিদ লুকান" : "রসিদ ও হিসাব দেখুন"}
+          </button>
+          {receiptFor === p.bookingCode && <ReceiptView token={token} code={p.bookingCode} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const REFUND_REASON_BN: Record<string, string> = {
+  work_not_completed: "কাজ সম্পন্ন হয়নি",
+  poor_quality: "কাজের মান খারাপ",
+  incorrect_price: "ভুল মূল্য",
+  professional_no_show: "প্রফেশনাল আসেননি",
+  other: "অন্যান্য",
+};
+
+const REFUND_STATUS_BN: Record<string, { label: string; cls: string }> = {
+  requested: { label: "বিচারাধীন", cls: "bg-amber-100 text-amber-800" },
+  approved: { label: "অনুমোদিত — রিফান্ড প্রক্রিয়াধীন", cls: "bg-sky-100 text-sky-800" },
+  rejected: { label: "প্রত্যাখ্যাত", cls: "bg-red-100 text-red-700" },
+  refunded: { label: "রিফান্ড সম্পন্ন", cls: "bg-[#087A35] text-white" },
+};
+
+function RefundsTab({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const requests = useQuery({
+    queryKey: ["my-refunds"],
+    queryFn: () => api.getMyRefundRequests({ token }),
+  });
+  const payments = useQuery({
+    queryKey: ["my-payments"],
+    queryFn: () => api.getMyPayments({ token }),
+  });
+  const [bookingCode, setBookingCode] = useState("");
+  const [reason, setReason] = useState("work_not_completed");
+  const [detail, setDetail] = useState("");
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState(false);
+  const refundableCodes = [
+    ...new Set(
+      (payments.data?.payments ?? [])
+        .filter((p) => p.status === "verified" || p.status === "pending")
+        .map((p) => p.bookingCode),
+    ),
+  ];
+  const submit = useMutation({
+    mutationFn: () =>
+      api.submitRefundRequest({
+        token,
+        bookingCode,
+        reason: reason as "work_not_completed" | "poor_quality" | "incorrect_price" | "professional_no_show" | "other",
+        detail,
+      }),
+    onSuccess: () => {
+      setOk(true);
+      setDetail("");
+      qc.invalidateQueries({ queryKey: ["my-refunds"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const list = requests.data?.requests ?? [];
+  return (
+    <div className="grid lg:grid-cols-2 gap-6 items-start">
+      <form
+        className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError("");
+          setOk(false);
+          submit.mutate();
+        }}
+      >
+        <h2 className="font-bold text-[#064B27]">রিফান্ডের অনুরোধ পাঠান</h2>
+        <p className="text-sm text-[#737B73] leading-relaxed">
+          অনুরোধ পাঠালেই রিফান্ড হয় না — অ্যাডমিন যাচাই করে সিদ্ধান্ত জানাবেন এবং অনুমোদিত হলে আলাদাভাবে
+          রিফান্ড প্রক্রিয়া হবে। শুধু অনলাইন পেমেন্ট করা বুকিংয়ের জন্যই রিফান্ড অনুরোধ করা যায়।
+        </p>
+        {refundableCodes.length === 0 ? (
+          <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+            রিফান্ড অনুরোধের মতো কোনো অনলাইন পেমেন্ট এখনো নেই।
+          </p>
+        ) : (
+          <>
+            <div>
+              <label className={labelCls} htmlFor="rf-booking">বুকিং *</label>
+              <select id="rf-booking" className={`${inputCls} font-en`} value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} required>
+                <option value="">— বুকিং বেছে নিন —</option>
+                {refundableCodes.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="rf-reason">কারণ *</label>
+              <select id="rf-reason" className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)}>
+                {Object.entries(REFUND_REASON_BN).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="rf-detail">বিস্তারিত *</label>
+              <textarea id="rf-detail" className={inputCls} rows={4} value={detail} onChange={(e) => setDetail(e.target.value)} required minLength={5} placeholder="কী হয়েছিল, কেন রিফান্ড চাইছেন — বিস্তারিত লিখুন" />
+            </div>
+            {error && <ErrorBox message={error} />}
+            {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">আপনার রিফান্ড অনুরোধ পৌঁছেছে — অ্যাডমিন যাচাই করে জানাবেন।</p>}
+            <button type="submit" disabled={submit.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+              {submit.isPending ? "পাঠানো হচ্ছে…" : "অনুরোধ পাঠান"}
+            </button>
+          </>
+        )}
+      </form>
+      <div>
+        <h2 className="font-bold text-[#064B27] mb-3">আমার রিফান্ড অনুরোধসমূহ</h2>
+        {requests.isPending ? (
+          <Spinner />
+        ) : list.length === 0 ? (
+          <EmptyState title="কোনো রিফান্ড অনুরোধ নেই" />
+        ) : (
+          <ul className="space-y-3">
+            {list.map((r) => {
+              const st = REFUND_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-[#F0F3F0] text-[#4c584c]" };
+              return (
+                <li key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold">
+                      {REFUND_REASON_BN[r.reason] ?? r.reason}
+                      <span className="block text-[13px] font-normal text-[#737B73]">
+                        বুকিং <span className="font-en">{r.bookingCode}</span> • {fmtDateTime(r.createdAt)}
+                      </span>
+                    </p>
+                    <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${st.cls}`}>{st.label}</span>
+                  </div>
+                  <p className="mt-1.5 text-sm text-[#4c584c]">{r.detail}</p>
+                  {r.adminNote && <p className="mt-2 text-sm bg-[#F0FAF2] rounded-lg px-3 py-2">অ্যাডমিনের নোট: {r.adminNote}</p>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewsTab({ token }: { token: string }) {
+  const reviews = useQuery({
+    queryKey: ["my-reviews"],
+    queryFn: () => api.getMyReviews({ token }),
+  });
+  if (reviews.isPending) return <Spinner />;
+  if (reviews.isError) return <ErrorBox message={errMsg(reviews.error)} />;
+  const list = reviews.data?.reviews ?? [];
+  if (list.length === 0) {
+    return (
+      <EmptyState
+        title="এখনো কোনো রিভিউ দেননি"
+        body="কাজ সম্পন্ন হওয়া বুকিংয়ের বিবরণ পেজ থেকে রিভিউ দিতে পারবেন।"
+      />
+    );
+  }
+  return (
+    <ul className="space-y-3">
+      {list.map((r) => (
+        <li key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">{r.serviceName}</p>
+              <p className="text-[13px] text-[#737B73]">
+                প্রফেশনাল: {r.professionalName ?? "—"} • {fmtDateTime(r.createdAt)}
+              </p>
+            </div>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#087A35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
+              {r.status === "approved" ? "প্রকাশিত" : r.status === "rejected" ? "প্রকাশ করা হয়নি" : "মডারেশনের অপেক্ষায়"}
+            </span>
+          </div>
+          <div className="mt-2">
+            <Stars value={r.rating} />
+          </div>
+          <p className="mt-1.5 text-[15px] text-[#4c584c]">“{r.text}”</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+type AddressView = ApiResponse<typeof api, "getMyAddresses">["addresses"][number];
+
+function AddressesSection({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const catalog = useCatalog();
+  const addresses = useQuery({
+    queryKey: ["my-addresses"],
+    queryFn: () => api.getMyAddresses({ token }),
+  });
+  const [editing, setEditing] = useState<AddressView | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [label, setLabel] = useState("বাসা");
+  const [upazila, setUpazila] = useState("");
+  const [area, setArea] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
+  const [error, setError] = useState("");
+
+  const resetForm = () => {
+    setEditing(null);
+    setShowForm(false);
+    setLabel("বাসা");
+    setUpazila("");
+    setArea("");
+    setAddress("");
+    setPhone("");
+    setIsDefault(false);
+    setError("");
+  };
+  const startEdit = (a: AddressView) => {
+    setEditing(a);
+    setShowForm(true);
+    setLabel(a.label);
+    setUpazila(a.upazila);
+    setArea(a.area ?? "");
+    setAddress(a.address);
+    setPhone(a.phone ?? "");
+    setIsDefault(a.isDefault);
+    setError("");
+  };
+  const save = useMutation({
+    mutationFn: () =>
+      api.saveMyAddress({
+        token,
+        id: editing?.id,
+        label,
+        upazila,
+        area: area || undefined,
+        address,
+        phone: phone || undefined,
+        isDefault,
+      }),
+    onSuccess: () => {
+      resetForm();
+      qc.invalidateQueries({ queryKey: ["my-addresses"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const del = useMutation({
+    mutationFn: (id: number) => api.deleteMyAddress({ token, id }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-addresses"] }),
+    onError: (e) => setError(errMsg(e)),
+  });
+  const list = addresses.data?.addresses ?? [];
+  return (
+    <section aria-label="সংরক্ষিত ঠিকানা" className="max-w-xl">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="font-bold text-[#064B27]">আমার ঠিকানাসমূহ</h2>
+        {!showForm && (
+          <button type="button" onClick={() => { resetForm(); setShowForm(true); }} className="text-sm font-semibold text-[#087A35] hover:underline">
+            + নতুন ঠিকানা
+          </button>
+        )}
+      </div>
+      {addresses.isPending ? (
+        <Spinner />
+      ) : list.length === 0 && !showForm ? (
+        <EmptyState title="কোনো ঠিকানা সংরক্ষিত নেই" body="ঠিকানা সংরক্ষণ করলে পরের বুকিংয়ে দ্রুত ব্যবহার করা যাবে।" />
+      ) : (
+        <ul className="space-y-3 mb-4">
+          {list.map((a) => (
+            <li key={a.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-semibold">
+                  {a.label}
+                  {a.isDefault && <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-[#087A35] text-white">ডিফল্ট</span>}
+                </p>
+                <span className="flex gap-2 shrink-0">
+                  <button type="button" onClick={() => startEdit(a)} className="text-sm font-semibold text-[#087A35] hover:underline">সম্পাদনা</button>
+                  <button type="button" disabled={del.isPending} onClick={() => del.mutate(a.id)} className="text-sm font-semibold text-red-600 hover:underline disabled:opacity-60">মুছুন</button>
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-[#4c584c]">
+                {a.address}{a.area ? `, ${a.area}` : ""}, {a.upazila}, টাঙ্গাইল
+                {a.phone ? <> • <span className="font-en">{a.phone}</span></> : null}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showForm && (
+        <form
+          className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            save.mutate();
+          }}
+        >
+          <h3 className="font-bold text-[#064B27]">{editing ? "ঠিকানা সম্পাদনা" : "নতুন ঠিকানা"}</h3>
+          <div>
+            <label className={labelCls} htmlFor="ad-label">নাম/লেবেল *</label>
+            <input id="ad-label" className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required placeholder="যেমন: বাসা, অফিস" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="ad-upazila">উপজেলা *</label>
+            <select id="ad-upazila" className={inputCls} value={upazila} onChange={(e) => setUpazila(e.target.value)} required>
+              <option value="">— বেছে নিন —</option>
+              {(catalog.data?.locations ?? []).map((l) => (
+                <option key={l.id} value={l.nameBn}>{l.nameBn}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="ad-area">এলাকা / গ্রাম</label>
+            <input id="ad-area" className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="ad-addr">বিস্তারিত ঠিকানা *</label>
+            <input id="ad-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} required minLength={5} placeholder="বাসা/হোল্ডিং, রোড…" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="ad-phone">যোগাযোগের নম্বর</label>
+            <input id="ad-phone" className={`${inputCls} font-en`} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01XXXXXXXXX" inputMode="numeric" />
+          </div>
+          <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer">
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="w-4 h-4 accent-[#087A35]" />
+            এটিকে ডিফল্ট ঠিকানা করুন
+          </label>
+          {error && <ErrorBox message={error} />}
+          <div className="flex gap-2.5">
+            <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+              {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+            </button>
+            <button type="button" onClick={resetForm} className="border border-[#E5EAE5] font-semibold px-4 py-2.5 rounded-xl">
+              বাতিল
+            </button>
+          </div>
+        </form>
+      )}
+      {!showForm && error && <ErrorBox message={error} />}
+    </section>
+  );
+}
+
+function SecurityTab({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const sessions = useQuery({
+    queryKey: ["my-sessions"],
+    queryFn: () => api.getMySessions({ token }),
+  });
+  const deletion = useQuery({
+    queryKey: ["my-deletion"],
+    queryFn: () => api.getMyDeletionRequest({ token }),
+  });
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwOk, setPwOk] = useState(false);
+  const [delReason, setDelReason] = useState("");
+  const [delError, setDelError] = useState("");
+  const [sessError, setSessError] = useState("");
+
+  const changePw = useMutation({
+    mutationFn: () => api.changeMyPassword({ token, currentPassword: currentPw, newPassword: newPw }),
+    onSuccess: () => {
+      setPwOk(true);
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      qc.invalidateQueries({ queryKey: ["my-sessions"] });
+    },
+    onError: (e) => setPwError(errMsg(e)),
+  });
+  const revoke = useMutation({
+    mutationFn: (ref: string) => api.revokeMySession({ token, ref }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-sessions"] }),
+    onError: (e) => setSessError(errMsg(e)),
+  });
+  const requestDeletion = useMutation({
+    mutationFn: () => api.requestAccountDeletion({ token, reason: delReason || undefined }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-deletion"] }),
+    onError: (e) => setDelError(errMsg(e)),
+  });
+  const delReq = deletion.data?.request ?? null;
+  return (
+    <div className="grid lg:grid-cols-2 gap-6 items-start">
+      <div className="space-y-6">
+        <form
+          className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setPwError("");
+            setPwOk(false);
+            if (newPw !== confirmPw) {
+              setPwError("নতুন পাসওয়ার্ড দুইবার একই হয়নি।");
+              return;
+            }
+            changePw.mutate();
+          }}
+        >
+          <h2 className="font-bold text-[#064B27]">পাসওয়ার্ড পরিবর্তন</h2>
+          <div>
+            <label className={labelCls} htmlFor="sec-current">বর্তমান পাসওয়ার্ড *</label>
+            <input id="sec-current" type="password" className={inputCls} value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} required autoComplete="current-password" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="sec-new">নতুন পাসওয়ার্ড (কমপক্ষে ১২ অক্ষর) *</label>
+            <input id="sec-new" type="password" className={inputCls} value={newPw} onChange={(e) => setNewPw(e.target.value)} required minLength={12} autoComplete="new-password" />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="sec-confirm">নতুন পাসওয়ার্ড আবার লিখুন *</label>
+            <input id="sec-confirm" type="password" className={inputCls} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} required minLength={12} autoComplete="new-password" />
+          </div>
+          <p className="text-[13px] text-[#737B73]">পাসওয়ার্ড বদলালে অন্য সব ডিভাইসের সেশন বাতিল হয়ে যাবে; এই ডিভাইসে লগইন থাকবে।</p>
+          {pwError && <ErrorBox message={pwError} />}
+          {pwOk && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">পাসওয়ার্ড পরিবর্তন হয়েছে।</p>}
+          <button type="submit" disabled={changePw.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+            {changePw.isPending ? "পরিবর্তন হচ্ছে…" : "পাসওয়ার্ড পরিবর্তন করুন"}
+          </button>
+        </form>
+
+        <div className="rounded-3xl border border-red-200 bg-white p-5 sm:p-6 space-y-3">
+          <h2 className="font-bold text-red-700">অ্যাকাউন্ট মুছে ফেলার অনুরোধ</h2>
+          {delReq && delReq.status === "pending" ? (
+            <p className="rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm px-4 py-3">
+              আপনার মুছে ফেলার অনুরোধটি বিচারাধীন আছে ({fmtDateTime(delReq.createdAt)})। অ্যাডমিন পর্যালোচনা করে ব্যবস্থা নেবেন —
+              আর্থিক রেকর্ড সংরক্ষণের বাধ্যবাধকতার কারণে কিছু তথ্য আইনগত মেয়াদ পর্যন্ত থেকে যেতে পারে।
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-[#737B73] leading-relaxed">
+                অনুরোধ পাঠালে অ্যাকাউন্ট সাথে সাথে মুছে যায় না — অ্যাডমিন পর্যালোচনা করে প্রক্রিয়া করবেন।
+                {delReq ? ` আগের অনুরোধের অবস্থা: ${delReq.status === "approved" ? "অনুমোদিত" : "প্রত্যাখ্যাত"}।` : ""}
+              </p>
+              <div>
+                <label className={labelCls} htmlFor="sec-del-reason">কারণ (ঐচ্ছিক)</label>
+                <textarea id="sec-del-reason" className={inputCls} rows={2} value={delReason} onChange={(e) => setDelReason(e.target.value)} placeholder="কেন অ্যাকাউন্ট মুছতে চান…" />
+              </div>
+              {delError && <ErrorBox message={delError} />}
+              <button
+                type="button"
+                disabled={requestDeletion.isPending}
+                onClick={() => {
+                  setDelError("");
+                  requestDeletion.mutate();
+                }}
+                className="border-[1.5px] border-red-300 text-red-700 font-semibold px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60"
+              >
+                {requestDeletion.isPending ? "পাঠানো হচ্ছে…" : "মুছে ফেলার অনুরোধ পাঠান"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6">
+        <h2 className="font-bold text-[#064B27]">সক্রিয় সেশনসমূহ</h2>
+        <p className="mt-1 text-sm text-[#737B73]">যেসব ডিভাইস/ব্রাউজারে এই অ্যাকাউন্টে লগইন আছে। অপরিচিত সেশন দেখলে বাতিল করুন।</p>
+        {sessError && (
+          <div className="mt-3">
+            <ErrorBox message={sessError} />
+          </div>
+        )}
+        {sessions.isPending ? (
+          <Spinner />
+        ) : (sessions.data?.sessions.length ?? 0) === 0 ? (
+          <p className="mt-3 text-sm text-[#737B73]">কোনো সক্রিয় সেশন পাওয়া যায়নি।</p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {sessions.data?.sessions.map((s) => (
+              <li key={s.ref} className="rounded-2xl border border-[#E5EAE5] p-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-[15px]">
+                    {s.current ? "এই ডিভাইস / ব্রাউজার" : "অন্য সেশন"}
+                    {s.current && <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-[#087A35] text-white">বর্তমান</span>}
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-[#737B73]">
+                    লগইন: {fmtDateTime(s.createdAt)} • মেয়াদ শেষ: {fmtDateTime(s.expiresAt)}
+                  </p>
+                </div>
+                {!s.current && (
+                  <button
+                    type="button"
+                    disabled={revoke.isPending}
+                    onClick={() => {
+                      setSessError("");
+                      revoke.mutate(s.ref);
+                    }}
+                    className="shrink-0 border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-3.5 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60"
+                  >
+                    বাতিল করুন
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1707,6 +2342,8 @@ function AdminSettings({ token }: { token: string }) {
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [payNumber, setPayNumber] = useState("");
+  const [payProvider, setPayProvider] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [ok, setOk] = useState(false);
   const [error, setError] = useState("");
@@ -1717,6 +2354,8 @@ function AdminSettings({ token }: { token: string }) {
     setWhatsapp(data.data.supportWhatsapp ?? "");
     setEmail(data.data.supportEmail ?? "");
     setAnnouncement(data.data.announcement ?? "");
+    setPayNumber(data.data.paymentReceiveNumber ?? "");
+    setPayProvider(data.data.paymentReceiveProvider ?? "");
   }
   const save = useMutation({
     mutationFn: () =>
@@ -1727,6 +2366,8 @@ function AdminSettings({ token }: { token: string }) {
         supportWhatsapp: whatsapp || null,
         supportEmail: email || null,
         announcement: announcement || null,
+        paymentReceiveNumber: payNumber.trim() || null,
+        paymentReceiveProvider: (payProvider || null) as "bkash" | "nagad" | "rocket" | null,
       }),
     onSuccess: () => {
       setOk(true);
@@ -1767,12 +2408,26 @@ function AdminSettings({ token }: { token: string }) {
         <label className={labelCls} htmlFor="st-ann">ঘোষণা (সাইটের উপরে দেখানো হবে)</label>
         <input id="st-ann" className={inputCls} value={announcement} onChange={(e) => setAnnouncement(e.target.value)} placeholder="বিশেষ ঘোষণা থাকলে লিখুন (ঐচ্ছিক)" />
       </div>
+      <div>
+        <label className={labelCls} htmlFor="st-pay-provider">পেমেন্ট গ্রহণের মাধ্যম (ম্যানুয়াল TrxID)</label>
+        <select id="st-pay-provider" className={inputCls} value={payProvider} onChange={(e) => setPayProvider(e.target.value)}>
+          <option value="">— সেট করা নেই —</option>
+          <option value="bkash">বিকাশ</option>
+          <option value="nagad">নগদ</option>
+          <option value="rocket">রকেট</option>
+        </select>
+      </div>
+      <div>
+        <label className={labelCls} htmlFor="st-pay-number">পেমেন্ট গ্রহণের নম্বর</label>
+        <input id="st-pay-number" className={`${inputCls} font-en`} value={payNumber} onChange={(e) => setPayNumber(e.target.value)} placeholder="খালি রাখলে চেকআউটে নম্বর দেখানো হবে না" />
+        <p className="mt-1 text-[13px] text-[#737B73]">গ্রাহক এই নম্বরে টাকা পাঠিয়ে চেকআউটে TrxID জমা দেবেন — নম্বরটি চেকআউটে গ্রাহকদের দেখানো হয়।</p>
+      </div>
       {error && <ErrorBox message={error} />}
       {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">সেটিংস সংরক্ষিত হয়েছে।</p>}
       <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
         {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
       </button>
-      <p className="text-[13px] text-[#737B73]">দ্রষ্টব্য: অনলাইন পেমেন্ট (বিকাশ/নগদ/কার্ড) এখন বন্ধ আছে — পেমেন্ট গেটওয়ের আসল তথ্য পেলে তবেই চালু করা হবে। আপাতত ক্যাশ পেমেন্টই প্রযোজ্য।</p>
+      <p className="text-[13px] text-[#737B73]">দ্রষ্টব্য: অনলাইন পেমেন্ট এখন ম্যানুয়াল TrxID পদ্ধতিতে চলে — গ্রাহক উপরের নম্বরে টাকা পাঠিয়ে TrxID জমা দেন, অ্যাডমিন যাচাই করলেই পেমেন্ট চূড়ান্ত হয়। কোনো পেমেন্ট গেটওয়ে (কার্ড/অটোমেটিক) এখনো যুক্ত হয়নি।</p>
     </form>
   );
 }
