@@ -422,6 +422,130 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof e.message === "string" && /unique/i.test(e.message);
 }
 
+// ------------------------------------------- professional money (Phase 4)
+//
+// Earnings, held balance and withdrawal availability are computed
+// HERE, on the server, from the immutable `payment_ledger` rows plus
+// the booking's own Dual Payment snapshot (bill / cash part). The
+// client only displays these figures; it never computes money.
+//
+// Per booking with a verified online payment:
+//   held           = Σ held_balance ledger entries
+//   commission     = Σ commission_due ledger entries
+//   paidOut        = Σ payout ledger entries
+//   payoutFromHeld = held − commission
+//   proTotal       = payoutFromHeld + cash part of the bill (snapshot)
+//   remainingHeld  = held − commission − paidOut
+// Available (withdrawable) balance = Σ remainingHeld over the pro's
+// bookings − Σ amounts of withdrawal requests still open (requested /
+// approved). Paid withdrawal requests are settled through `payout`
+// ledger entries (Master Phase 9), which already reduce remainingHeld,
+// so they are not subtracted twice.
+
+interface ProEarningRow {
+  bookingId: number;
+  code: string;
+  serviceName: string;
+  bookingStatus: string;
+  paymentModel: string | null;
+  serviceCharge: number | null;
+  calcBase: number | null;
+  commission: number;
+  held: number;
+  cashReceived: number;
+  payoutFromHeld: number;
+  paidOut: number;
+  remainingHeld: number;
+  proTotal: number;
+}
+
+interface ProMoney {
+  rows: ProEarningRow[];
+  totals: {
+    earned: number;
+    held: number;
+    paidOut: number;
+    commission: number;
+    availableBalance: number;
+  };
+  openWithdrawalTotal: number;
+}
+
+async function computeProMoney(ctx: Ctx, proId: number): Promise<ProMoney> {
+  const db = dbOf(ctx);
+  const names = await serviceNameMap(ctx);
+  const myBookings = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.professionalId, proId))
+    .orderBy(desc(schema.bookings.id));
+  const ids = myBookings.map((b) => b.id);
+  const ledger = ids.length
+    ? await db
+        .select()
+        .from(schema.paymentLedger)
+        .where(inArray(schema.paymentLedger.bookingId, ids))
+    : [];
+  const sums = new Map<number, { held: number; commission: number; paidOut: number }>();
+  for (const e of ledger) {
+    const s = sums.get(e.bookingId) ?? { held: 0, commission: 0, paidOut: 0 };
+    if (e.entryType === "held_balance") s.held += e.amount;
+    else if (e.entryType === "commission_due") s.commission += e.amount;
+    else if (e.entryType === "payout") s.paidOut += e.amount;
+    sums.set(e.bookingId, s);
+  }
+  const rows: ProEarningRow[] = [];
+  for (const b of myBookings) {
+    const s = sums.get(b.id);
+    if (!s || (s.held === 0 && s.commission === 0 && s.paidOut === 0)) continue;
+    const payoutFromHeld = s.held - s.commission;
+    const cashReceived = b.cashAmount ?? 0;
+    rows.push({
+      bookingId: b.id,
+      code: b.code,
+      serviceName: names.get(b.serviceSlug) ?? b.serviceSlug,
+      bookingStatus: b.status,
+      paymentModel: b.paymentModel,
+      serviceCharge: b.finalPrice,
+      calcBase: b.calcBase,
+      commission: s.commission,
+      held: s.held,
+      cashReceived,
+      payoutFromHeld,
+      paidOut: s.paidOut,
+      remainingHeld: s.held - s.commission - s.paidOut,
+      proTotal: payoutFromHeld + cashReceived,
+    });
+  }
+  const requests = await db
+    .select()
+    .from(schema.withdrawalRequests)
+    .where(eq(schema.withdrawalRequests.professionalId, proId));
+  const openWithdrawalTotal = requests
+    .filter((r) => r.status === "requested" || r.status === "approved")
+    .reduce((a, r) => a + r.amount, 0);
+  const heldNet = rows.reduce((a, r) => a + r.remainingHeld, 0);
+  return {
+    rows,
+    totals: {
+      earned: rows.reduce((a, r) => a + r.proTotal, 0),
+      held: heldNet,
+      paidOut: rows.reduce((a, r) => a + r.paidOut, 0),
+      commission: rows.reduce((a, r) => a + r.commission, 0),
+      availableBalance: heldNet - openWithdrawalTotal,
+    },
+    openWithdrawalTotal,
+  };
+}
+
+/** Resolves the session to the caller's own professional profile. */
+async function requirePro(ctx: Ctx, token: string) {
+  const user = await requireUser(ctx, token);
+  const pro = await myProfessional(ctx, user.id);
+  if (!pro) throw new Error("প্রফেশনাল প্রোফাইল পাওয়া যায়নি।");
+  return { user, pro };
+}
+
 // ------------------------------------------------------------- serializers
 
 const userOut = z.object({
@@ -514,6 +638,7 @@ const proOut = z.object({
   bio: z.string().nullable(),
   status: z.string(),
   available: z.boolean(),
+  availableDays: z.array(z.number()),
   photoUrl: z.string().nullable(),
   avgRating: z.number().nullable(),
   reviewCount: z.number(),
@@ -560,6 +685,22 @@ async function toProOut(
   } catch {
     areas = [];
   }
+  // Per-day availability (Master Phase 4): null column = works every
+  // day. Stored values are weekday numbers 0 (Sunday) … 6 (Saturday).
+  let availableDays: number[] = [0, 1, 2, 3, 4, 5, 6];
+  if (pro.availableDays) {
+    try {
+      const parsed: unknown = JSON.parse(pro.availableDays);
+      if (Array.isArray(parsed)) {
+        const days = parsed.filter(
+          (x): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0 && x <= 6,
+        );
+        if (days.length) availableDays = [...new Set(days)].sort((a, b) => a - b);
+      }
+    } catch {
+      availableDays = [0, 1, 2, 3, 4, 5, 6];
+    }
+  }
   return {
     id: pro.id,
     userId: pro.userId,
@@ -574,6 +715,7 @@ async function toProOut(
     bio: pro.bio,
     status: pro.status,
     available: pro.available === 1,
+    availableDays,
     photoUrl: await photoUrl(ctx, user.photoKey),
     avgRating: avg,
     reviewCount: approved.length,
@@ -1408,6 +1550,9 @@ export const Actions = {
       address: z.string().max(300).optional(),
       bio: z.string().max(600).optional(),
       available: z.boolean(),
+      // Per-day availability (Master Phase 4): weekday numbers
+      // 0 (Sunday) … 6 (Saturday). Omit to keep the stored value.
+      availableDays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
       photo: imageInput,
     }),
     response: z.object({ professional: proOut }),
@@ -1431,6 +1576,10 @@ export const Actions = {
           address: args.address ?? pro.address,
           bio: args.bio ?? pro.bio,
           available: args.available ? 1 : 0,
+          availableDays:
+            args.availableDays !== undefined
+              ? JSON.stringify([...new Set(args.availableDays)].sort((a, b) => a - b))
+              : pro.availableDays,
           updatedAt: new Date(),
         })
         .where(eq(schema.professionals.id, pro.id));
@@ -1950,6 +2099,15 @@ export const Actions = {
         throw new Error("এই কাজে এখন সাড়া দেওয়া যাবে না।");
       }
       if (args.accept) {
+        // Verification gate (Master Phase 4): only a verified
+        // professional may accept work. Enforced here on the server —
+        // hiding the button in the UI is not the gate. (Admins can
+        // only assign verified professionals, so an unverified pro
+        // should never reach this branch; this is defence in depth for
+        // pros whose status changed after assignment.)
+        if (pro.status !== "verified") {
+          throw new Error("আপনার প্রোফাইল এখনো যাচাই সম্পন্ন হয়নি — যাচাই না হলে কাজ গ্রহণ করা যাবে না।");
+        }
         await db
           .update(schema.bookings)
           .set({ proResponse: "accepted", updatedAt: new Date() })
@@ -2036,6 +2194,312 @@ export const Actions = {
       return { ok: true };
     },
   }),
+  // --------------------------------------- professional dashboard (Phase 4)
+
+  getProEarnings: defineAction({
+    description:
+      "Returns the signed-in professional's earnings: a per-booking breakdown and totals computed on the server from the immutable payment ledger and each booking's payment snapshot. The client never computes money figures.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      rows: z.array(
+        z.object({
+          bookingId: z.number(),
+          code: z.string(),
+          serviceName: z.string(),
+          bookingStatus: z.string(),
+          paymentModel: z.string().nullable(),
+          serviceCharge: z.number().nullable(),
+          calcBase: z.number().nullable(),
+          commission: z.number(),
+          held: z.number(),
+          cashReceived: z.number(),
+          payoutFromHeld: z.number(),
+          paidOut: z.number(),
+          remainingHeld: z.number(),
+          proTotal: z.number(),
+        }),
+      ),
+      totals: z.object({
+        earned: z.number(),
+        held: z.number(),
+        paidOut: z.number(),
+        commission: z.number(),
+        availableBalance: z.number(),
+      }),
+    }),
+    async handler(ctx, args) {
+      const { pro } = await requirePro(ctx, args.token);
+      const money = await computeProMoney(ctx, pro.id);
+      return { rows: money.rows, totals: money.totals };
+    },
+  }),
+
+  getProWallet: defineAction({
+    description:
+      "Returns the signed-in professional's own withdrawal destination (method + number), server-computed withdrawable balance, and their withdrawal request history. Another professional's number is never returned.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      withdrawalMethod: z.string().nullable(),
+      withdrawalNumber: z.string().nullable(),
+      held: z.number(),
+      openWithdrawalTotal: z.number(),
+      availableBalance: z.number(),
+      requests: z.array(
+        z.object({
+          id: z.number(),
+          amount: z.number(),
+          method: z.string(),
+          number: z.string(),
+          status: z.string(),
+          transactionReference: z.string().nullable(),
+          rejectionReason: z.string().nullable(),
+          createdAt: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      const { pro } = await requirePro(ctx, args.token);
+      const db = dbOf(ctx);
+      const money = await computeProMoney(ctx, pro.id);
+      const reqs = await db
+        .select()
+        .from(schema.withdrawalRequests)
+        .where(eq(schema.withdrawalRequests.professionalId, pro.id))
+        .orderBy(desc(schema.withdrawalRequests.id));
+      return {
+        withdrawalMethod: pro.withdrawalMethod,
+        withdrawalNumber: pro.withdrawalNumber,
+        held: money.totals.held,
+        openWithdrawalTotal: money.openWithdrawalTotal,
+        availableBalance: money.totals.availableBalance,
+        requests: reqs.map((r) => ({
+          id: r.id,
+          amount: r.amount,
+          method: r.withdrawalMethod,
+          number: r.withdrawalNumber,
+          status: r.status,
+          transactionReference: r.transactionReference,
+          rejectionReason: r.rejectionReason,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  updateWithdrawalInfo: defineAction({
+    description:
+      "Sets the signed-in professional's own withdrawal destination (method + account/mobile number) used by future withdrawal requests.",
+    request: z.object({
+      token: z.string(),
+      method: z.enum(["bkash", "nagad", "bank", "pathao_pay"]),
+      number: z.string().min(5).max(40),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const { pro } = await requirePro(ctx, args.token);
+      const number = args.number.trim();
+      if (args.method === "bank") {
+        if (!/^[0-9][0-9\s-]{5,39}$/.test(number)) {
+          throw new Error("সঠিক ব্যাংক অ্যাকাউন্ট নম্বর দিন।");
+        }
+      } else if (!PHONE_RE.test(number)) {
+        throw new Error("সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (01XXXXXXXXX)।");
+      }
+      const db = dbOf(ctx);
+      await db
+        .update(schema.professionals)
+        .set({ withdrawalMethod: args.method, withdrawalNumber: number, updatedAt: new Date() })
+        .where(eq(schema.professionals.id, pro.id));
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  requestWithdrawal: defineAction({
+    description:
+      "Professional requests a withdrawal against their server-computed available (held) balance. The amount is validated server-side against the ledger-derived balance minus still-open requests; the request stays pending until an admin decides and pays it (Master Phase 9).",
+    request: z.object({
+      token: z.string(),
+      amount: z.number().int().positive(),
+    }),
+    response: z.object({
+      request: z.object({
+        id: z.number(),
+        amount: z.number(),
+        method: z.string(),
+        number: z.string(),
+        status: z.string(),
+        createdAt: z.string(),
+      }),
+      availableBalance: z.number(),
+    }),
+    async handler(ctx, args) {
+      const { pro } = await requirePro(ctx, args.token);
+      if (!pro.withdrawalMethod || !pro.withdrawalNumber) {
+        throw new Error("আগে উইথড্রয়ালের মাধ্যম ও নম্বর সেট করুন।");
+      }
+      const money = await computeProMoney(ctx, pro.id);
+      if (args.amount > money.totals.availableBalance) {
+        throw new Error(
+          `উত্তোলনযোগ্য ব্যালেন্সের (৳${money.totals.availableBalance}) বেশি টাকা তোলা যাবে না।`,
+        );
+      }
+      const db = dbOf(ctx);
+      const inserted = await db
+        .insert(schema.withdrawalRequests)
+        .values({
+          professionalId: pro.id,
+          bookingId: null,
+          amount: args.amount,
+          withdrawalMethod: pro.withdrawalMethod,
+          withdrawalNumber: pro.withdrawalNumber,
+          status: "requested",
+        })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error("অনুরোধটি তৈরি করা যায়নি।");
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "withdrawal_requested",
+        title: "নতুন উইথড্রয়াল অনুরোধ",
+        body: `৳${args.amount} — ${pro.withdrawalMethod} ${pro.withdrawalNumber}`,
+      });
+      ctx.invalidateQueries();
+      return {
+        request: {
+          id: row.id,
+          amount: row.amount,
+          method: row.withdrawalMethod,
+          number: row.withdrawalNumber,
+          status: row.status,
+          createdAt: row.createdAt.toISOString(),
+        },
+        availableBalance: money.totals.availableBalance - args.amount,
+      };
+    },
+  }),
+
+  getProVerification: defineAction({
+    description:
+      "Returns the signed-in professional's verification status, the admin's note on the latest decision, and which verification items (NID number, NID front photo, NID back photo) are present or still missing. Document bytes and the NID number itself are never returned here.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      status: z.string(),
+      verificationNote: z.string().nullable(),
+      hasNidNumber: z.boolean(),
+      documents: z.object({ nidFront: z.boolean(), nidBack: z.boolean() }),
+      missing: z.array(z.string()),
+    }),
+    async handler(ctx, args) {
+      const { pro } = await requirePro(ctx, args.token);
+      const db = dbOf(ctx);
+      const docs = await db
+        .select({ kind: schema.identityDocuments.kind })
+        .from(schema.identityDocuments)
+        .where(eq(schema.identityDocuments.professionalId, pro.id));
+      const kinds = new Set(docs.map((d) => d.kind));
+      const hasNidNumber = !!pro.nidNumber && pro.nidNumber.trim().length > 0;
+      const missing: string[] = [];
+      if (!hasNidNumber) missing.push("nid_number");
+      if (!kinds.has("nid_front")) missing.push("nid_front");
+      if (!kinds.has("nid_back")) missing.push("nid_back");
+      return {
+        status: pro.status,
+        verificationNote: pro.verificationNote,
+        hasNidNumber,
+        documents: { nidFront: kinds.has("nid_front"), nidBack: kinds.has("nid_back") },
+        missing,
+      };
+    },
+  }),
+
+  resubmitIdentityDocuments: defineAction({
+    description:
+      "A professional whose application was rejected re-submits their NID number (optional) and fresh NID front/back photos; the stored documents are replaced, the application returns to Pending, and admins are notified. Only available while the application status is Rejected.",
+    request: z.object({
+      token: z.string(),
+      nidNumber: z.string().min(5).max(20).optional(),
+      nidFrontPhoto: imageInput,
+      nidBackPhoto: imageInput,
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const { user, pro } = await requirePro(ctx, args.token);
+      if (pro.status !== "rejected") {
+        throw new Error("শুধুমাত্র বাতিল হওয়া আবেদনই আবার জমা দেওয়া যাবে।");
+      }
+      const nidFront = validateIdentityImage(args.nidFrontPhoto, "NID কার্ডের সামনের ছবি");
+      const nidBack = validateIdentityImage(args.nidBackPhoto, "NID কার্ডের পেছনের ছবি");
+      const db = dbOf(ctx);
+      await db
+        .delete(schema.identityDocuments)
+        .where(eq(schema.identityDocuments.professionalId, pro.id));
+      await db.insert(schema.identityDocuments).values([
+        { professionalId: pro.id, kind: "nid_front", contentType: nidFront.mimeType, dataBase64: nidFront.dataBase64 },
+        { professionalId: pro.id, kind: "nid_back", contentType: nidBack.mimeType, dataBase64: nidBack.dataBase64 },
+      ]);
+      await db
+        .update(schema.professionals)
+        .set({
+          nidNumber: args.nidNumber?.trim() ? args.nidNumber.trim() : pro.nidNumber,
+          status: "pending",
+          verificationNote: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.professionals.id, pro.id));
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "pro_application",
+        title: "প্রফেশনাল আবার ডকুমেন্ট জমা দিয়েছেন",
+        body: `${user.name} — আগের আবেদন বাতিল হয়েছিল, নতুন ডকুমেন্ট যাচাইয়ের অপেক্ষায়।`,
+      });
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  getProReviews: defineAction({
+    description:
+      "Returns the signed-in professional's own received reviews that admins have approved (the same reviews customers see publicly).",
+    request: z.object({ token: z.string() }),
+    response: z.object({ reviews: z.array(reviewOut) }),
+    async handler(ctx, args) {
+      const { user, pro } = await requirePro(ctx, args.token);
+      const db = dbOf(ctx);
+      const names = await serviceNameMap(ctx);
+      const revs = await db
+        .select()
+        .from(schema.reviews)
+        .where(
+          and(
+            eq(schema.reviews.professionalId, pro.id),
+            eq(schema.reviews.status, "approved"),
+          ),
+        )
+        .orderBy(desc(schema.reviews.id));
+      const custIds = [...new Set(revs.map((r) => r.customerId))];
+      const custs = custIds.length
+        ? await db.select().from(schema.users).where(inArray(schema.users.id, custIds))
+        : [];
+      const custMap = new Map(custs.map((c) => [c.id, c.name]));
+      return {
+        reviews: revs.map((r) => ({
+          id: r.id,
+          bookingId: r.bookingId,
+          customerName: custMap.get(r.customerId) ?? "গ্রাহক",
+          professionalId: r.professionalId,
+          professionalName: user.name,
+          serviceSlug: r.serviceSlug,
+          serviceName: names.get(r.serviceSlug) ?? r.serviceSlug,
+          rating: r.rating,
+          text: r.text,
+          status: r.status,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
   // -------------------------------------------------------------- admin side
   getAdminOverview: defineAction({
     description: "Admin dashboard totals computed from real records.",
@@ -2254,6 +2718,7 @@ export const Actions = {
         proOut.extend({
           email: z.string().nullable(),
           nidNumber: z.string().nullable(),
+          verificationNote: z.string().nullable(),
           documents: z.object({
             nidFront: z.boolean(),
             nidBack: z.boolean(),
@@ -2284,6 +2749,7 @@ export const Actions = {
       const full: (z.infer<typeof proOut> & {
         email: string | null;
         nidNumber: string | null;
+        verificationNote: string | null;
         documents: { nidFront: boolean; nidBack: boolean };
         userStatus: string;
       })[] = [];
@@ -2297,6 +2763,7 @@ export const Actions = {
           ...card,
           email: p.email,
           nidNumber: p.nidNumber,
+          verificationNote: p.verificationNote,
           documents: {
             nidFront: docs.has("nid_front"),
             nidBack: docs.has("nid_back"),
@@ -2309,11 +2776,12 @@ export const Actions = {
   }),
 
   adminSetProStatus: defineAction({
-    description: "Admin: approves, rejects or suspends a professional application/account.",
+    description: "Admin: approves, rejects or suspends a professional application/account. An optional note (e.g. the rejection reason) is stored on the application and shown to the professional.",
     request: z.object({
       token: z.string(),
       professionalId: z.number().int(),
       status: z.enum(["verified", "rejected", "suspended", "pending"]),
+      note: z.string().max(600).optional(),
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
@@ -2326,9 +2794,21 @@ export const Actions = {
         .limit(1);
       const pro = rows[0];
       if (!pro) throw new Error("প্রফেশনাল পাওয়া যায়নি।");
+      const note = args.note?.trim() ? args.note.trim() : null;
       await db
         .update(schema.professionals)
-        .set({ status: args.status, updatedAt: new Date() })
+        .set({
+          status: args.status,
+          // The note is the professional-facing reason for the latest
+          // decision: stored on rejection/suspension when given, and
+          // cleared once the application is verified or sent back to
+          // pending without a new note.
+          verificationNote:
+            args.status === "verified" || args.status === "pending"
+              ? note
+              : (note ?? pro.verificationNote),
+          updatedAt: new Date(),
+        })
         .where(eq(schema.professionals.id, pro.id));
       const titles: Record<string, string> = {
         verified: "আপনার প্রোফাইল যাচাই সম্পন্ন হয়েছে",
@@ -2340,8 +2820,9 @@ export const Actions = {
         userId: pro.userId,
         type: "pro_status",
         title: titles[args.status] ?? "প্রোফাইল আপডেট",
+        body: note ?? undefined,
       });
-      await logAdmin(ctx, admin.id, "pro_status", `professional #${pro.id} -> ${args.status}`);
+      await logAdmin(ctx, admin.id, "pro_status", `professional #${pro.id} -> ${args.status}${note ? ` — ${note}` : ""}`);
       ctx.invalidateQueries();
       return { ok: true };
     },

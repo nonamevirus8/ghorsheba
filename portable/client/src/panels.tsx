@@ -1043,11 +1043,16 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
   const tabRaw = params.get("tab") ?? "jobs";
-  const tab = ["jobs", "profile", "notifications"].includes(tabRaw) ? tabRaw : "jobs";
-  const [filter, setFilter] = useState("active");
+  const tab = ["jobs", "earnings", "reviews", "verification", "support", "profile", "notifications"].includes(tabRaw) ? tabRaw : "jobs";
+  const [filter, setFilter] = useState("requests");
   const jobs = useQuery({
     queryKey: ["pro-jobs"],
     queryFn: () => api.getProJobs({ token }),
+    enabled: !!token && !!me.data?.professional,
+  });
+  const earningsQ = useQuery({
+    queryKey: ["pro-earnings"],
+    queryFn: () => api.getProEarnings({ token }),
     enabled: !!token && !!me.data?.professional,
   });
   const notifs = useQuery({
@@ -1079,20 +1084,29 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
   }
   const list = jobs.data?.bookings ?? [];
   const newReq = list.filter((b) => b.status === "assigned" && b.proResponse === "none");
+  const accepted = list.filter((b) => b.status === "assigned" && b.proResponse === "accepted");
+  const activeJobs = list.filter((b) => b.status === "in_progress");
   const completed = list.filter((b) => b.status === "completed");
-  const earnings = completed
-    .filter((b) => b.paymentStatus === "cash_paid" && b.finalPrice != null)
-    .reduce((a, b) => a + (b.finalPrice ?? 0), 0);
+  const cancelled = list.filter((b) => b.status === "cancelled");
   const filtered =
-    filter === "active"
-      ? list.filter((b) => ["assigned", "in_progress"].includes(b.status))
-      : filter === "new"
-        ? newReq
-        : filter === "completed"
-          ? completed
-          : list.filter((b) => b.status === "cancelled");
+    filter === "requests"
+      ? newReq
+      : filter === "accepted"
+        ? accepted
+        : filter === "active"
+          ? activeJobs
+          : filter === "completed"
+            ? completed
+            : filter === "cancelled"
+              ? cancelled
+              : list;
+  const earnedTotal = earningsQ.data?.totals.earned ?? 0;
   const tabs = [
     { key: "jobs", label: "আমার কাজ", badge: newReq.length },
+    { key: "earnings", label: "আয় ও উইথড্র" },
+    { key: "reviews", label: "রিভিউ" },
+    { key: "verification", label: "যাচাই অবস্থা" },
+    { key: "support", label: "সাপোর্ট / আপিল" },
     { key: "profile", label: "প্রোফাইল সম্পাদনা" },
     { key: "notifications", label: "নোটিফিকেশন", badge: me.data?.unreadNotifications },
   ];
@@ -1113,17 +1127,17 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
 
       {pro.status === "pending" && (
         <div className="mb-5 rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3.5 text-[15px] text-amber-900">
-          আপনার আবেদনটি <b>যাচাইয়ের অপেক্ষায়</b> আছে। অ্যাডমিন যাচাই সম্পন্ন করলে আপনার প্রোফাইল গ্রাহকদের কাছে প্রকাশিত হবে এবং আপনি কাজ পেতে শুরু করবেন।
+          আপনার আবেদনটি <b>যাচাইয়ের অপেক্ষায়</b> আছে। অ্যাডমিন যাচাই সম্পন্ন করলে আপনার প্রোফাইল গ্রাহকদের কাছে প্রকাশিত হবে এবং আপনি কাজ গ্রহণ করতে পারবেন। বিস্তারিত <a href="#/pro-dashboard?tab=verification" className="font-bold underline">যাচাই অবস্থা</a> ট্যাবে দেখুন।
         </div>
       )}
       {pro.status === "rejected" && (
         <div className="mb-5 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-[15px] text-red-800">
-          দুঃখিত, আপনার আবেদনটি গৃহীত হয়নি। তথ্যে কোনো ভুল থাকলে প্রোফাইল সম্পাদনা করে আবার যাচাইয়ের জন্য অপেক্ষা করুন, অথবা সাপোর্টে যোগাযোগ করুন।
+          দুঃখিত, আপনার আবেদনটি গৃহীত হয়নি। <a href="#/pro-dashboard?tab=verification" className="font-bold underline">যাচাই অবস্থা</a> ট্যাবে কারণ দেখে সংশোধিত ডকুমেন্ট আবার জমা দিন।
         </div>
       )}
       {pro.status === "suspended" && (
         <div className="mb-5 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-[15px] text-red-800">
-          আপনার প্রোফাইল সাময়িকভাবে স্থগিত আছে। বিস্তারিত জানতে অ্যাডমিনের সাথে যোগাযোগ করুন।
+          আপনার প্রোফাইল সাময়িকভাবে স্থগিত আছে। বিস্তারিত জানতে <a href="#/pro-dashboard?tab=support" className="font-bold underline">সাপোর্টে</a> যোগাযোগ করুন।
         </div>
       )}
 
@@ -1136,8 +1150,8 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
           icon={Icon.star(true, "w-5 h-5")}
         />
         <StatCard
-          label="রেকর্ডকৃত আয় (পরিশোধিত কাজ)"
-          value={earnings > 0 ? `৳${earnings.toLocaleString("bn-BD")}` : "—"}
+          label="মোট আয় (যাচাইকৃত পেমেন্ট থেকে)"
+          value={earningsQ.data ? bdt(earnedTotal) : "—"}
           icon={Icon.wallet("w-5 h-5")}
         />
       </div>
@@ -1149,10 +1163,12 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
             <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="কাজের ফিল্টার">
               {(
                 [
-                  ["active", "সক্রিয় কাজ"],
-                  ["new", `নতুন অনুরোধ (${newReq.length})`],
-                  ["completed", "সম্পন্ন"],
-                  ["cancelled", "বাতিল"],
+                  ["requests", `অনুরোধ (${newReq.length})`],
+                  ["accepted", `গৃহীত (${accepted.length})`],
+                  ["active", `চলমান (${activeJobs.length})`],
+                  ["completed", `সম্পন্ন (${completed.length})`],
+                  ["cancelled", `বাতিল (${cancelled.length})`],
+                  ["all", `সব (${list.length})`],
                 ] as [string, string][]
               ).map(([k, label]) => (
                 <button
@@ -1180,10 +1196,408 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
             <p className="mt-4 text-sm text-[#737B73]">কাজ গ্রহণ/শুরু/শেষ করতে বুকিং কার্ডে চাপ দিয়ে বিবরণ পেজে যান।</p>
           </div>
         )}
+        {tab === "earnings" && <ProEarningsTab token={token} />}
+        {tab === "reviews" && <ProReviewsTab token={token} />}
+        {tab === "verification" && <ProVerificationTab token={token} proId={pro.id} status={pro.status} />}
+        {tab === "support" && <SupportTab token={token} />}
         {tab === "profile" && <ProProfileTab me={me.data!} token={token} />}
         {tab === "notifications" &&
           (notifs.isPending ? <Spinner /> : <NotificationsList notifs={notifs.data?.notifications ?? []} token={token} />)}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------- pro earnings
+
+const WITHDRAWAL_METHOD_BN: Record<string, string> = {
+  bkash: "বিকাশ",
+  nagad: "নগদ",
+  bank: "ব্যাংক অ্যাকাউন্ট",
+  pathao_pay: "পাঠাও পে",
+};
+
+const WITHDRAWAL_STATUS_BN: Record<string, { label: string; cls: string }> = {
+  requested: { label: "অপেক্ষমাণ", cls: "bg-amber-100 text-amber-800" },
+  approved: { label: "অনুমোদিত", cls: "bg-sky-100 text-sky-800" },
+  rejected: { label: "বাতিল", cls: "bg-red-100 text-red-700" },
+  paid: { label: "পরিশোধিত", cls: "bg-[#087A35] text-white" },
+};
+
+function MoneyRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <span className="text-[14px] text-[#737B73]">{label}</span>
+      <span className={`font-en text-[14.5px] ${strong ? "font-bold text-[#064B27]" : "font-semibold text-[#202820]"}`}>{value}</span>
+    </div>
+  );
+}
+
+function ProEarningsTab({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const earningsQ = useQuery({ queryKey: ["pro-earnings"], queryFn: () => api.getProEarnings({ token }) });
+  const walletQ = useQuery({ queryKey: ["pro-wallet"], queryFn: () => api.getProWallet({ token }) });
+  const [method, setMethod] = useState("");
+  const [number, setNumber] = useState("");
+  const [infoMsg, setInfoMsg] = useState("");
+  const [infoErr, setInfoErr] = useState("");
+  const [amount, setAmount] = useState("");
+  const [wdMsg, setWdMsg] = useState("");
+  const [wdErr, setWdErr] = useState("");
+  useEffect(() => {
+    if (walletQ.data) {
+      setMethod(walletQ.data.withdrawalMethod ?? "");
+      setNumber(walletQ.data.withdrawalNumber ?? "");
+    }
+  }, [walletQ.data]);
+  const saveInfo = useMutation({
+    mutationFn: () =>
+      api.updateWithdrawalInfo({
+        token,
+        method: method as "bkash" | "nagad" | "bank" | "pathao_pay",
+        number,
+      }),
+    onSuccess: () => {
+      setInfoMsg("উইথড্রয়াল তথ্য সংরক্ষিত হয়েছে।");
+      setInfoErr("");
+      qc.invalidateQueries({ queryKey: ["pro-wallet"] });
+    },
+    onError: (e) => {
+      setInfoErr(errMsg(e));
+      setInfoMsg("");
+    },
+  });
+  const requestWd = useMutation({
+    mutationFn: () => api.requestWithdrawal({ token, amount: Number(amount) }),
+    onSuccess: () => {
+      setWdMsg("উইথড্রয়াল অনুরোধ পাঠানো হয়েছে। অ্যাডমিন যাচাই করে সিদ্ধান্ত নিলে এখানে স্ট্যাটাস বদলে যাবে।");
+      setWdErr("");
+      setAmount("");
+      qc.invalidateQueries({ queryKey: ["pro-wallet"] });
+      qc.invalidateQueries({ queryKey: ["pro-earnings"] });
+    },
+    onError: (e) => {
+      setWdErr(errMsg(e));
+      setWdMsg("");
+    },
+  });
+  if (earningsQ.isPending || walletQ.isPending) return <Spinner />;
+  if (earningsQ.isError || walletQ.isError || !earningsQ.data || !walletQ.data) {
+    return <ErrorBox message="আয়ের তথ্য লোড করা যায়নি — আবার চেষ্টা করুন।" />;
+  }
+  const { rows, totals } = earningsQ.data;
+  const wallet = walletQ.data;
+  const amt = Number(amount);
+  const amtValid = Number.isInteger(amt) && amt > 0 && amt <= wallet.availableBalance;
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="মোট আয় (সব যাচাইকৃত কাজ)" value={bdt(totals.earned)} icon={Icon.wallet("w-5 h-5")} />
+        <StatCard label="হেল্ড ব্যালেন্স (অবশিষ্ট)" value={bdt(totals.held)} icon={Icon.clock("w-5 h-5")} />
+        <StatCard label="মোট কমিশন কাটা হয়েছে" value={bdt(totals.commission)} icon={Icon.settings("w-5 h-5")} />
+        <StatCard label="ইতিমধ্যে পেইড আউট" value={bdt(totals.paidOut)} icon={Icon.checkCircle("w-5 h-5")} />
+      </div>
+
+      <section aria-label="বুকিং অনুযায়ী আয়ের হিসাব">
+        <h2 className="text-lg font-bold text-[#064B27] mb-3">বুকিং অনুযায়ী হিসাব</h2>
+        {rows.length === 0 ? (
+          <EmptyState
+            title="এখনো কোনো যাচাইকৃত পেমেন্ট নেই"
+            body="গ্রাহকের অনলাইন পেমেন্ট অ্যাডমিন যাচাই করলেই সেই কাজের হিসাব এখানে দেখা যাবে।"
+          />
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3.5">
+            {rows.map((r) => (
+              <div key={r.bookingId} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="font-bold text-[15px]">
+                    {r.serviceName} <span className="font-en text-[13px] text-[#737B73]">• {r.code}</span>
+                  </p>
+                  {r.paymentModel && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#F0FAF2] text-[#064B27]">
+                      {PAYMENT_MODEL_BN[r.paymentModel] ?? r.paymentModel}
+                    </span>
+                  )}
+                </div>
+                <div className="divide-y divide-[#F0F4F0]">
+                  <MoneyRow label="সার্ভিস চার্জ (বিল)" value={r.serviceCharge != null ? bdt(r.serviceCharge) : "—"} />
+                  <MoneyRow label="কমিশন" value={`− ${bdt(r.commission)}`} />
+                  <MoneyRow label="হেল্ড (অনলাইন অংশ)" value={bdt(r.held)} />
+                  {r.cashReceived > 0 && <MoneyRow label="নগদে সরাসরি পেয়েছেন" value={bdt(r.cashReceived)} />}
+                  <MoneyRow label="হেল্ড থেকে পাওনা" value={bdt(r.payoutFromHeld)} />
+                  <MoneyRow label="পেইড আউট হয়েছে" value={bdt(r.paidOut)} />
+                  <MoneyRow label="এখনো হেল্ডে আছে" value={bdt(r.remainingHeld)} />
+                  <MoneyRow label="এই কাজে আপনার মোট আয়" value={bdt(r.proTotal)} strong />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section aria-label="উইথড্র" className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6">
+        <h2 className="text-lg font-bold text-[#064B27]">টাকা উত্তোলন (উইথড্র)</h2>
+        <p className="mt-1 text-[15px] text-[#4c584c]">
+          উত্তোলনযোগ্য ব্যালেন্স: <b className="font-en text-[#064B27]">{bdt(wallet.availableBalance)}</b>
+          {wallet.openWithdrawalTotal > 0 && (
+            <span className="text-[#737B73]"> (হেল্ড {bdt(wallet.held)} থেকে অপেক্ষমাণ অনুরোধ {bdt(wallet.openWithdrawalTotal)} বাদ দিয়ে)</span>
+          )}
+        </p>
+
+        <form
+          className="mt-4 grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setInfoMsg("");
+            setInfoErr("");
+            if (!method) return setInfoErr("উইথড্রয়ালের মাধ্যম বেছে নিন।");
+            saveInfo.mutate();
+          }}
+        >
+          <div>
+            <label className={labelCls} htmlFor="wd-method">উইথড্রয়ালের মাধ্যম</label>
+            <select id="wd-method" className={inputCls} value={method} onChange={(e) => setMethod(e.target.value)} required>
+              <option value="" disabled>বেছে নিন</option>
+              <option value="bkash">বিকাশ</option>
+              <option value="nagad">নগদ</option>
+              <option value="bank">ব্যাংক অ্যাকাউন্ট</option>
+              <option value="pathao_pay">পাঠাও পে</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="wd-number">{method === "bank" ? "ব্যাংক অ্যাকাউন্ট নম্বর" : "মোবাইল নম্বর"}</label>
+            <input id="wd-number" className={`${inputCls} font-en`} value={number} onChange={(e) => setNumber(e.target.value)} placeholder={method === "bank" ? "অ্যাকাউন্ট নম্বর" : "01XXXXXXXXX"} required />
+          </div>
+          <button type="submit" disabled={saveInfo.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+            {saveInfo.isPending ? "সংরক্ষণ হচ্ছে…" : "তথ্য সংরক্ষণ"}
+          </button>
+        </form>
+        {infoErr && <div className="mt-3"><ErrorBox message={infoErr} /></div>}
+        {infoMsg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{infoMsg}</p>}
+
+        <form
+          className="mt-5 grid sm:grid-cols-[1fr_auto] gap-3 items-end border-t border-[#E5EAE5] pt-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setWdMsg("");
+            setWdErr("");
+            requestWd.mutate();
+          }}
+        >
+          <div>
+            <label className={labelCls} htmlFor="wd-amount">উত্তোলনের পরিমাণ (৳)</label>
+            <input id="wd-amount" type="number" min={1} max={wallet.availableBalance} className={`${inputCls} font-en`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required />
+          </div>
+          <button
+            type="submit"
+            disabled={requestWd.isPending || !amtValid || !wallet.withdrawalMethod}
+            className="bg-[#FF8A00] hover:bg-[#E67A00] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+          >
+            {requestWd.isPending ? "পাঠানো হচ্ছে…" : "উইথড্র অনুরোধ করুন"}
+          </button>
+        </form>
+        {!wallet.withdrawalMethod && <p className="mt-2 text-sm text-[#737B73]">অনুরোধ করতে আগে উপরে মাধ্যম ও নম্বর সংরক্ষণ করুন।</p>}
+        {amount !== "" && !amtValid && wallet.availableBalance >= 0 && (
+          <p className="mt-2 text-sm text-red-700">পরিমাণটি উত্তোলনযোগ্য ব্যালেন্সের মধ্যে হতে হবে।</p>
+        )}
+        {wdErr && <div className="mt-3"><ErrorBox message={wdErr} /></div>}
+        {wdMsg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{wdMsg}</p>}
+
+        <h3 className="mt-6 font-bold text-[#064B27]">আগের অনুরোধসমূহ</h3>
+        {wallet.requests.length === 0 ? (
+          <p className="mt-2 text-sm text-[#737B73]">এখনো কোনো উইথড্র অনুরোধ করেননি।</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-[#F0F4F0]">
+            {wallet.requests.map((r) => {
+              const st = WITHDRAWAL_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
+              return (
+                <li key={r.id} className="py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-en font-bold">{bdt(r.amount)}</span>
+                  <span className="text-sm text-[#4c584c]">{WITHDRAWAL_METHOD_BN[r.method] ?? r.method} • <span className="font-en">{r.number}</span></span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                  <span className="text-[13px] text-[#737B73] ml-auto">{fmtDate(r.createdAt)}</span>
+                  {r.status === "paid" && r.transactionReference && (
+                    <span className="w-full text-[13px] text-[#737B73]">লেনদেন রেফারেন্স: <span className="font-en">{r.transactionReference}</span></span>
+                  )}
+                  {r.status === "rejected" && r.rejectionReason && (
+                    <span className="w-full text-[13px] text-red-700">কারণ: {r.rejectionReason}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ pro reviews
+
+function ProReviewsTab({ token }: { token: string }) {
+  const q = useQuery({ queryKey: ["pro-reviews"], queryFn: () => api.getProReviews({ token }) });
+  if (q.isPending) return <Spinner />;
+  const reviews = q.data?.reviews ?? [];
+  if (reviews.length === 0) {
+    return (
+      <EmptyState
+        title="এখনো কোনো রিভিউ আসেনি"
+        body="কাজ সম্পন্ন হলে গ্রাহক রিভিউ দিতে পারবেন। অ্যাডমিন অনুমোদন করা রিভিউগুলো এখানে ও আপনার পাবলিক প্রোফাইলে দেখা যাবে।"
+      />
+    );
+  }
+  return (
+    <div className="grid md:grid-cols-2 gap-3.5">
+      {reviews.map((r) => (
+        <article key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+          <div className="flex items-center gap-2">
+            <Stars value={r.rating} />
+            <span className="font-en font-bold text-[14px]">{r.rating}/5</span>
+            <span className="ml-auto text-[13px] text-[#737B73]">{fmtDate(r.createdAt)}</span>
+          </div>
+          <p className="mt-2 text-[15px] text-[#202820]">{r.text}</p>
+          <p className="mt-2 text-[13.5px] text-[#737B73]">
+            {r.customerName} • {r.serviceName}
+          </p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+// ------------------------------------------------------- pro verification
+
+const VERIFICATION_ITEM_BN: Record<string, string> = {
+  nid_number: "NID নম্বর",
+  nid_front: "NID কার্ডের সামনের ছবি",
+  nid_back: "NID কার্ডের পেছনের ছবি",
+};
+
+function ProVerificationTab({ token, proId, status }: { token: string; proId: number; status: string }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["pro-verification"], queryFn: () => api.getProVerification({ token }) });
+  const [nidNumber, setNidNumber] = useState("");
+  const [front, setFront] = useState<{ dataBase64: string; mimeType: string } | undefined>();
+  const [back, setBack] = useState<{ dataBase64: string; mimeType: string } | undefined>();
+  const [frontName, setFrontName] = useState("");
+  const [backName, setBackName] = useState("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const resubmit = useMutation({
+    mutationFn: () =>
+      api.resubmitIdentityDocuments({
+        token,
+        nidNumber: nidNumber.trim() ? nidNumber.trim() : undefined,
+        nidFrontPhoto: front,
+        nidBackPhoto: back,
+      }),
+    onSuccess: () => {
+      setMsg("ডকুমেন্ট আবার জমা দেওয়া হয়েছে — আপনার আবেদন এখন যাচাইয়ের অপেক্ষায়।");
+      setErr("");
+      qc.invalidateQueries({ queryKey: ["pro-verification"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (e) => {
+      setErr(errMsg(e));
+      setMsg("");
+    },
+  });
+  if (q.isPending) return <Spinner />;
+  if (q.isError || !q.data) return <ErrorBox message="যাচাইয়ের তথ্য লোড করা যায়নি — আবার চেষ্টা করুন।" />;
+  const v = q.data;
+  const items: { key: string; label: string; done: boolean }[] = [
+    { key: "nid_number", label: VERIFICATION_ITEM_BN.nid_number!, done: v.hasNidNumber },
+    { key: "nid_front", label: VERIFICATION_ITEM_BN.nid_front!, done: v.documents.nidFront },
+    { key: "nid_back", label: VERIFICATION_ITEM_BN.nid_back!, done: v.documents.nidBack },
+  ];
+  return (
+    <div className="max-w-2xl space-y-5">
+      <div
+        className={`rounded-2xl border px-4 py-3.5 text-[15px] ${
+          v.status === "verified"
+            ? "bg-[#F0FAF2] border-[#cfe3d3] text-[#064B27]"
+            : v.status === "pending"
+              ? "bg-amber-50 border-amber-200 text-amber-900"
+              : "bg-red-50 border-red-200 text-red-800"
+        }`}
+        role="status"
+      >
+        বর্তমান অবস্থা: <b>{PRO_STATUS_BN[v.status] ?? v.status}</b>
+        {v.status === "pending" && " — অ্যাডমিনের যাচাই শেষ হলে প্রোফাইল প্রকাশিত হবে ও কাজ গ্রহণ করা যাবে।"}
+        {v.status === "verified" && " — আপনার প্রোফাইল গ্রাহকদের কাছে প্রকাশিত এবং আপনি কাজ গ্রহণ করতে পারবেন।"}
+        {v.status === "rejected" && " — নিচের কারণ দেখে সংশোধিত ডকুমেন্ট আবার জমা দিন।"}
+        {v.status === "suspended" && " — বিস্তারিত জানতে সাপোর্ট ট্যাবে যোগাযোগ করুন।"}
+      </div>
+
+      {v.verificationNote && (
+        <div className="rounded-2xl border border-[#E5EAE5] bg-white px-4 py-3.5">
+          <p className="font-bold text-[15px] text-[#064B27]">অ্যাডমিনের নোট</p>
+          <p className="mt-1 text-[15px] text-[#202820]">{v.verificationNote}</p>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-[#E5EAE5] bg-white px-4 py-3.5">
+        <p className="font-bold text-[15px] text-[#064B27]">যাচাইয়ের জন্য যা লাগে</p>
+        <ul className="mt-2 space-y-1.5">
+          {items.map((it) => (
+            <li key={it.key} className="flex items-center gap-2 text-[15px]">
+              <span className={it.done ? "text-[#087A35]" : "text-red-600"}>{it.done ? Icon.checkCircle("w-5 h-5") : Icon.clock("w-5 h-5")}</span>
+              <span>{it.label}</span>
+              <span className={`ml-auto text-[13px] font-semibold ${it.done ? "text-[#087A35]" : "text-red-600"}`}>
+                {it.done ? "জমা হয়েছে" : "বাকি আছে"}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3 border-t border-[#E5EAE5] pt-3">
+          <span className={labelCls}>আমার জমা দেওয়া ডকুমেন্ট</span>
+          <IdentityDocViewer token={token} professionalId={proId} documents={v.documents} />
+          <p className="mt-1 text-[13px] text-[#737B73]">এই ডকুমেন্টগুলো শুধু আপনি ও যাচাইকারী অ্যাডমিন দেখতে পারবেন — কোনো পাবলিক লিংক নেই।</p>
+        </div>
+      </div>
+
+      {status === "rejected" && (
+        <form
+          className="rounded-2xl border border-[#E5EAE5] bg-white px-4 py-4 sm:px-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setMsg("");
+            setErr("");
+            if (!front || !back) return setErr("NID-এর সামনে ও পেছনের দুটি ছবিই আবার দিন।");
+            resubmit.mutate();
+          }}
+        >
+          <p className="font-bold text-[15px] text-[#064B27]">সংশোধিত ডকুমেন্ট আবার জমা দিন</p>
+          <p className="mt-1 text-sm text-[#737B73]">আগের ছবিগুলো বদলে নতুন ছবি বসবে এবং আবেদনটি আবার যাচাইয়ের অপেক্ষায় যাবে।</p>
+          <div className="mt-3">
+            <label className={labelCls} htmlFor="rs-nid">NID নম্বর (শুধু বদলাতে চাইলে)</label>
+            <input id="rs-nid" className={`${inputCls} font-en`} value={nidNumber} onChange={(e) => setNidNumber(e.target.value)} placeholder="আগের নম্বরই থাকবে" />
+          </div>
+          <div className="mt-3 grid sm:grid-cols-2 gap-3">
+            <PhotoField
+              label="NID সামনের ছবি"
+              fileName={frontName}
+              onPick={(img) => {
+                setFront(img);
+                setFrontName(img ? "ছবি যুক্ত হয়েছে" : "");
+              }}
+            />
+            <PhotoField
+              label="NID পেছনের ছবি"
+              fileName={backName}
+              onPick={(img) => {
+                setBack(img);
+                setBackName(img ? "ছবি যুক্ত হয়েছে" : "");
+              }}
+            />
+          </div>
+          {err && <div className="mt-3"><ErrorBox message={err} /></div>}
+          {msg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{msg}</p>}
+          <button type="submit" disabled={resubmit.isPending} className="mt-4 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+            {resubmit.isPending ? "জমা দেওয়া হচ্ছে…" : "আবার জমা দিন"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -1263,6 +1677,18 @@ function IdentityDocViewer({
   );
 }
 
+// Weekday chips for per-day availability (JS weekday numbers:
+// 0 = Sunday … 6 = Saturday), ordered Saturday-first as in Bangladesh.
+const WEEKDAY_BN: { d: number; label: string }[] = [
+  { d: 6, label: "শনিবার" },
+  { d: 0, label: "রবিবার" },
+  { d: 1, label: "সোমবার" },
+  { d: 2, label: "মঙ্গলবার" },
+  { d: 3, label: "বুধবার" },
+  { d: 4, label: "বৃহস্পতিবার" },
+  { d: 5, label: "শুক্রবার" },
+];
+
 function ProProfileTab({ me, token }: { me: Me; token: string }) {
   const qc = useQueryClient();
   const catalog = useCatalog();
@@ -1274,6 +1700,7 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
   const [address, setAddress] = useState(pro.address ?? "");
   const [bio, setBio] = useState(pro.bio ?? "");
   const [available, setAvailable] = useState(pro.available);
+  const [availableDays, setAvailableDays] = useState<number[]>(pro.availableDays);
   const [photo, setPhoto] = useState<{ dataBase64: string; mimeType: string } | undefined>();
   const [photoName, setPhotoName] = useState("");
   const [error, setError] = useState("");
@@ -1289,6 +1716,7 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
         address: address || undefined,
         bio: bio || undefined,
         available,
+        availableDays,
         photo,
       }),
     onSuccess: () => {
@@ -1307,6 +1735,7 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
         setError("");
         setOk(false);
         if (areas.length === 0) return setError("কমপক্ষে একটি সেবার এলাকা বেছে নিন।");
+        if (availableDays.length === 0) return setError("কমপক্ষে একটি কাজের দিন বেছে নিন।");
         save.mutate();
       }}
     >
@@ -1359,6 +1788,28 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
           aria-label="উপলব্ধতা"
         />
       </label>
+      <fieldset className="sm:col-span-2">
+        <legend className={labelCls}>কোন কোন দিন কাজ করেন</legend>
+        <div className="flex flex-wrap gap-2">
+          {WEEKDAY_BN.map(({ d, label }) => {
+            const on = availableDays.includes(d);
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() =>
+                  setAvailableDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => a - b)))
+                }
+                aria-pressed={on}
+                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${on ? "bg-[#087A35] text-white border-[#087A35]" : "bg-white text-[#4c584c] border-[#E5EAE5]"}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[13px] text-[#737B73]">সব দিন বেছে রাখলে প্রতিদিনই কাজের জন্য উপলব্ধ থাকবেন।</p>
+      </fieldset>
       <div className="sm:col-span-2">
         <span className={labelCls}>আমার পরিচয় ডকুমেন্ট</span>
         <IdentityDocViewer token={token} professionalId={pro.id} />
@@ -1781,8 +2232,8 @@ function AdminProfessionals({ token }: { token: string }) {
   const [filter, setFilter] = useState("");
   const list = useQuery({ queryKey: ["admin-pros"], queryFn: () => api.adminListProfessionals({ token }) });
   const setStatus = useMutation({
-    mutationFn: (v: { id: number; status: "verified" | "rejected" | "suspended" | "pending" }) =>
-      api.adminSetProStatus({ token, professionalId: v.id, status: v.status }),
+    mutationFn: (v: { id: number; status: "verified" | "rejected" | "suspended" | "pending"; note?: string }) =>
+      api.adminSetProStatus({ token, professionalId: v.id, status: v.status, note: v.note }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-pros"] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
@@ -1829,7 +2280,7 @@ function AdminProfessionals({ token }: { token: string }) {
               key={p.id}
               p={p}
               token={token}
-              onStatus={(s) => setStatus.mutate({ id: p.id, status: s })}
+              onStatus={(s, note) => setStatus.mutate({ id: p.id, status: s, note })}
               onUserStatus={(s) => setUserStatus.mutate({ userId: p.userId, status: s })}
               busy={setStatus.isPending || setUserStatus.isPending}
             />
@@ -1849,10 +2300,11 @@ function AdminProCard({
 }: {
   p: AdminPro;
   token: string;
-  onStatus: (s: "verified" | "rejected" | "suspended" | "pending") => void;
+  onStatus: (s: "verified" | "rejected" | "suspended" | "pending", note?: string) => void;
   onUserStatus: (s: "active" | "suspended") => void;
   busy: boolean;
 }) {
+  const [note, setNote] = useState("");
   return (
     <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
       <div className="flex items-start gap-3.5">
@@ -1880,8 +2332,24 @@ function AdminProCard({
             সম্পন্ন কাজ: {p.completedJobs} • রেটিং: {p.avgRating != null ? `${p.avgRating} (${p.reviewCount}টি রিভিউ)` : "এখনো নেই"}
             {p.userStatus === "suspended" ? " • অ্যাকাউন্ট স্থগিত" : ""}
           </p>
+          {p.verificationNote && (
+            <p className="text-[13.5px] text-[#4c584c]">সর্বশেষ যাচাই নোট: {p.verificationNote}</p>
+          )}
         </div>
       </div>
+      {(p.status === "pending" || p.status === "verified") && (
+        <div className="mt-3">
+          <label className={labelCls} htmlFor={`pro-note-${p.id}`}>যাচাই নোট (বাতিল/স্থগিত করলে প্রফেশনালকে দেখানো হবে)</label>
+          <input
+            id={`pro-note-${p.id}`}
+            className={inputCls}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="যেমন: NID ছবি ঝাপসা — স্পষ্ট ছবি আবার জমা দিন"
+            maxLength={600}
+          />
+        </div>
+      )}
       <div className="mt-3.5 flex flex-wrap gap-2">
         {p.status !== "verified" && (
           <button type="button" disabled={busy} onClick={() => onStatus("verified")} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
@@ -1889,12 +2357,12 @@ function AdminProCard({
           </button>
         )}
         {p.status === "pending" && (
-          <button type="button" disabled={busy} onClick={() => onStatus("rejected")} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
+          <button type="button" disabled={busy} onClick={() => onStatus("rejected", note.trim() || undefined)} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
             আবেদন বাতিল করুন
           </button>
         )}
         {p.status === "verified" && (
-          <button type="button" disabled={busy} onClick={() => onStatus("suspended")} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
+          <button type="button" disabled={busy} onClick={() => onStatus("suspended", note.trim() || undefined)} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
             প্রোফাইল স্থগিত করুন
           </button>
         )}

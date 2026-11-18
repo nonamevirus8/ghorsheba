@@ -69,6 +69,15 @@ export const professionals = pgTable("professionals", {
     .notNull()
     .default("pending"),
   available: integer("available").notNull().default(1),
+  // Per-day availability (Master Phase 4): JSON array of weekday
+  // numbers (0 = Sunday … 6 = Saturday) the professional works.
+  // Null means no per-day restriction (works every day).
+  availableDays: text("available_days"),
+  // Admin's note on the latest verification decision (Master Phase 4):
+  // shown to the professional on their verification tab — e.g. why an
+  // application was rejected and what to fix before re-submitting.
+  // Written only by adminSetProStatus.
+  verificationNote: text("verification_note"),
   // Dual Payment (Phase 1): the professional's chosen payout destination
   // for withdrawal requests. Set by the professional, never by an admin.
   withdrawalMethod: text("withdrawal_method", {
