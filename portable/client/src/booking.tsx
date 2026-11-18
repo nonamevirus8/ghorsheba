@@ -953,10 +953,24 @@ export function BookingDetailPage({ code }: { code: string }) {
     qc.invalidateQueries({ queryKey: ["my-bookings"] });
     qc.invalidateQueries({ queryKey: ["pro-jobs"] });
   };
-  const cancel = useMutation({
-    mutationFn: (id: number) => api.cancelBooking({ token: token ?? "", bookingId: id }),
+  // Master Phase 9: a customer cancel is a REQUEST to the admin, not
+  // an instant cancel — the booking keeps running until the admin
+  // decides Waiting / Complete / Rejected.
+  const [cancelReason, setCancelReason] = useState("");
+  const cancelBookingId = data.data?.booking?.id;
+  const cancelReqQ = useQuery({
+    queryKey: ["my-cancel-request", cancelBookingId],
+    queryFn: () => api.getMyCancelRequest({ token: token ?? "", bookingId: cancelBookingId ?? 0 }),
+    enabled: !!token && cancelBookingId != null && data.data?.booking?.customerId === me.data?.user.id,
+    retry: false,
+  });
+  const requestCancel = useMutation({
+    mutationFn: (id: number) =>
+      api.requestBookingCancel({ token: token ?? "", bookingId: id, reason: cancelReason.trim() || undefined }),
     onSuccess: () => {
-      setMsg("বুকিং বাতিল করা হয়েছে।");
+      setMsg("বাতিলের অনুরোধ অ্যাডমিনের কাছে পাঠানো হয়েছে — যাচাই করে সিদ্ধান্ত জানানো হবে। বুকিং এখনো চলমান আছে।");
+      setCancelReason("");
+      cancelReqQ.refetch();
       refresh();
     },
     onError: (e) => setActionError(errMsg(e)),
@@ -1008,9 +1022,10 @@ export function BookingDetailPage({ code }: { code: string }) {
     },
     onError: (e) => setActionError(errMsg(e)),
   });
+  const [proDisputeNote, setProDisputeNote] = useState("");
   const dispute = useMutation({
-    mutationFn: (id: number) =>
-      api.setBookingDisputed({ token: token ?? "", bookingId: id, note: disputeNote || undefined }),
+    mutationFn: (v: { id: number; note?: string }) =>
+      api.setBookingDisputed({ token: token ?? "", bookingId: v.id, note: v.note }),
     onSuccess: () => {
       setMsg("বিরোধ জানানো হয়েছে — নিষ্পত্তি না হওয়া পর্যন্ত সেটেলমেন্ট স্থগিত থাকবে।");
       refresh();
@@ -1136,16 +1151,6 @@ export function BookingDetailPage({ code }: { code: string }) {
 
         {/* actions */}
         <div className="mt-6 flex flex-wrap gap-2.5">
-          {isOwner && ["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(b.stage) && (
-            <button
-              type="button"
-              disabled={cancel.isPending}
-              onClick={() => cancel.mutate(b.id)}
-              className="border-[1.5px] border-red-300 text-red-700 font-semibold px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60"
-            >
-              বুকিং বাতিল করুন
-            </button>
-          )}
           {isOwner && b.stage === "pro_completed" && (
             <button
               type="button"
@@ -1193,6 +1198,59 @@ export function BookingDetailPage({ code }: { code: string }) {
             isOwnerCustomer={isOwner && role === "customer"}
             isAssignedPro={isAssignedPro}
           />
+        )}
+
+        {/* customer cancel request (Phase 9): one clear button — the
+            admin decides Waiting / Complete / Rejected */}
+        {isOwner && role === "customer" && ["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(b.stage) && (
+          <section aria-label="বুকিং বাতিলের অনুরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
+            <h2 className="font-bold text-[#064B27]">বুকিং বাতিল করতে চান?</h2>
+            {(() => {
+              const cr = cancelReqQ.data?.request;
+              if (cr && (cr.status === "requested" || cr.status === "under_review")) {
+                return (
+                  <p className="mt-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm px-4 py-3">
+                    {cr.status === "under_review"
+                      ? "আপনার বাতিলের অনুরোধ অ্যাডমিন যাচাই করছেন (Waiting) — সিদ্ধান্ত হলে জানানো হবে। ততক্ষণ বুকিং চলমান আছে।"
+                      : "আপনার বাতিলের অনুরোধ অ্যাডমিনের কাছে পাঠানো হয়েছে — যাচাই করে সিদ্ধান্ত জানানো হবে। ততক্ষণ বুকিং চলমান আছে।"}
+                  </p>
+                );
+              }
+              return (
+                <>
+                  {cr?.status === "rejected" && (
+                    <p className="mt-2 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm px-4 py-3">
+                      আপনার আগের বাতিলের অনুরোধ গৃহীত হয়নি — বুকিং আগের মতোই চলছে।
+                      {cr.adminNote ? ` অ্যাডমিনের নোট: ${cr.adminNote}` : ""}
+                    </p>
+                  )}
+                  <p className="mt-1 text-sm text-[#737B73]">
+                    অনুরোধ পাঠালে অ্যাডমিন যাচাই করে সিদ্ধান্ত দেবেন — অনুমোদিত হলেই কেবল বুকিং বাতিল হবে। অনলাইন পেমেন্ট থাকলে রিফান্ডের সিদ্ধান্ত প্রকাশিত বাতিল নীতি অনুযায়ী কেসভেদে অ্যাডমিন জানাবেন।
+                  </p>
+                  <form
+                    className="mt-3 flex flex-col sm:flex-row gap-2.5 max-w-xl"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setActionError("");
+                      requestCancel.mutate(b.id);
+                    }}
+                  >
+                    <input
+                      aria-label="বাতিলের কারণ (ঐচ্ছিক)"
+                      className={`${inputCls} flex-1`}
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      maxLength={600}
+                      placeholder="কারণ (ঐচ্ছিক)"
+                    />
+                    <button type="submit" disabled={requestCancel.isPending} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
+                      {requestCancel.isPending ? "পাঠানো হচ্ছে…" : "বাতিলের অনুরোধ পাঠান"}
+                    </button>
+                  </form>
+                </>
+              );
+            })()}
+          </section>
         )}
 
         {/* customer reschedule request + dispute (Phase 7) */}
@@ -1243,7 +1301,7 @@ export function BookingDetailPage({ code }: { code: string }) {
               onSubmit={(e) => {
                 e.preventDefault();
                 setActionError("");
-                dispute.mutate(b.id);
+                dispute.mutate({ id: b.id, note: disputeNote || undefined });
               }}
             >
               <input
@@ -1251,6 +1309,34 @@ export function BookingDetailPage({ code }: { code: string }) {
                 className={`${inputCls} flex-1`}
                 value={disputeNote}
                 onChange={(e) => setDisputeNote(e.target.value)}
+                maxLength={600}
+                placeholder="সমস্যাটি সংক্ষেপে লিখুন"
+              />
+              <button type="submit" disabled={dispute.isPending} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
+                {dispute.isPending ? "পাঠানো হচ্ছে…" : "বিরোধ জানান"}
+              </button>
+            </form>
+          </section>
+        )}
+        {isAssignedPro && ["assigned", "accepted", "in_progress", "pro_completed", "customer_confirmed", "admin_reviewed"].includes(b.stage) && (
+          <section aria-label="বিরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
+            <h2 className="font-bold text-[#064B27]">এই কাজ নিয়ে বিরোধ আছে?</h2>
+            <p className="mt-1 text-sm text-[#737B73]">
+              বিরোধ জানালে অ্যাডমিন বিষয়টি দেখবেন; সিদ্ধান্ত কারণসহ রেকর্ড না হওয়া পর্যন্ত এই বুকিংয়ের সেটেলমেন্ট (আপনার পেআউট) স্থগিত থাকবে।
+            </p>
+            <form
+              className="mt-3 flex flex-col sm:flex-row gap-2.5 max-w-xl"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setActionError("");
+                dispute.mutate({ id: b.id, note: proDisputeNote || undefined });
+              }}
+            >
+              <input
+                aria-label="বিরোধের কারণ"
+                className={`${inputCls} flex-1`}
+                value={proDisputeNote}
+                onChange={(e) => setProDisputeNote(e.target.value)}
                 maxLength={600}
                 placeholder="সমস্যাটি সংক্ষেপে লিখুন"
               />

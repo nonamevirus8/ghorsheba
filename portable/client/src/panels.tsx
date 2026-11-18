@@ -941,6 +941,16 @@ function RefundsTab({ token }: { token: string }) {
                   </div>
                   <p className="mt-1.5 text-sm text-[#4c584c]">{r.detail}</p>
                   {r.adminNote && <p className="mt-2 text-sm bg-[#F0FAF2] rounded-lg px-3 py-2">অ্যাডমিনের নোট: {r.adminNote}</p>}
+                  {r.status === "refunded" && r.refundAmount != null && (
+                    <p className="mt-2 text-sm font-semibold text-[#064B27]">
+                      ফেরত পেয়েছেন: {bdt(r.refundAmount)}
+                      {r.refundReference ? (
+                        <>
+                          {" "}• লেনদেন রেফারেন্স: <span className="font-en">{r.refundReference}</span>
+                        </>
+                      ) : null}
+                    </p>
+                  )}
                 </li>
               );
             })}
@@ -1493,6 +1503,7 @@ const WITHDRAWAL_METHOD_BN: Record<string, string> = {
 const WITHDRAWAL_STATUS_BN: Record<string, { label: string; cls: string }> = {
   requested: { label: "অপেক্ষমাণ", cls: "bg-amber-100 text-amber-800" },
   approved: { label: "অনুমোদিত", cls: "bg-sky-100 text-sky-800" },
+  held: { label: "হোল্ডে আছে", cls: "bg-red-100 text-red-700" },
   rejected: { label: "বাতিল", cls: "bg-red-100 text-red-700" },
   paid: { label: "পরিশোধিত", cls: "bg-[#087A35] text-white" },
 };
@@ -1599,6 +1610,7 @@ function ProEarningsTab({ token }: { token: string }) {
                   {r.cashReceived > 0 && <MoneyRow label="নগদে সরাসরি পেয়েছেন" value={bdt(r.cashReceived)} />}
                   <MoneyRow label="হেল্ড থেকে পাওনা" value={bdt(r.payoutFromHeld)} />
                   <MoneyRow label="পেইড আউট হয়েছে" value={bdt(r.paidOut)} />
+                  {r.refunded > 0 && <MoneyRow label="রিফান্ড হয়েছে (হেল্ড থেকে ছাড়া)" value={bdt(r.refunded)} />}
                   <MoneyRow label="এখনো হেল্ডে আছে" value={bdt(r.remainingHeld)} />
                   <MoneyRow label="এই কাজে আপনার মোট আয়" value={bdt(r.proTotal)} strong />
                 </div>
@@ -1617,7 +1629,7 @@ function ProEarningsTab({ token }: { token: string }) {
           )}
           {wallet.frozenHeld > 0 && (
             <span className="block mt-1 font-semibold text-red-700">
-              বিরোধ চলমান বুকিংয়ে {bdt(wallet.frozenHeld)} স্থগিত আছে — নিষ্পত্তি না হওয়া পর্যন্ত এটি তোলা যাবে না।
+              বিরোধ চলমান বা বাতিল হওয়া বুকিংয়ে {bdt(wallet.frozenHeld)} স্থগিত আছে — অ্যাডমিনের সিদ্ধান্ত না হওয়া পর্যন্ত এটি তোলা যাবে না।
             </span>
           )}
         </p>
@@ -1701,6 +1713,9 @@ function ProEarningsTab({ token }: { token: string }) {
                   <span className="text-[13px] text-[#737B73] ml-auto">{fmtDate(r.createdAt)}</span>
                   {r.status === "paid" && r.transactionReference && (
                     <span className="w-full text-[13px] text-[#737B73]">লেনদেন রেফারেন্স: <span className="font-en">{r.transactionReference}</span></span>
+                  )}
+                  {r.status === "held" && r.holdReason && (
+                    <span className="w-full text-[13px] text-red-700">হোল্ডের কারণ: {r.holdReason} — হোল্ড ছাড়া না হলে এই টাকা পাঠানো হবে না।</span>
                   )}
                   {r.status === "rejected" && r.rejectionReason && (
                     <span className="w-full text-[13px] text-red-700">কারণ: {r.rejectionReason}</span>
@@ -2328,6 +2343,129 @@ function AdminOverview({ token }: { token: string }) {
   );
 }
 
+const CANCEL_REQUEST_STATUS_BN: Record<string, { label: string; cls: string }> = {
+  requested: { label: "সিদ্ধান্তের অপেক্ষায়", cls: "bg-amber-100 text-amber-800" },
+  under_review: { label: "যাচাই চলছে (Waiting)", cls: "bg-sky-100 text-sky-800" },
+  approved: { label: "অনুমোদিত — বুকিং বাতিল হয়েছে", cls: "bg-[#087A35] text-white" },
+  rejected: { label: "গৃহীত হয়নি — বুকিং চলমান", cls: "bg-red-100 text-red-700" },
+};
+
+/** Master Phase 9: customer cancellation requests. A customer cancel
+ *  is only a request — the booking keeps running until an admin here
+ *  decides Waiting (under review) / Complete (approve → cancelled) /
+ *  Rejected (booking continues). */
+function CancelRequestsPanel({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["admin-cancel-requests"], queryFn: () => api.adminListCancelRequests({ token }) });
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [error, setError] = useState("");
+  const [doneId, setDoneId] = useState<number | null>(null);
+  const decide = useMutation({
+    mutationFn: (v: { id: number; decision: "review" | "approve" | "reject" }) =>
+      api.adminDecideCancelRequest({ token, requestId: v.id, decision: v.decision, note: notes[v.id]?.trim() || undefined }),
+    onSuccess: (_d, v) => {
+      setDoneId(v.id);
+      setError("");
+      qc.invalidateQueries({ queryKey: ["admin-cancel-requests"] });
+      qc.invalidateQueries({ queryKey: ["admin-bookings"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-settlement"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  if (q.isPending) return null;
+  if (q.isError) return <ErrorBox message={errMsg(q.error)} />;
+  const open = (q.data?.requests ?? []).filter((r) => r.status === "requested" || r.status === "under_review");
+  const decided = (q.data?.requests ?? []).filter((r) => r.status === "approved" || r.status === "rejected").slice(0, 5);
+  return (
+    <section aria-label="বাতিলের অনুরোধ" className="mb-6">
+      <h2 className="text-lg font-bold text-[#064B27]">বাতিলের অনুরোধ ({open.length}টি সিদ্ধান্তের অপেক্ষায়)</h2>
+      <p className="mt-1 text-sm text-[#737B73]">
+        গ্রাহকের বাতিলের অনুরোধে বুকিং সাথে সাথে বাতিল হয় না — আপনি যাচাই করে সিদ্ধান্ত দিলেই কেবল বাতিল হবে।
+        অনুমোদিত হলে অপেক্ষমাণ অনলাইন পেমেন্ট আপনা-আপনি ব্যর্থ হবে; যাচাইকৃত পেমেন্ট থাকলে রিফান্ডের সিদ্ধান্ত ফাইন্যান্স অ্যাডমিন কেস অনুযায়ী নেবেন (কোনো নির্দিষ্ট হার নেই)।
+      </p>
+      {error && <div className="mt-3"><ErrorBox message={error} /></div>}
+      {open.length === 0 ? (
+        <p className="mt-3 text-sm text-[#737B73]">কোনো খোলা বাতিলের অনুরোধ নেই।</p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {open.map((r) => {
+            const st = CANCEL_REQUEST_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
+            return (
+              <div key={r.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-bold">
+                    {r.customerName} — বুকিং <span className="font-en">{r.bookingCode}</span>
+                  </p>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                  <span className="text-[12.5px] text-[#737B73]">{fmtDateTime(r.createdAt)}</span>
+                </div>
+                {r.reason && <p className="mt-1 text-sm text-[#4c584c]">গ্রাহকের কারণ: {r.reason}</p>}
+                <div className="mt-3">
+                  <label className={labelCls} htmlFor={`cancel-note-${r.id}`}>অ্যাডমিন নোট (ঐচ্ছিক)</label>
+                  <input
+                    id={`cancel-note-${r.id}`}
+                    className={inputCls}
+                    value={notes[r.id] ?? ""}
+                    onChange={(e) => setNotes((m) => ({ ...m, [r.id]: e.target.value }))}
+                    maxLength={600}
+                    placeholder="সিদ্ধান্তের নোট"
+                  />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {r.status === "requested" && (
+                    <button
+                      type="button"
+                      disabled={decide.isPending}
+                      onClick={() => { setError(""); decide.mutate({ id: r.id, decision: "review" }); }}
+                      className="bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
+                    >
+                      যাচাই শুরু করুন (Waiting)
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={decide.isPending}
+                    onClick={() => { setError(""); decide.mutate({ id: r.id, decision: "approve" }); }}
+                    className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+                  >
+                    অনুমোদন করুন — বুকিং বাতিল হবে (Complete)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={decide.isPending}
+                    onClick={() => { setError(""); decide.mutate({ id: r.id, decision: "reject" }); }}
+                    className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60"
+                  >
+                    গৃহীত হয়নি — বুকিং চলবে (Rejected)
+                  </button>
+                </div>
+                {doneId === r.id && <p className="mt-2 text-sm text-[#064B27] font-semibold">সিদ্ধান্ত সংরক্ষিত হয়েছে।</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {decided.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <h3 className="font-semibold text-[#064B27] text-[15px]">সাম্প্রতিক সিদ্ধান্ত</h3>
+          {decided.map((r) => {
+            const st = CANCEL_REQUEST_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
+            return (
+              <div key={r.id} className="rounded-xl border border-[#E5EAE5] bg-white px-4 py-2.5 flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-sm">{r.customerName} — <span className="font-en">{r.bookingCode}</span></span>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                {r.adminNote && <span className="text-[13px] text-[#737B73]">{r.adminNote}</span>}
+                {r.decidedAt && <span className="text-[12.5px] text-[#737B73] ml-auto">{fmtDateTime(r.decidedAt)}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AdminBookings({ token }: { token: string }) {
   const [status, setStatus] = useState("");
   const list = useQuery({
@@ -2336,6 +2474,7 @@ function AdminBookings({ token }: { token: string }) {
   });
   return (
     <div>
+      <CancelRequestsPanel token={token} />
       <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="স্ট্যাটাস ফিল্টার">
         {(
           [
@@ -2627,8 +2766,9 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
     mutationFn: () => api.adminDeclineReschedule({ token, bookingId: b.id }),
     ...handlers("সময় বদলের অনুরোধ বাতিল করা হয়েছে।"),
   });
+  const [disputeReason, setDisputeReason] = useState("");
   const clearDispute = useMutation({
-    mutationFn: () => api.adminClearDispute({ token, bookingId: b.id }),
+    mutationFn: () => api.adminClearDispute({ token, bookingId: b.id, note: disputeReason.trim() }),
     ...handlers("বিরোধ নিষ্পত্তি হয়েছে — বুকিং আগের অবস্থায় ফিরেছে।"),
   });
   const busy = confirmResched.isPending || applyResched.isPending || declineResched.isPending || clearDispute.isPending;
@@ -2648,7 +2788,34 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
       {b.stage === "disputed" && (
         <div className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
           <p className="text-sm text-red-800 font-semibold">এই বুকিংয়ে বিরোধ চলমান — সেটেলমেন্ট স্থগিত আছে।</p>
-          <button type="button" disabled={busy} onClick={() => clearDispute.mutate()} className="mt-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
+          <p className="mt-1 text-[13px] text-red-800">
+            নিষ্পত্তির সিদ্ধান্ত কারণসহ রেকর্ড করা বাধ্যতামূলক — সিদ্ধান্ত গ্রাহক ও প্রফেশনাল দুজনকেই জানানো হবে এবং সেটেলমেন্টের স্থগিতাদেশ উঠবে।
+          </p>
+          <div className="mt-2.5">
+            <label className={labelCls} htmlFor={`dispute-reason-${b.id}`}>নিষ্পত্তির সিদ্ধান্ত / কারণ</label>
+            <input
+              id={`dispute-reason-${b.id}`}
+              className={inputCls}
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              maxLength={600}
+              placeholder="যেমন: দুই পক্ষের কথা শুনে সমাধান হয়েছে"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setError("");
+              setDone("");
+              if (!disputeReason.trim()) {
+                setError("বিরোধ নিষ্পত্তি করতে হলে সিদ্ধান্তের কারণ লিখুন।");
+                return;
+              }
+              clearDispute.mutate();
+            }}
+            className="mt-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+          >
             বিরোধ নিষ্পত্তি করে আগের অবস্থায় ফেরান
           </button>
         </div>
@@ -3528,9 +3695,11 @@ function AdminSocialLinks({ token }: { token: string }) {
 //
 // Payment Management: money figures come from the server (verified
 // payments + immutable ledger), TrxID verification wires the existing
-// adminVerifyPayment action, the settlement queue is read-only
-// (decide/pay is Phase 9), and commission rates are edited per payment
-// model — a rate change never touches a confirmed booking's snapshot.
+// adminVerifyPayment action, and commission rates are edited per
+// payment model — a rate change never touches a confirmed booking's
+// snapshot. Master Phase 9 adds the decisions: withdrawal decide/pay
+// in the settlement queue below, and refund decisions in
+// RefundRequestsPanel (finance only, real transfer recorded per case).
 
 const LEDGER_TYPE_BN: Record<string, string> = {
   online_collection: "অনলাইন সংগ্রহ",
@@ -3815,14 +3984,169 @@ function CommissionRatesCard({ token }: { token: string }) {
   );
 }
 
+type SettlementWithdrawal = ApiResponse<typeof api, "adminListSettlementQueue">["withdrawalRequests"][number];
+
+/** Master Phase 9: finance admin decides a withdrawal request —
+ *  pay (real transfer reference required), hold (reason required),
+ *  release a hold, or reject (reason required). The server re-checks
+ *  the finance level and the releasable balance on every decision. */
+function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithdrawal }) {
+  const qc = useQueryClient();
+  const [reference, setReference] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const decide = useMutation({
+    mutationFn: (v: { decision: "pay" | "reject" | "hold" | "release"; transactionReference?: string; note?: string }) =>
+      api.adminDecideWithdrawal({ token, withdrawalId: w.id, decision: v.decision, transactionReference: v.transactionReference, note: v.note }),
+    onSuccess: (_d, v) => {
+      setDone(
+        v.decision === "pay"
+          ? "পরিশোধ সম্পন্ন — পেআউট লেজারে লেখা হয়েছে।"
+          : v.decision === "reject"
+            ? "অনুরোধ বাতিল হয়েছে — টাকা প্রফেশনালের ব্যালেন্সে ফিরেছে।"
+            : v.decision === "hold"
+              ? "অনুরোধ হোল্ডে রাখা হয়েছে।"
+              : "হোল্ড ছাড়া হয়েছে — অনুরোধ আবার সিদ্ধান্তের অপেক্ষায়।",
+      );
+      setError("");
+      qc.invalidateQueries({ queryKey: ["admin-settlement"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const st = WITHDRAWAL_STATUS_BN[w.status] ?? { label: w.status, cls: "bg-gray-100 text-gray-700" };
+  return (
+    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-bold">
+          {w.professionalName} — {bdt(w.amount)}
+        </p>
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+      </div>
+      <p className="mt-0.5 text-[13.5px] text-[#737B73]">
+        {WITHDRAW_METHOD_BN[w.method] ?? w.method} • <span className="font-en">{w.number}</span> •{" "}
+        {fmtDateTime(w.requestedAt)}
+        {w.bookingCode ? (
+          <>
+            {" "}• বুকিং <span className="font-en">{w.bookingCode}</span>
+          </>
+        ) : null}
+      </p>
+      {w.status === "held" && w.holdReason && (
+        <p className="mt-1 text-[13px] text-red-700 font-semibold">হোল্ডের কারণ: {w.holdReason}</p>
+      )}
+      {done ? (
+        <p className="mt-2 rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-3 py-2">{done}</p>
+      ) : (
+        <div className="mt-3 space-y-2.5">
+          <div className="grid sm:grid-cols-2 gap-2.5">
+            <div>
+              <label className={labelCls} htmlFor={`wd-ref-${w.id}`}>আসল লেনদেনের TrxID / রেফারেন্স (পরিশোধে লাগবে)</label>
+              <input
+                id={`wd-ref-${w.id}`}
+                className={`${inputCls} font-en`}
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                maxLength={120}
+                placeholder="যেমন: 9HX7K2LM1P"
+              />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`wd-note-${w.id}`}>কারণ (হোল্ড / বাতিলে লাগবে)</label>
+              <input
+                id={`wd-note-${w.id}`}
+                className={inputCls}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={600}
+                placeholder="যেমন: বুকিংয়ে বিরোধ চলমান"
+              />
+            </div>
+          </div>
+          <p className="text-[12.5px] text-[#737B73]">
+            শুধু স্ক্রিনশট প্রমাণ নয় — টাকা সত্যিই পাঠিয়ে তার লেনদেন রেফারেন্স লিখলেই কেবল "পরিশোধিত" হবে। একবার পরিশোধ হলে আবার পরিশোধ করা যাবে না।
+            {w.status === "held" && " এই অনুরোধ হোল্ডে আছে — পরিশোধের আগে হোল্ড ছাড়তে হবে।"}
+          </p>
+          {error && <ErrorBox message={error} />}
+          <div className="flex flex-wrap gap-2">
+            {w.status !== "held" && (
+              <button
+                type="button"
+                disabled={decide.isPending}
+                onClick={() => {
+                  setError("");
+                  if (!reference.trim()) {
+                    setError("পরিশোধ করতে হলে আসল লেনদেনের TrxID / রেফারেন্স লিখুন।");
+                    return;
+                  }
+                  decide.mutate({ decision: "pay", transactionReference: reference.trim() });
+                }}
+                className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+              >
+                টাকা পাঠিয়ে পরিশোধ করুন
+              </button>
+            )}
+            {w.status !== "held" ? (
+              <button
+                type="button"
+                disabled={decide.isPending}
+                onClick={() => {
+                  setError("");
+                  if (!note.trim()) {
+                    setError("হোল্ড করতে হলে কারণ লিখুন।");
+                    return;
+                  }
+                  decide.mutate({ decision: "hold", note: note.trim() });
+                }}
+                className="border-[1.5px] border-amber-400 text-amber-800 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-amber-50 disabled:opacity-60"
+              >
+                হোল্ড করুন
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={decide.isPending}
+                onClick={() => {
+                  setError("");
+                  decide.mutate({ decision: "release" });
+                }}
+                className="border-[1.5px] border-amber-400 text-amber-800 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-amber-50 disabled:opacity-60"
+              >
+                হোল্ড ছাড়ুন
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={decide.isPending}
+              onClick={() => {
+                setError("");
+                if (!note.trim()) {
+                  setError("বাতিল করতে হলে কারণ লিখুন।");
+                  return;
+                }
+                decide.mutate({ decision: "reject", note: note.trim() });
+              }}
+              className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60"
+            >
+              বাতিল করুন
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettlementQueue({ token }: { token: string }) {
   const q = useQuery({ queryKey: ["admin-settlement"], queryFn: () => api.adminListSettlementQueue({ token }) });
   return (
     <section>
       <h2 className="text-lg font-bold text-[#064B27]">সেটলমেন্ট কিউ</h2>
       <p className="mt-1 text-sm text-[#737B73]">
-        যেসব টাকা পেআউটের অপেক্ষায় আছে তার তালিকা। পেআউট অনুমোদন ও পরিশোধের সিদ্ধান্ত পরের ধাপে চালু হবে — এই
-        তালিকা শুধু দেখার জন্য, এখান থেকে কোনো টাকা ছাড়া হয় না।
+        হেল্ড ব্যালেন্সের তালিকা ও প্রফেশনালদের উইথড্র অনুরোধ। উইথড্রের সিদ্ধান্ত শুধু ফাইন্যান্স অ্যাডমিন (বা সুপার) দিতে
+        পারেন; পরিশোধে আসল লেনদেনের রেফারেন্স বাধ্যতামূলক। বিরোধ বা বাতিল হওয়া বুকিংয়ের টাকা স্থগিত — সিদ্ধান্ত না
+        হওয়া পর্যন্ত তা ছাড়া হয় না।
       </p>
       {q.isPending ? (
         <Spinner />
@@ -3836,6 +4160,11 @@ function SettlementQueue({ token }: { token: string }) {
               {q.data!.totals.frozenDisputedHeld > 0 && (
                 <span className="block text-[13px] font-semibold text-red-700">
                   বিরোধের কারণে স্থগিত: {bdt(q.data!.totals.frozenDisputedHeld)} (ছাড়যোগ্য মোটে ধরা হয়নি)
+                </span>
+              )}
+              {q.data!.totals.frozenCancelledHeld > 0 && (
+                <span className="block text-[13px] font-semibold text-red-700">
+                  বাতিল/প্রত্যাখ্যাত বুকিংয়ে স্থগিত (রিফান্ডের সিদ্ধান্ত বাকি): {bdt(q.data!.totals.frozenCancelledHeld)} (ছাড়যোগ্য মোটে ধরা হয়নি)
                 </span>
               )}
             </h3>
@@ -3855,6 +4184,7 @@ function SettlementQueue({ token }: { token: string }) {
                     <p className="text-[14px] font-semibold text-[#064B27]">
                       ছাড়যোগ্য: {bdt(h.remainingHeld)}
                       {h.disputed && <span className="ml-2 text-red-700">• বিরোধ চলমান — সেটেলমেন্ট স্থগিত</span>}
+                      {!h.disputed && h.frozen && <span className="ml-2 text-red-700">• বুকিং বাতিল/প্রত্যাখ্যাত — রিফান্ডের সিদ্ধান্ত বাকি, পেআউট হবে না</span>}
                     </p>
                   </div>
                 ))}
@@ -3871,27 +4201,174 @@ function SettlementQueue({ token }: { token: string }) {
             ) : (
               <div className="space-y-2.5">
                 {q.data!.withdrawalRequests.map((w) => (
-                  <div key={w.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
-                    <p className="font-bold">
-                      {w.professionalName} — {bdt(w.amount)}
-                    </p>
-                    <p className="text-[13.5px] text-[#737B73]">
-                      {WITHDRAW_METHOD_BN[w.method] ?? w.method} • <span className="font-en">{w.number}</span> •{" "}
-                      {fmtDateTime(w.requestedAt)}
-                      {w.bookingCode ? (
-                        <>
-                          {" "}• বুকিং <span className="font-en">{w.bookingCode}</span>
-                        </>
-                      ) : null}
-                    </p>
-                    <p className="text-[13px] text-amber-700 font-semibold">
-                      {w.status === "approved" ? "অনুমোদিত — পরিশোধ বাকি" : "সিদ্ধান্তের অপেক্ষায়"}
-                    </p>
-                  </div>
+                  <WithdrawalDecisionBox key={w.id} token={token} w={w} />
                 ))}
               </div>
             )}
           </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+const ADMIN_REFUND_REASON_BN: Record<string, string> = {
+  work_not_completed: "কাজ সম্পন্ন হয়নি",
+  poor_quality: "কাজের মান খারাপ",
+  incorrect_price: "ভুল মূল্য",
+  professional_no_show: "প্রফেশনাল আসেনি",
+  other: "অন্যান্য",
+};
+
+const ADMIN_REFUND_STATUS_BN: Record<string, { label: string; cls: string }> = {
+  requested: { label: "সিদ্ধান্তের অপেক্ষায়", cls: "bg-amber-100 text-amber-800" },
+  approved: { label: "অনুমোদিত", cls: "bg-sky-100 text-sky-800" },
+  rejected: { label: "গৃহীত হয়নি", cls: "bg-red-100 text-red-700" },
+  refunded: { label: "রিফান্ড সম্পন্ন", cls: "bg-[#087A35] text-white" },
+};
+
+type AdminRefundRequest = ApiResponse<typeof api, "adminListRefundRequests">["requests"][number];
+
+function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest }) {
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const decide = useMutation({
+    mutationFn: (v: { decision: "refund" | "reject"; refundAmount?: number; refundReference?: string; note?: string }) =>
+      api.adminDecideRefundRequest({ token, requestId: r.id, decision: v.decision, refundAmount: v.refundAmount, refundReference: v.refundReference, note: v.note }),
+    onSuccess: (_d, v) => {
+      setDone(v.decision === "refund" ? "রিফান্ড রেকর্ড হয়েছে — গ্রাহককে জানানো হয়েছে।" : "অনুরোধ বাতিল হয়েছে — গ্রাহককে কারণ জানানো হয়েছে।");
+      setError("");
+      qc.invalidateQueries({ queryKey: ["admin-refunds"] });
+      qc.invalidateQueries({ queryKey: ["admin-settlement"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-payments"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const st = ADMIN_REFUND_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
+  const open = r.status === "requested";
+  return (
+    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-bold">
+          {r.customerName} — বুকিং <span className="font-en">{r.bookingCode}</span>
+        </p>
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+        <span className="text-[12.5px] text-[#737B73]">{fmtDateTime(r.createdAt)}</span>
+      </div>
+      <p className="mt-1 text-[13.5px] text-[#737B73]">
+        কারণ: {ADMIN_REFUND_REASON_BN[r.reason] ?? r.reason} — {r.detail}
+      </p>
+      <p className="text-[13.5px] text-[#737B73]">
+        অনলাইন পেমেন্ট: {r.paymentAmount != null ? bdt(r.paymentAmount) : "—"}
+        {r.paymentProvider ? ` (${PROVIDER_BN[r.paymentProvider] ?? r.paymentProvider})` : ""}
+        {r.paymentStatus ? ` • অবস্থা: ${r.paymentStatus === "verified" ? "যাচাইকৃত" : r.paymentStatus === "refunded" ? "রিফান্ড হয়েছে" : r.paymentStatus}` : ""}
+      </p>
+      {r.status === "refunded" && r.refundAmount != null && (
+        <p className="mt-1 text-[13.5px] font-semibold text-[#064B27]">
+          ফেরত দেওয়া হয়েছে: {bdt(r.refundAmount)}
+          {r.refundReference ? (
+            <>
+              {" "}• রেফারেন্স: <span className="font-en">{r.refundReference}</span>
+            </>
+          ) : null}
+        </p>
+      )}
+      {r.status === "rejected" && r.adminNote && (
+        <p className="mt-1 text-[13px] text-red-700">বাতিলের কারণ: {r.adminNote}</p>
+      )}
+      {open && !done && (
+        <div className="mt-3 space-y-2.5">
+          <p className="text-[12.5px] text-[#737B73]">
+            রিফান্ডের পরিমাণ প্রকাশিত বাতিল নীতি অনুযায়ী প্রতিটি কেসে আপনি ঠিক করবেন — সিস্টেমে কোনো নির্দিষ্ট হার বসানো নেই।
+            টাকা সত্যিই ফেরত পাঠিয়ে তার পরিমাণ ও রেফারেন্স লিখলেই কেবল "রিফান্ড সম্পন্ন" হবে।
+          </p>
+          <div className="grid sm:grid-cols-3 gap-2.5">
+            <div>
+              <label className={labelCls} htmlFor={`rf-amt-${r.id}`}>রিফান্ডের পরিমাণ (৳)</label>
+              <input id={`rf-amt-${r.id}`} type="number" min={1} className={`${inputCls} font-en`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`rf-ref-${r.id}`}>ফেরত লেনদেনের TrxID / রেফারেন্স</label>
+              <input id={`rf-ref-${r.id}`} className={`${inputCls} font-en`} value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} placeholder="যেমন: 9HX7K2LM1P" />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`rf-note-${r.id}`}>নোট / বাতিলের কারণ</label>
+              <input id={`rf-note-${r.id}`} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} placeholder="বাতিলে কারণ লাগবে" />
+            </div>
+          </div>
+          {error && <ErrorBox message={error} />}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={decide.isPending}
+              onClick={() => {
+                setError("");
+                const amt = Number(amount);
+                if (!Number.isInteger(amt) || amt <= 0) {
+                  setError("রিফান্ডের সঠিক পরিমাণ লিখুন।");
+                  return;
+                }
+                if (!reference.trim()) {
+                  setError("রিফান্ড করতে হলে ফেরত লেনদেনের TrxID / রেফারেন্স লিখুন।");
+                  return;
+                }
+                decide.mutate({ decision: "refund", refundAmount: amt, refundReference: reference.trim(), note: note.trim() || undefined });
+              }}
+              className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+            >
+              রিফান্ড সম্পন্ন করুন
+            </button>
+            <button
+              type="button"
+              disabled={decide.isPending}
+              onClick={() => {
+                setError("");
+                if (!note.trim()) {
+                  setError("বাতিল করতে হলে কারণ লিখুন।");
+                  return;
+                }
+                decide.mutate({ decision: "reject", note: note.trim() });
+              }}
+              className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60"
+            >
+              অনুরোধ বাতিল করুন
+            </button>
+          </div>
+        </div>
+      )}
+      {done && <p className="mt-2 rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-3 py-2">{done}</p>}
+    </div>
+  );
+}
+
+/** Master Phase 9: refund requests queue for the finance admin. */
+function RefundRequestsPanel({ token }: { token: string }) {
+  const q = useQuery({ queryKey: ["admin-refunds"], queryFn: () => api.adminListRefundRequests({ token }) });
+  const openCount = (q.data?.requests ?? []).filter((r) => r.status === "requested").length;
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-[#064B27]">রিফান্ড অনুরোধ ({openCount}টি সিদ্ধান্তের অপেক্ষায়)</h2>
+      <p className="mt-1 text-sm text-[#737B73]">
+        গ্রাহকের রিফান্ড অনুরোধে কোনো টাকা নিজে থেকে নড়ে না — আপনি যাচাই করে আসল ফেরত লেনদেন রেকর্ড করলেই রিফান্ড সম্পন্ন হয়।
+      </p>
+      {q.isPending ? (
+        <Spinner />
+      ) : q.isError ? (
+        <ErrorBox message={errMsg(q.error)} />
+      ) : (q.data?.requests.length ?? 0) === 0 ? (
+        <div className="mt-3">
+          <EmptyState title="কোনো রিফান্ড অনুরোধ নেই" />
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2.5">
+          {q.data!.requests.map((r) => (
+            <RefundDecisionBox key={r.id} token={token} r={r} />
+          ))}
         </div>
       )}
     </section>
@@ -4003,6 +4480,7 @@ function AdminPayments({ token }: { token: string }) {
           </div>
         )}
       </section>
+      <RefundRequestsPanel token={token} />
       <SettlementQueue token={token} />
     </div>
   );

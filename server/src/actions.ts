@@ -1092,14 +1092,20 @@ function isUniqueViolation(err: unknown): boolean {
 //   held           = Σ held_balance ledger entries
 //   commission     = Σ commission_due ledger entries
 //   paidOut        = Σ payout ledger entries
+//   refunded       = Σ refund ledger entries (Master Phase 9: money a
+//                    finance admin recorded as refunded to the customer
+//                    out of this booking's held pot — it is gone from
+//                    the pot, so it can never be paid out afterwards)
 //   payoutFromHeld = held − commission
 //   proTotal       = payoutFromHeld + cash part of the bill (snapshot)
-//   remainingHeld  = held − commission − paidOut
+//   remainingHeld  = held − commission − paidOut − refunded
 // Available (withdrawable) balance = Σ remainingHeld over the pro's
 // bookings − Σ amounts of withdrawal requests still open (requested /
-// approved). Paid withdrawal requests are settled through `payout`
-// ledger entries (Master Phase 9), which already reduce remainingHeld,
-// so they are not subtracted twice.
+// approved / held). Paid withdrawal requests are settled through
+// `payout` ledger entries (Master Phase 9), which already reduce
+// remainingHeld, so they are not subtracted twice. Held money on
+// disputed bookings — and on cancelled / rejected bookings awaiting a
+// refund decision — is frozen and excluded from the available balance.
 
 interface ProEarningRow {
   bookingId: number;
@@ -1114,6 +1120,7 @@ interface ProEarningRow {
   cashReceived: number;
   payoutFromHeld: number;
   paidOut: number;
+  refunded: number;
   remainingHeld: number;
   proTotal: number;
 }
@@ -1149,18 +1156,19 @@ async function computeProMoney(ctx: Ctx, proId: number): Promise<ProMoney> {
         .from(schema.paymentLedger)
         .where(inArray(schema.paymentLedger.bookingId, ids))
     : [];
-  const sums = new Map<number, { held: number; commission: number; paidOut: number }>();
+  const sums = new Map<number, { held: number; commission: number; paidOut: number; refunded: number }>();
   for (const e of ledger) {
-    const s = sums.get(e.bookingId) ?? { held: 0, commission: 0, paidOut: 0 };
+    const s = sums.get(e.bookingId) ?? { held: 0, commission: 0, paidOut: 0, refunded: 0 };
     if (e.entryType === "held_balance") s.held += e.amount;
     else if (e.entryType === "commission_due") s.commission += e.amount;
     else if (e.entryType === "payout") s.paidOut += e.amount;
+    else if (e.entryType === "refund") s.refunded += e.amount;
     sums.set(e.bookingId, s);
   }
   const rows: ProEarningRow[] = [];
   for (const b of myBookings) {
     const s = sums.get(b.id);
-    if (!s || (s.held === 0 && s.commission === 0 && s.paidOut === 0)) continue;
+    if (!s || (s.held === 0 && s.commission === 0 && s.paidOut === 0 && s.refunded === 0)) continue;
     const payoutFromHeld = s.held - s.commission;
     const cashReceived = b.cashAmount ?? 0;
     rows.push({
@@ -1176,7 +1184,8 @@ async function computeProMoney(ctx: Ctx, proId: number): Promise<ProMoney> {
       cashReceived,
       payoutFromHeld,
       paidOut: s.paidOut,
-      remainingHeld: s.held - s.commission - s.paidOut,
+      refunded: s.refunded,
+      remainingHeld: s.held - s.commission - s.paidOut - s.refunded,
       proTotal: payoutFromHeld + cashReceived,
     });
   }
@@ -1185,18 +1194,23 @@ async function computeProMoney(ctx: Ctx, proId: number): Promise<ProMoney> {
     .from(schema.withdrawalRequests)
     .where(eq(schema.withdrawalRequests.professionalId, proId));
   const openWithdrawalTotal = requests
-    .filter((r) => r.status === "requested" || r.status === "approved")
+    .filter((r) => r.status === "requested" || r.status === "approved" || r.status === "held")
     .reduce((a, r) => a + r.amount, 0);
   const heldNet = rows.reduce((a, r) => a + r.remainingHeld, 0);
-  // Settlement freeze (Master Phase 7): held money belonging to a
+  // Settlement freeze (Master Phase 7 + 9): held money belonging to a
   // booking currently in "disputed" status is frozen — it stays in
-  // the held total (it is still the pro's money, pending the Phase 9
-  // dispute outcome) but is excluded from the withdrawable balance.
-  const disputedIds = new Set(
-    myBookings.filter((b) => b.status === "disputed").map((b) => b.id),
+  // the held total (it is still the pro's money, pending the dispute
+  // outcome) but is excluded from the withdrawable balance. The same
+  // applies to cancelled / rejected bookings: their held money awaits
+  // the admin's refund decision and is never paid out to the pro (a
+  // cancelled job earns no commission and no payout).
+  const frozenIds = new Set(
+    myBookings
+      .filter((b) => b.status === "disputed" || b.status === "cancelled" || b.status === "rejected")
+      .map((b) => b.id),
   );
   const frozenHeld = rows
-    .filter((r) => disputedIds.has(r.bookingId))
+    .filter((r) => frozenIds.has(r.bookingId))
     .reduce((a, r) => a + r.remainingHeld, 0);
   return {
     rows,
@@ -1725,6 +1739,11 @@ const refundRequestOut = z.object({
   detail: z.string(),
   status: z.string(),
   adminNote: z.string().nullable(),
+  // Master Phase 9: the recorded refund decision (null until a finance
+  // admin records the real refund transfer).
+  refundAmount: z.number().nullable(),
+  refundReference: z.string().nullable(),
+  decidedAt: z.string().nullable(),
   createdAt: z.string(),
 });
 
@@ -1743,7 +1762,45 @@ function toRefundOut(
     detail: r.detail,
     status: r.status,
     adminNote: r.adminNote,
+    refundAmount: r.refundAmount,
+    refundReference: r.refundReference,
+    decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
+  };
+}
+
+// Master Phase 9: customer cancellation requests (see cancel_requests
+// in schema.ts). The customer sees their own request's state; the
+// admin list adds the customer/booking context.
+const cancelRequestOut = z.object({
+  id: z.number(),
+  bookingId: z.number(),
+  bookingCode: z.string(),
+  customerName: z.string(),
+  reason: z.string().nullable(),
+  status: z.string(),
+  adminNote: z.string().nullable(),
+  createdAt: z.string(),
+  decidedAt: z.string().nullable(),
+});
+
+type CancelRequestRow = typeof schema.cancelRequests.$inferSelect;
+
+function toCancelRequestOut(
+  r: CancelRequestRow,
+  bookingCode: string,
+  customerName: string,
+): z.infer<typeof cancelRequestOut> {
+  return {
+    id: r.id,
+    bookingId: r.bookingId,
+    bookingCode,
+    customerName,
+    reason: r.reason,
+    status: r.status,
+    adminNote: r.adminNote,
+    createdAt: r.createdAt.toISOString(),
+    decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
   };
 }
 
@@ -2554,11 +2611,16 @@ export const Actions = {
     },
   }),
 
-  cancelBooking: defineAction({
-    description: "Cancels the customer's own booking while it is still before work starts (pending, price confirmed, assigned, accepted or rescheduled stages).",
-    request: z.object({ token: z.string(), bookingId: z.number().int() }),
-    response: okOut,
-    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+  requestBookingCancel: defineAction({
+    description:
+      "Customer asks to cancel their own booking (Master Phase 9): this only files a cancellation REQUEST — the booking keeps running until an admin (operations) checks it and decides Waiting (under review) / Complete (approved: booking cancelled) / Rejected (booking continues). One open request per booking.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      reason: z.string().max(600).optional(),
+    }),
+    response: z.object({ request: cancelRequestOut }),
+    async handler(ctx, args) {
       const user = await requireUser(ctx, args.token);
       const db = dbOf(ctx);
       const rows = await db
@@ -2572,8 +2634,202 @@ export const Actions = {
       if (
         !["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(stage)
       ) {
-        throw new Error("এই অবস্থায় বুকিং বাতিল করা যাবে না।");
+        throw new Error("এই অবস্থায় বুকিং বাতিলের অনুরোধ করা যাবে না।");
       }
+      const open = await db
+        .select()
+        .from(schema.cancelRequests)
+        .where(
+          and(
+            eq(schema.cancelRequests.bookingId, b.id),
+            inArray(schema.cancelRequests.status, ["requested", "under_review"]),
+          ),
+        )
+        .limit(1);
+      if (open.length) {
+        throw new Error("এই বুকিংয়ের জন্য ইতিমধ্যে একটি বাতিলের অনুরোধ অ্যাডমিনের সিদ্ধান্তের অপেক্ষায় আছে।");
+      }
+      const reason = args.reason?.trim() ? args.reason.trim() : null;
+      const inserted = await db
+        .insert(schema.cancelRequests)
+        .values({ bookingId: b.id, customerId: user.id, reason })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error("অনুরোধ পাঠানো যায়নি।");
+      await addEvent(
+        ctx,
+        b.id,
+        b.status,
+        "customer",
+        reason ? `গ্রাহক বাতিলের অনুরোধ করেছেন — ${reason}` : "গ্রাহক বাতিলের অনুরোধ করেছেন",
+      );
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "cancel_requested",
+        title: "বুকিং বাতিলের অনুরোধ এসেছে",
+        body: `কোড: ${b.code} — অ্যাডমিন যাচাই করে সিদ্ধান্ত দেবেন।`,
+        bookingId: b.id,
+      });
+      ctx.invalidateQueries();
+      return { request: toCancelRequestOut(row, b.code, user.name) };
+    },
+  }),
+
+  getMyCancelRequest: defineAction({
+    description:
+      "Returns the signed-in customer's latest cancellation request for one of their own bookings, or null when they have never requested a cancellation for it.",
+    request: z.object({ token: z.string(), bookingId: z.number().int() }),
+    response: z.object({ request: cancelRequestOut.nullable() }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) throw new Error("বুকিং পাওয়া যায়নি।");
+      const rows = await db
+        .select()
+        .from(schema.cancelRequests)
+        .where(eq(schema.cancelRequests.bookingId, b.id))
+        .orderBy(desc(schema.cancelRequests.id))
+        .limit(1);
+      const r = rows[0];
+      return { request: r ? toCancelRequestOut(r, b.code, user.name) : null };
+    },
+  }),
+
+  adminListCancelRequests: defineAction({
+    description:
+      "Admin (operations): all customer cancellation requests, newest first — the open ones (requested / under review) are the decision queue for the Waiting / Complete / Rejected flow.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ requests: z.array(cancelRequestOut) }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.cancelRequests)
+        .orderBy(desc(schema.cancelRequests.id));
+      const bookings = await db.select().from(schema.bookings);
+      const bookingById = new Map(bookings.map((x) => [x.id, x]));
+      const users = await db.select().from(schema.users);
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      return {
+        requests: rows.map((r) =>
+          toCancelRequestOut(
+            r,
+            bookingById.get(r.bookingId)?.code ?? "",
+            nameById.get(r.customerId) ?? "",
+          ),
+        ),
+      };
+    },
+  }),
+
+  adminDecideCancelRequest: defineAction({
+    description:
+      "Admin (operations) decides a customer cancellation request (Master Phase 9): 'review' marks it Waiting (under review, booking untouched); 'approve' completes the cancellation — the booking is cancelled, still-pending online payments auto-fail (Phase 5 P-1), no commission is earned on the cancelled job, and a verified online payment moves to refund_pending for a per-case finance refund decision; 'reject' closes the request and the booking continues exactly as before. The customer is notified of every decision.",
+    request: z.object({
+      token: z.string(),
+      requestId: z.number().int(),
+      decision: z.enum(["review", "approve", "reject"]),
+      note: z.string().max(600).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.cancelRequests)
+        .where(eq(schema.cancelRequests.id, args.requestId))
+        .limit(1);
+      const req = rows[0];
+      if (!req) throw new Error("বাতিলের অনুরোধ পাওয়া যায়নি।");
+      if (req.status !== "requested" && req.status !== "under_review") {
+        throw new Error("এই অনুরোধের সিদ্ধান্ত ইতিমধ্যে দেওয়া হয়েছে।");
+      }
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, req.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      const note = args.note?.trim() ? args.note.trim() : null;
+      const now = new Date();
+
+      if (args.decision === "review") {
+        if (req.status === "under_review") {
+          throw new Error("এই অনুরোধ ইতিমধ্যে যাচাই চলমান (Waiting) অবস্থায় আছে।");
+        }
+        await db
+          .update(schema.cancelRequests)
+          .set({ status: "under_review", adminNote: note, updatedAt: now })
+          .where(eq(schema.cancelRequests.id, req.id));
+        await addEvent(ctx, b.id, b.status, "admin", "বাতিলের অনুরোধ যাচাই চলছে (Waiting)");
+        await notify(ctx, {
+          userId: b.customerId,
+          type: "cancel_under_review",
+          title: "আপনার বাতিলের অনুরোধ যাচাই চলছে",
+          body: `কোড: ${b.code} — অ্যাডমিন যাচাই করে শীঘ্রই সিদ্ধান্ত জানাবেন।`,
+          bookingId: b.id,
+        });
+        await logAdmin(ctx, admin.id, "cancel_request_review", b.code);
+        ctx.invalidateQueries();
+        return { ok: true };
+      }
+
+      if (args.decision === "reject") {
+        await db
+          .update(schema.cancelRequests)
+          .set({
+            status: "rejected",
+            adminNote: note,
+            decidedBy: admin.id,
+            decidedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.cancelRequests.id, req.id));
+        await addEvent(
+          ctx,
+          b.id,
+          b.status,
+          "admin",
+          note ? `বাতিলের অনুরোধ গৃহীত হয়নি — ${note}` : "বাতিলের অনুরোধ গৃহীত হয়নি — বুকিং আগের মতোই চলবে",
+        );
+        await notify(ctx, {
+          userId: b.customerId,
+          type: "cancel_rejected",
+          title: "বাতিলের অনুরোধ গৃহীত হয়নি",
+          body: `কোড: ${b.code} — আপনার বুকিং আগের মতোই চলবে।${note ? ` নোট: ${note}` : ""}`,
+          bookingId: b.id,
+        });
+        await logAdmin(ctx, admin.id, "cancel_request_rejected", b.code);
+        ctx.invalidateQueries();
+        return { ok: true };
+      }
+
+      // approve → Complete: the booking is cancelled now (and only now).
+      const stage = bookingStage(b);
+      if (
+        !["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(stage)
+      ) {
+        throw new Error("বুকিংটি এখন আর বাতিলযোগ্য অবস্থায় নেই — অনুরোধটি বাতিল (reject) করে দিন।");
+      }
+      await db
+        .update(schema.cancelRequests)
+        .set({
+          status: "approved",
+          adminNote: note,
+          decidedBy: admin.id,
+          decidedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.cancelRequests.id, req.id));
       await db
         .update(schema.bookings)
         .set({
@@ -2581,21 +2837,47 @@ export const Actions = {
           statusBeforeHold: null,
           rescheduleRequestedDate: null,
           rescheduleRequestedTime: null,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(schema.bookings.id, b.id));
-      await addEvent(ctx, b.id, "cancelled", "customer", "গ্রাহক বুকিং বাতিল করেছেন");
+      await addEvent(ctx, b.id, "cancelled", "admin", "অ্যাডমিন বাতিলের অনুরোধ অনুমোদন করেছেন — বুকিং বাতিল হয়েছে");
       // P-1: a still-pending online payment on a cancelled booking
       // is failed automatically, so it can never be verified later.
       await failPendingPaymentsForCancelledBooking(ctx, b, {
-        role: "customer",
-        adminId: null,
+        role: "admin",
+        adminId: admin.id,
       });
+      // A VERIFIED online payment is real money already collected: it
+      // is never silently failed. The booking moves to refund_pending
+      // and the refund itself is a per-case finance decision recorded
+      // through the refund flow (no fixed percentage exists).
+      const verifiedPays = await db
+        .select()
+        .from(schema.payments)
+        .where(
+          and(eq(schema.payments.bookingId, b.id), eq(schema.payments.status, "verified")),
+        );
+      if (verifiedPays.length > 0) {
+        await db
+          .update(schema.bookings)
+          .set({ extendedPaymentStatus: "refund_pending", updatedAt: new Date() })
+          .where(eq(schema.bookings.id, b.id));
+        await notify(ctx, {
+          targetRole: "admin",
+          type: "refund_decision_needed",
+          title: "বাতিল বুকিংয়ে রিফান্ডের সিদ্ধান্ত বাকি",
+          body: `কোড: ${b.code} — যাচাইকৃত অনলাইন পেমেন্ট আছে; রিফান্ডের পরিমাণ কেস অনুযায়ী ফাইন্যান্স অ্যাডমিন ঠিক করবেন।`,
+          bookingId: b.id,
+        });
+      }
       await notify(ctx, {
-        targetRole: "admin",
-        type: "booking_cancelled",
-        title: "বুকিং বাতিল হয়েছে",
-        body: `কোড: ${b.code}`,
+        userId: b.customerId,
+        type: "cancel_approved",
+        title: "আপনার বুকিং বাতিল হয়েছে",
+        body:
+          verifiedPays.length > 0
+            ? `কোড: ${b.code} — বাতিল অনুমোদিত হয়েছে। অনলাইন পেমেন্টের রিফান্ডের সিদ্ধান্ত অ্যাডমিন কেস অনুযায়ী জানাবেন।`
+            : `কোড: ${b.code} — আপনার বাতিলের অনুরোধ অনুমোদিত হয়েছে।`,
         bookingId: b.id,
       });
       if (b.professionalId) {
@@ -2614,6 +2896,7 @@ export const Actions = {
           });
         }
       }
+      await logAdmin(ctx, admin.id, "cancel_request_approved", b.code);
       ctx.invalidateQueries();
       return { ok: true };
     },
@@ -3010,6 +3293,7 @@ export const Actions = {
           cashReceived: z.number(),
           payoutFromHeld: z.number(),
           paidOut: z.number(),
+          refunded: z.number(),
           remainingHeld: z.number(),
           proTotal: z.number(),
         }),
@@ -3050,6 +3334,7 @@ export const Actions = {
           status: z.string(),
           transactionReference: z.string().nullable(),
           rejectionReason: z.string().nullable(),
+          holdReason: z.string().nullable(),
           createdAt: z.string(),
         }),
       ),
@@ -3078,6 +3363,7 @@ export const Actions = {
           status: r.status,
           transactionReference: r.transactionReference,
           rejectionReason: r.rejectionReason,
+          holdReason: r.holdReason,
           createdAt: r.createdAt.toISOString(),
         })),
       };
@@ -3115,7 +3401,7 @@ export const Actions = {
 
   requestWithdrawal: defineAction({
     description:
-      "Professional requests a withdrawal against their server-computed available (held) balance. The amount is validated server-side against the ledger-derived balance minus still-open requests; the request stays pending until an admin decides and pays it (Master Phase 9).",
+      "Professional requests a withdrawal against their server-computed available (held) balance. The amount is validated server-side against the ledger-derived balance minus still-open requests; a finance admin then decides and pays it through adminDecideWithdrawal (Master Phase 9).",
     request: z.object({
       token: z.string(),
       amount: z.number().int().positive(),
@@ -3384,7 +3670,7 @@ export const Actions = {
       }
       const withdrawals = await db.select().from(schema.withdrawalRequests);
       const openWithdrawals = withdrawals.filter(
-        (w) => w.status === "requested" || w.status === "approved",
+        (w) => w.status === "requested" || w.status === "approved" || w.status === "held",
       );
       return {
         totalCustomers: customers.length,
@@ -5321,7 +5607,7 @@ export const Actions = {
 
   adminListSettlementQueue: defineAction({
     description:
-      "Admin (finance): read-only settlement queue — bookings whose held balance is still awaiting release, and professionals' open withdrawal requests. Deciding or paying a settlement is a later phase; this action changes nothing.",
+      "Admin (finance): settlement queue — bookings whose held balance is still awaiting release (disputed and cancelled bookings are listed but frozen), and professionals' open withdrawal requests (requested / approved / held) which the finance admin decides and pays through adminDecideWithdrawal.",
     request: z.object({ token: z.string() }),
     response: z.object({
       heldBookings: z.array(
@@ -5335,10 +5621,15 @@ export const Actions = {
           paidOut: z.number(),
           remainingHeld: z.number(),
           extendedPaymentStatus: z.string(),
+          bookingStatus: z.string(),
           // Master Phase 7: settlement of a disputed booking is
           // frozen — it is listed (with this flag) but excluded from
           // the releasable total below.
           disputed: z.boolean(),
+          // Master Phase 9: a cancelled / rejected booking's held
+          // money is frozen too — it awaits the refund decision and
+          // is never released to the professional.
+          frozen: z.boolean(),
         }),
       ),
       withdrawalRequests: z.array(
@@ -5351,12 +5642,14 @@ export const Actions = {
           method: z.string(),
           number: z.string(),
           status: z.string(),
+          holdReason: z.string().nullable(),
           requestedAt: z.string(),
         }),
       ),
       totals: z.object({
         heldAwaitingRelease: z.number(),
         frozenDisputedHeld: z.number(),
+        frozenCancelledHeld: z.number(),
         openWithdrawalCount: z.number(),
         openWithdrawalAmount: z.number(),
       }),
@@ -5367,12 +5660,13 @@ export const Actions = {
       const names = await serviceNameMap(ctx);
       const proNames = await proNameMap(ctx);
       const ledger = await db.select().from(schema.paymentLedger);
-      const byBooking = new Map<number, { held: number; commission: number; paidOut: number }>();
+      const byBooking = new Map<number, { held: number; commission: number; paidOut: number; refunded: number }>();
       for (const e of ledger) {
-        const s = byBooking.get(e.bookingId) ?? { held: 0, commission: 0, paidOut: 0 };
+        const s = byBooking.get(e.bookingId) ?? { held: 0, commission: 0, paidOut: 0, refunded: 0 };
         if (e.entryType === "held_balance") s.held += e.amount;
         else if (e.entryType === "commission_due") s.commission += e.amount;
         else if (e.entryType === "payout") s.paidOut += e.amount;
+        else if (e.entryType === "refund") s.refunded += e.amount;
         byBooking.set(e.bookingId, s);
       }
       const bookingRows = await db.select().from(schema.bookings);
@@ -5387,13 +5681,17 @@ export const Actions = {
         paidOut: number;
         remainingHeld: number;
         extendedPaymentStatus: string;
+        bookingStatus: string;
         disputed: boolean;
+        frozen: boolean;
       }[] = [];
       for (const [bookingId, s] of byBooking) {
-        const remainingHeld = s.held - s.commission - s.paidOut;
+        const remainingHeld = s.held - s.commission - s.paidOut - s.refunded;
         if (s.held <= 0 || remainingHeld <= 0) continue;
         const b = bookingById.get(bookingId);
         if (!b) continue;
+        const frozen =
+          b.status === "disputed" || b.status === "cancelled" || b.status === "rejected";
         heldBookings.push({
           bookingId,
           code: b.code,
@@ -5405,14 +5703,16 @@ export const Actions = {
           paidOut: s.paidOut,
           remainingHeld,
           extendedPaymentStatus: b.extendedPaymentStatus,
+          bookingStatus: b.status,
           disputed: b.status === "disputed",
+          frozen,
         });
       }
       heldBookings.sort((x, y) => y.bookingId - x.bookingId);
       const wr = await db
         .select()
         .from(schema.withdrawalRequests)
-        .where(inArray(schema.withdrawalRequests.status, ["requested", "approved"]))
+        .where(inArray(schema.withdrawalRequests.status, ["requested", "approved", "held"]))
         .orderBy(desc(schema.withdrawalRequests.id));
       const withdrawalRequests = wr.map((w) => ({
         id: w.id,
@@ -5423,6 +5723,7 @@ export const Actions = {
         method: w.withdrawalMethod,
         number: w.withdrawalNumber,
         status: w.status,
+        holdReason: w.holdReason,
         requestedAt: w.requestedAt.toISOString(),
       }));
       return {
@@ -5430,15 +5731,454 @@ export const Actions = {
         withdrawalRequests,
         totals: {
           heldAwaitingRelease: heldBookings
-            .filter((h) => !h.disputed)
+            .filter((h) => !h.frozen)
             .reduce((a, h) => a + h.remainingHeld, 0),
           frozenDisputedHeld: heldBookings
             .filter((h) => h.disputed)
+            .reduce((a, h) => a + h.remainingHeld, 0),
+          frozenCancelledHeld: heldBookings
+            .filter((h) => h.frozen && !h.disputed)
             .reduce((a, h) => a + h.remainingHeld, 0),
           openWithdrawalCount: withdrawalRequests.length,
           openWithdrawalAmount: withdrawalRequests.reduce((a, w) => a + w.amount, 0),
         },
       };
+    },
+  }),
+
+  adminDecideWithdrawal: defineAction({
+    description:
+      "Admin (finance only) decides a professional's withdrawal request (Master Phase 9). 'pay' records the REAL transfer (transaction reference required — a screenshot is never proof) and writes the payout ledger entries across the professional's non-frozen bookings, marking the request paid exactly once; 'reject' requires a reason and releases the reserved balance back to available; 'hold' freezes the request with a reason (e.g. an open dispute); 'release' lifts a hold back to requested. Support/operations admins cannot decide payouts. The professional is notified of every decision.",
+    request: z.object({
+      token: z.string(),
+      withdrawalId: z.number().int(),
+      decision: z.enum(["pay", "reject", "hold", "release"]),
+      transactionReference: z.string().max(120).optional(),
+      note: z.string().max(600).optional(),
+    }),
+    response: z.object({
+      request: z.object({
+        id: z.number(),
+        status: z.string(),
+        amount: z.number(),
+        transactionReference: z.string().nullable(),
+        rejectionReason: z.string().nullable(),
+        holdReason: z.string().nullable(),
+        decidedAt: z.string().nullable(),
+        paidAt: z.string().nullable(),
+      }),
+    }),
+    async handler(ctx, args) {
+      // Finance gate: requireAdminLevel admits finance + super only.
+      const admin = await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.withdrawalRequests)
+        .where(eq(schema.withdrawalRequests.id, args.withdrawalId))
+        .limit(1);
+      const w = rows[0];
+      if (!w) throw new Error("উইথড্র অনুরোধ পাওয়া যায়নি।");
+      if (w.status === "paid" || w.status === "rejected") {
+        throw new Error("এই অনুরোধের সিদ্ধান্ত ইতিমধ্যে দেওয়া হয়েছে — আবার সিদ্ধান্ত দেওয়া যাবে না।");
+      }
+      const note = args.note?.trim() ? args.note.trim() : null;
+      const now = new Date();
+      const pros = await db
+        .select()
+        .from(schema.professionals)
+        .where(eq(schema.professionals.id, w.professionalId))
+        .limit(1);
+      const pro = pros[0];
+      if (!pro) throw new Error("প্রফেশনাল পাওয়া যায়নি।");
+      const finish = async () => {
+        const saved = await db
+          .select()
+          .from(schema.withdrawalRequests)
+          .where(eq(schema.withdrawalRequests.id, w.id))
+          .limit(1);
+        const r = saved[0];
+        if (!r) throw new Error("উইথড্র অনুরোধ পাওয়া যায়নি।");
+        ctx.invalidateQueries();
+        return {
+          request: {
+            id: r.id,
+            status: r.status,
+            amount: r.amount,
+            transactionReference: r.transactionReference,
+            rejectionReason: r.rejectionReason,
+            holdReason: r.holdReason,
+            decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
+            paidAt: r.paidAt ? r.paidAt.toISOString() : null,
+          },
+        };
+      };
+
+      if (args.decision === "hold") {
+        if (w.status === "held") throw new Error("এই অনুরোধ ইতিমধ্যে হোল্ডে আছে।");
+        if (!note) throw new Error("হোল্ড করতে হলে কারণ লিখুন।");
+        await db
+          .update(schema.withdrawalRequests)
+          .set({ status: "held", holdReason: note, adminId: admin.id, updatedAt: now })
+          .where(eq(schema.withdrawalRequests.id, w.id));
+        await notify(ctx, {
+          userId: pro.userId,
+          type: "withdrawal_held",
+          title: "আপনার উইথড্র অনুরোধ হোল্ডে রাখা হয়েছে",
+          body: `৳${w.amount} — কারণ: ${note} হোল্ড ছাড়া না হলে এই টাকা পাঠানো হবে না।`,
+          bookingId: w.bookingId,
+        });
+        await logAdmin(ctx, admin.id, "withdrawal_held", `#${w.id} ৳${w.amount} — ${note}`);
+        return finish();
+      }
+
+      if (args.decision === "release") {
+        if (w.status !== "held") throw new Error("শুধু হোল্ডে থাকা অনুরোধই ছাড়া যাবে।");
+        await db
+          .update(schema.withdrawalRequests)
+          .set({ status: "requested", holdReason: null, adminId: admin.id, updatedAt: now })
+          .where(eq(schema.withdrawalRequests.id, w.id));
+        await notify(ctx, {
+          userId: pro.userId,
+          type: "withdrawal_released",
+          title: "আপনার উইথড্র অনুরোধের হোল্ড ছাড়া হয়েছে",
+          body: `৳${w.amount} — অনুরোধটি আবার সিদ্ধান্তের অপেক্ষায় আছে।`,
+          bookingId: w.bookingId,
+        });
+        await logAdmin(ctx, admin.id, "withdrawal_released", `#${w.id} ৳${w.amount}`);
+        return finish();
+      }
+
+      if (args.decision === "reject") {
+        if (!note) throw new Error("উইথড্র অনুরোধ বাতিল করতে হলে কারণ লিখুন।");
+        await db
+          .update(schema.withdrawalRequests)
+          .set({
+            status: "rejected",
+            rejectionReason: note,
+            adminId: admin.id,
+            decidedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.withdrawalRequests.id, w.id));
+        await notify(ctx, {
+          userId: pro.userId,
+          type: "withdrawal_rejected",
+          title: "আপনার উইথড্র অনুরোধ বাতিল হয়েছে",
+          body: `৳${w.amount} — কারণ: ${note} টাকাটি আবার আপনার উত্তোলনযোগ্য ব্যালেন্সে ফিরেছে।`,
+          bookingId: w.bookingId,
+        });
+        await logAdmin(ctx, admin.id, "withdrawal_rejected", `#${w.id} ৳${w.amount} — ${note}`);
+        return finish();
+      }
+
+      // pay: the admin records the REAL transfer. Without a verified
+      // transaction reference the request can never become "paid".
+      // A HELD request is frozen: it can never be paid while held —
+      // the admin must release the hold (or reject) first.
+      if (w.status === "held") {
+        throw new Error("এই অনুরোধ হোল্ডে আছে — পরিশোধের আগে হোল্ড ছাড়ুন (release) অথবা বাতিল করুন।");
+      }
+      const reference = args.transactionReference?.trim() ? args.transactionReference.trim() : null;
+      if (!reference) {
+        throw new Error("পেআউট করতে হলে আসল লেনদেনের TrxID / রেফারেন্স লিখুন — রেফারেন্স ছাড়া পরিশোধিত করা যাবে না।");
+      }
+      // Distribute the payout over the professional's bookings with
+      // releasable held money, oldest booking first. Frozen bookings
+      // (disputed / cancelled / rejected) are skipped — their money
+      // is never paid out while frozen. Other still-open requests
+      // keep their reservation, so two requests can never pay out
+      // the same taka twice.
+      const money = await computeProMoney(ctx, w.professionalId);
+      const otherOpenTotal = money.openWithdrawalTotal - w.amount;
+      const releasableRows = money.rows
+        .filter(
+          (r) =>
+            r.remainingHeld > 0 &&
+            r.bookingStatus !== "disputed" &&
+            r.bookingStatus !== "cancelled" &&
+            r.bookingStatus !== "rejected",
+        )
+        .sort((a, b) => a.bookingId - b.bookingId);
+      const releasableTotal =
+        releasableRows.reduce((a, r) => a + r.remainingHeld, 0) - otherOpenTotal;
+      if (releasableTotal < w.amount) {
+        throw new Error(
+          "ছাড়যোগ্য হেল্ড ব্যালেন্স এই পরিমাণের জন্য যথেষ্ট নয় (বিরোধ/বাতিলে কিছু টাকা স্থগিত থাকতে পারে) — অনুরোধটি হোল্ড বা বাতিল করুন।",
+        );
+      }
+      let remaining = w.amount;
+      for (const r of releasableRows) {
+        if (remaining <= 0) break;
+        const part = Math.min(remaining, r.remainingHeld);
+        if (part <= 0) continue;
+        await db.insert(schema.paymentLedger).values({
+          bookingId: r.bookingId,
+          paymentId: null,
+          entryType: "payout",
+          amount: part,
+          actorRole: "admin",
+          adminId: admin.id,
+          reference,
+          note: `উইথড্র অনুরোধ #${w.id} পরিশোধ (${w.withdrawalMethod} ${w.withdrawalNumber})`,
+        });
+        remaining -= part;
+      }
+      if (remaining > 0) {
+        // Defensive: the releasable check above makes this unreachable;
+        // never mark paid unless every taka was actually distributed.
+        throw new Error("পেআউট বণ্টন সম্পূর্ণ হয়নি — আবার চেষ্টা করুন।");
+      }
+      await db
+        .update(schema.withdrawalRequests)
+        .set({
+          status: "paid",
+          transactionReference: reference,
+          adminId: admin.id,
+          decidedAt: now,
+          paidAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.withdrawalRequests.id, w.id));
+      // Bookings whose held money was (partly) paid out move their
+      // extended payment status forward when nothing remains held.
+      const after = await computeProMoney(ctx, w.professionalId);
+      for (const r of after.rows) {
+        if (r.remainingHeld > 0 || r.paidOut <= 0) continue;
+        const brows = await db
+          .select()
+          .from(schema.bookings)
+          .where(eq(schema.bookings.id, r.bookingId))
+          .limit(1);
+        const bk = brows[0];
+        if (bk && bk.extendedPaymentStatus === "held_settlement_pending") {
+          await db
+            .update(schema.bookings)
+            .set({ extendedPaymentStatus: "paid", heldBalance: 0, updatedAt: new Date() })
+            .where(eq(schema.bookings.id, bk.id));
+        }
+      }
+      await notify(ctx, {
+        userId: pro.userId,
+        type: "withdrawal_paid",
+        title: "আপনার উইথড্র পরিশোধ হয়েছে",
+        body: `৳${w.amount} পাঠানো হয়েছে (${w.withdrawalMethod} ${w.withdrawalNumber}) — রেফারেন্স: ${reference}`,
+        bookingId: w.bookingId,
+      });
+      await logAdmin(ctx, admin.id, "withdrawal_paid", `#${w.id} ৳${w.amount} ref=${reference}`);
+      return finish();
+    },
+  }),
+
+  adminListRefundRequests: defineAction({
+    description:
+      "Admin (finance): all customer refund requests with their booking, payment and decision state — the queue for the per-case refund decision (Master Phase 9).",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      requests: z.array(
+        refundRequestOut.extend({
+          customerName: z.string(),
+          paymentAmount: z.number().nullable(),
+          paymentProvider: z.string().nullable(),
+          paymentStatus: z.string().nullable(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.refundRequests)
+        .orderBy(desc(schema.refundRequests.id));
+      const bookings = await db.select().from(schema.bookings);
+      const bookingById = new Map(bookings.map((x) => [x.id, x]));
+      const users = await db.select().from(schema.users);
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      const pays = await db.select().from(schema.payments);
+      const payById = new Map(pays.map((p) => [p.id, p]));
+      return {
+        requests: rows.map((r) => {
+          const pay = r.paymentId != null ? payById.get(r.paymentId) : undefined;
+          return {
+            ...toRefundOut(r, bookingById.get(r.bookingId)?.code ?? ""),
+            customerName: nameById.get(r.customerId) ?? "",
+            paymentAmount: pay?.amount ?? null,
+            paymentProvider: pay?.provider ?? null,
+            paymentStatus: pay?.status ?? null,
+          };
+        }),
+      };
+    },
+  }),
+
+  adminDecideRefundRequest: defineAction({
+    description:
+      "Admin (finance only) decides a customer refund request (Master Phase 9). 'refund' records the REAL refund transfer (amount + transaction reference required — the amount is decided per case under the published cancellation policy; no percentage is hard-coded): the payment becomes refunded, a refund ledger entry releases the booking's remaining held money (so it can never be paid out to the professional), and the booking's extended payment status becomes refunded. 'reject' requires a reason. The customer is notified of every decision. A decided request can never be decided twice.",
+    request: z.object({
+      token: z.string(),
+      requestId: z.number().int(),
+      decision: z.enum(["refund", "reject"]),
+      refundAmount: z.number().int().positive().optional(),
+      refundReference: z.string().max(120).optional(),
+      note: z.string().max(600).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.refundRequests)
+        .where(eq(schema.refundRequests.id, args.requestId))
+        .limit(1);
+      const req = rows[0];
+      if (!req) throw new Error("রিফান্ড অনুরোধ পাওয়া যায়নি।");
+      if (req.status !== "requested") {
+        throw new Error("এই রিফান্ড অনুরোধের সিদ্ধান্ত ইতিমধ্যে দেওয়া হয়েছে।");
+      }
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, req.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      const note = args.note?.trim() ? args.note.trim() : null;
+      const now = new Date();
+
+      if (args.decision === "reject") {
+        if (!note) throw new Error("রিফান্ড অনুরোধ বাতিল করতে হলে কারণ লিখুন।");
+        await db
+          .update(schema.refundRequests)
+          .set({
+            status: "rejected",
+            adminNote: note,
+            decidedBy: admin.id,
+            decidedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.refundRequests.id, req.id));
+        await notify(ctx, {
+          userId: req.customerId,
+          type: "refund_rejected",
+          title: "আপনার রিফান্ড অনুরোধ গৃহীত হয়নি",
+          body: `কোড: ${b.code} — কারণ: ${note}`,
+          bookingId: b.id,
+        });
+        await logAdmin(ctx, admin.id, "refund_rejected", `${b.code}: request #${req.id} — ${note}`);
+        ctx.invalidateQueries();
+        return { ok: true };
+      }
+
+      // refund: record the real transfer back to the customer.
+      const reference = args.refundReference?.trim() ? args.refundReference.trim() : null;
+      if (!reference) {
+        throw new Error("রিফান্ড করতে হলে আসল ফেরত লেনদেনের TrxID / রেফারেন্স লিখুন।");
+      }
+      if (!args.refundAmount || args.refundAmount <= 0) {
+        throw new Error("রিফান্ডের পরিমাণ লিখুন।");
+      }
+      const payRows = req.paymentId
+        ? await db
+            .select()
+            .from(schema.payments)
+            .where(eq(schema.payments.id, req.paymentId))
+            .limit(1)
+        : [];
+      const pay = payRows[0];
+      if (!pay) throw new Error("সংশ্লিষ্ট পেমেন্ট পাওয়া যায়নি।");
+      if (pay.status !== "verified") {
+        throw new Error("শুধু যাচাইকৃত পেমেন্টই রিফান্ড করা যাবে।");
+      }
+      if (args.refundAmount > pay.amount) {
+        throw new Error("রিফান্ডের পরিমাণ গ্রাহকের দেওয়া অনলাইন পেমেন্টের বেশি হতে পারে না।");
+      }
+      // Release this booking's remaining held money as refunded: the
+      // refund ledger entry removes it from the held pot, so the
+      // professional can never withdraw money that went back to the
+      // customer. (A cancelled job also earns no commission — the
+      // commission share of the pot stays with the platform side of
+      // the ledger and is never paid out, because remainingHeld nets
+      // to zero once the refund entry lands.)
+      const ledger = await db
+        .select()
+        .from(schema.paymentLedger)
+        .where(eq(schema.paymentLedger.bookingId, b.id));
+      let held = 0;
+      let commission = 0;
+      let paidOut = 0;
+      let refunded = 0;
+      for (const e of ledger) {
+        if (e.entryType === "held_balance") held += e.amount;
+        else if (e.entryType === "commission_due") commission += e.amount;
+        else if (e.entryType === "payout") paidOut += e.amount;
+        else if (e.entryType === "refund") refunded += e.amount;
+      }
+      const remainingHeld = held - commission - paidOut - refunded;
+      if (remainingHeld > 0) {
+        await db.insert(schema.paymentLedger).values({
+          bookingId: b.id,
+          paymentId: pay.id,
+          entryType: "refund",
+          amount: remainingHeld,
+          actorRole: "admin",
+          adminId: admin.id,
+          reference,
+          note: `রিফান্ড অনুরোধ #${req.id}: হেল্ড থেকে ৳${remainingHeld} ছাড়া হলো (গ্রাহককে ফেরত ৳${args.refundAmount})`,
+        });
+      }
+      await db
+        .update(schema.payments)
+        .set({ status: "refunded", updatedAt: now })
+        .where(eq(schema.payments.id, pay.id));
+      await db
+        .update(schema.bookings)
+        .set({ extendedPaymentStatus: "refunded", heldBalance: 0, updatedAt: now })
+        .where(eq(schema.bookings.id, b.id));
+      await db
+        .update(schema.refundRequests)
+        .set({
+          status: "refunded",
+          adminNote: note,
+          refundAmount: args.refundAmount,
+          refundReference: reference,
+          decidedBy: admin.id,
+          decidedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.refundRequests.id, req.id));
+      await notify(ctx, {
+        userId: req.customerId,
+        type: "refund_completed",
+        title: "আপনার রিফান্ড সম্পন্ন হয়েছে",
+        body: `কোড: ${b.code} — ৳${args.refundAmount} ফেরত পাঠানো হয়েছে। রেফারেন্স: ${reference}`,
+        bookingId: b.id,
+      });
+      if (b.professionalId) {
+        const pros = await db
+          .select()
+          .from(schema.professionals)
+          .where(eq(schema.professionals.id, b.professionalId))
+          .limit(1);
+        if (pros[0]) {
+          await notify(ctx, {
+            userId: pros[0].userId,
+            type: "booking_refunded",
+            title: "একটি বুকিংয়ের পেমেন্ট রিফান্ড হয়েছে",
+            body: `কোড: ${b.code} — ওই বুকিংয়ের হেল্ড টাকা গ্রাহককে ফেরত দেওয়া হয়েছে, তাই তা আর পেআউট হবে না।`,
+            bookingId: b.id,
+          });
+        }
+      }
+      await logAdmin(
+        ctx,
+        admin.id,
+        "refund_completed",
+        `${b.code}: request #${req.id} ৳${args.refundAmount} ref=${reference}`,
+      );
+      ctx.invalidateQueries();
+      return { ok: true };
     },
   }),
 
@@ -5643,7 +6383,7 @@ export const Actions = {
 
   submitRefundRequest: defineAction({
     description:
-      "Customer submits a refund request for an online payment on their own booking. This only records the request and notifies admins — no money moves and no refund is promised; admin review and any actual refund are a later phase. One open request per booking.",
+      "Customer submits a refund request for an online payment on their own booking. This only records the request and notifies admins — no money moves and no refund is promised; a finance admin reviews it and records any actual refund through adminDecideRefundRequest (Master Phase 9). One open request per booking.",
     request: z.object({
       token: z.string(),
       bookingCode: z.string().min(4).max(40),
@@ -7111,7 +7851,7 @@ export const Actions = {
 
   setBookingDisputed: defineAction({
     description:
-      "Puts a booking into the Disputed state. The booking's current stage is remembered, its extended payment status becomes 'disputed', and settlement of its held money is frozen (the professional's withdrawable balance excludes disputed bookings) until an admin clears the dispute. The booking's customer (once a professional is involved) or an admin (operations) can raise it; the full dispute workflow is Master Phase 9.",
+      "Puts a booking into the Disputed state (Master Phase 9 dispute flow). The booking's current stage is remembered, its extended payment status becomes 'disputed', and settlement of its held money is frozen (the professional's withdrawable balance excludes disputed bookings, and a payout can never touch a disputed booking) until an admin records a decision with a reason (adminClearDispute). The booking's customer, its assigned professional, or an admin (operations) can raise it; everyone else involved is notified.",
     request: z.object({
       token: z.string(),
       bookingId: z.number().int(),
@@ -7128,12 +7868,20 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
-      let actorRole: "customer" | "admin";
+      let actorRole: "customer" | "admin" | "professional";
+      let actorProId: number | null = null;
       if (user.role === "admin") {
         await requireAdminLevel(ctx, args.token, ["operations"]);
         actorRole = "admin";
       } else if (user.role === "customer" && b.customerId === user.id) {
         actorRole = "customer";
+      } else if (user.role === "professional") {
+        const pro = await myProfessional(ctx, user.id);
+        if (!pro || b.professionalId !== pro.id) {
+          throw new Error("এই বুকিংয়ে বিরোধ জানানোর অনুমতি নেই।");
+        }
+        actorRole = "professional";
+        actorProId = pro.id;
       } else {
         throw new Error("এই বুকিংয়ে বিরোধ জানানোর অনুমতি নেই।");
       }
@@ -7170,7 +7918,7 @@ export const Actions = {
         actorRole,
         args.note ? `বিরোধ জানানো হয়েছে — ${args.note}` : "বিরোধ জানানো হয়েছে",
       );
-      if (actorRole === "customer") {
+      if (actorRole !== "admin") {
         await notify(ctx, {
           targetRole: "admin",
           type: "booking_disputed",
@@ -7179,6 +7927,9 @@ export const Actions = {
           bookingId: b.id,
         });
       } else {
+        await logAdmin(ctx, user.id, "booking_disputed", b.code);
+      }
+      if (actorRole !== "customer") {
         await notify(ctx, {
           userId: b.customerId,
           type: "booking_disputed",
@@ -7186,9 +7937,8 @@ export const Actions = {
           body: `কোড: ${b.code} — নিষ্পত্তি না হওয়া পর্যন্ত সেটেলমেন্ট স্থগিত থাকবে।`,
           bookingId: b.id,
         });
-        await logAdmin(ctx, user.id, "booking_disputed", b.code);
       }
-      if (b.professionalId) {
+      if (b.professionalId && actorProId !== b.professionalId) {
         const pros = await db
           .select()
           .from(schema.professionals)
@@ -7211,11 +7961,11 @@ export const Actions = {
 
   adminClearDispute: defineAction({
     description:
-      "Admin (operations) clears a booking's Disputed state: the booking returns to exactly the stage it was disputed from, its extended payment status is recomputed from its payments, and the settlement freeze on its held money is lifted. The full dispute workflow (evidence, decisions, refunds) is Master Phase 9.",
+      "Admin (operations) records the dispute DECISION (Master Phase 9): a reason is required — a disputed booking stays frozen until a documented decision exists. The booking returns to exactly the stage it was disputed from, its extended payment status is recomputed from its payments, and the settlement freeze on its held money is lifted. Customer and professional are both notified, with the decision reason.",
     request: z.object({
       token: z.string(),
       bookingId: z.number().int(),
-      note: z.string().max(600).optional(),
+      note: z.string().trim().min(1).max(600),
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
@@ -7247,13 +7997,13 @@ export const Actions = {
         b.id,
         restore,
         "admin",
-        args.note ? `বিরোধ নিষ্পত্তি হয়েছে — ${args.note}` : "বিরোধ নিষ্পত্তি হয়েছে — বুকিং আগের অবস্থায় ফিরেছে",
+        `বিরোধ নিষ্পত্তি হয়েছে — সিদ্ধান্ত: ${args.note}`,
       );
       await notify(ctx, {
         userId: b.customerId,
         type: "booking_dispute_cleared",
         title: "বিরোধ নিষ্পত্তি হয়েছে",
-        body: `কোড: ${b.code}`,
+        body: `কোড: ${b.code} — সিদ্ধান্ত: ${args.note}`,
         bookingId: b.id,
       });
       if (b.professionalId) {
@@ -7267,7 +8017,7 @@ export const Actions = {
             userId: pros[0].userId,
             type: "booking_dispute_cleared",
             title: "বিরোধ নিষ্পত্তি হয়েছে",
-            body: `কোড: ${b.code} — সেটেলমেন্ট আবার চালু হয়েছে।`,
+            body: `কোড: ${b.code} — সিদ্ধান্ত: ${args.note} সেটেলমেন্ট আবার চালু হয়েছে।`,
             bookingId: b.id,
           });
         }

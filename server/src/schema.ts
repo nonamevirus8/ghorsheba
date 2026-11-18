@@ -470,14 +470,21 @@ export const withdrawalRequests = sqliteTable("withdrawal_requests", {
     enum: ["bkash", "nagad", "bank", "pathao_pay"],
   }).notNull(),
   withdrawalNumber: text("withdrawal_number").notNull(),
+  // Master Phase 9 adds "held": a finance admin can freeze a request
+  // (e.g. while a dispute is open) with a recorded reason; held money
+  // stays reserved (it still counts against the withdrawable balance)
+  // and can never be paid out until the hold is released or the
+  // request is decided. "paid" is reached ONLY by recording the real
+  // transfer reference (adminDecideWithdrawal) — never by a screenshot.
   status: text("status", {
-    enum: ["requested", "approved", "rejected", "paid"],
+    enum: ["requested", "approved", "rejected", "paid", "held"],
   })
     .notNull()
     .default("requested"),
   adminId: integer("admin_id").references(() => users.id),
   transactionReference: text("transaction_reference"),
   rejectionReason: text("rejection_reason"),
+  holdReason: text("hold_reason"),
   requestedAt: ts("requested_at"),
   decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
   paidAt: integer("paid_at", { mode: "timestamp_ms" }),
@@ -560,6 +567,15 @@ export const refundRequests = sqliteTable("refund_requests", {
     .notNull()
     .default("requested"),
   adminNote: text("admin_note"),
+  // Master Phase 9: the admin's recorded refund decision. The request
+  // reaches "refunded" only when a finance admin records the REAL
+  // refund transfer (amount + reference) via adminDecideRefundRequest;
+  // the amount is decided per case under the published cancellation
+  // policy — no percentage is hard-coded anywhere.
+  refundAmount: integer("refund_amount"),
+  refundReference: text("refund_reference"),
+  decidedBy: integer("decided_by").references(() => users.id),
+  decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
 });
@@ -688,6 +704,40 @@ export const quotations = sqliteTable("quotations", {
   totalAmount: integer("total_amount").notNull(),
   note: text("note"),
   decidedByUserId: integer("decided_by_user_id").references(() => users.id),
+  decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// ---------------------------------------------------------------------------
+// Master Phase 9 — customer cancellation requests.
+//
+// A customer cancel is a REQUEST, not an instant cancel (owner's
+// Phase 9 instruction): the booking keeps running until an admin
+// (operations) checks the request and decides — "under_review"
+// (Waiting: the admin is checking), "approved" (Complete: the booking
+// is cancelled, pending payments auto-fail per Phase 5 P-1, no
+// commission is earned on the cancelled job, and any verified online
+// payment becomes a per-case refund decision) or "rejected" (the
+// booking continues exactly as before). At most one open request
+// (requested / under_review) exists per booking at a time — enforced
+// by requestBookingCancel.
+export const cancelRequests = sqliteTable("cancel_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  bookingId: integer("booking_id")
+    .notNull()
+    .references(() => bookings.id),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => users.id),
+  reason: text("reason"),
+  status: text("status", {
+    enum: ["requested", "under_review", "approved", "rejected"],
+  })
+    .notNull()
+    .default("requested"),
+  adminNote: text("admin_note"),
+  decidedBy: integer("decided_by").references(() => users.id),
   decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
