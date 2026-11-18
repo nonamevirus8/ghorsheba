@@ -47,6 +47,112 @@ export function useCatalog() {
   return useQuery({ queryKey: ["catalog"], queryFn: () => api.getCatalog({}) });
 }
 
+// ------------------------------------------------- social links (Phase 6)
+//
+// Owner-supplied social links. The server returns ONLY enabled links;
+// while the owner has added none, this list is empty and every surface
+// (footer, contact page, mobile menu) renders no social icons at all.
+
+export type SocialLink = ApiResponse<typeof api, "getSocialLinks">["links"][number];
+
+export function useSocialLinks() {
+  return useQuery({ queryKey: ["social-links"], queryFn: () => api.getSocialLinks({}) });
+}
+
+export const SOCIAL_PLATFORM_BN: Record<string, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  youtube: "YouTube",
+  tiktok: "TikTok",
+  whatsapp: "WhatsApp",
+  other: "ওয়েবসাইট",
+};
+
+export function socialIcon(platform: string, cls?: string): ReactNode {
+  switch (platform) {
+    case "facebook":
+      return Icon.facebook(cls);
+    case "instagram":
+      return Icon.instagram(cls);
+    case "youtube":
+      return Icon.youtube(cls);
+    case "tiktok":
+      return Icon.tiktok(cls);
+    case "whatsapp":
+      return Icon.whatsapp(cls);
+    default:
+      return Icon.globe(cls);
+  }
+}
+
+export function socialLabel(link: SocialLink): string {
+  return link.label ?? SOCIAL_PLATFORM_BN[link.platform] ?? link.platform;
+}
+
+/** Icon row of the enabled social links; renders nothing when empty. */
+export function SocialLinksRow({ dark = false }: { dark?: boolean }) {
+  const links = useSocialLinks();
+  const rows = links.data?.links ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2.5">
+      {rows.map((l) => (
+        <a
+          key={l.id}
+          href={l.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={socialLabel(l)}
+          title={socialLabel(l)}
+          className={
+            dark
+              ? "grid place-items-center w-10 h-10 rounded-full bg-white/10 text-white hover:bg-[#FF8A00] transition-colors"
+              : "grid place-items-center w-10 h-10 rounded-full bg-[#F0FAF2] text-[#087A35] hover:bg-[#087A35] hover:text-white transition-colors"
+          }
+        >
+          {socialIcon(l.platform, "w-5 h-5")}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ------------------------------------------------ support tickets (Phase 6)
+
+export const TICKET_STATUS_BN: Record<string, string> = {
+  open: "খোলা হয়েছে",
+  in_progress: "কাজ চলছে",
+  waiting_customer: "আপনার উত্তরের অপেক্ষায়",
+  resolved: "সমাধান হয়েছে",
+  closed: "বন্ধ করা হয়েছে",
+};
+
+export const TICKET_CATEGORY_BN: Record<string, string> = {
+  general: "সাধারণ",
+  booking: "বুকিং",
+  payment: "পেমেন্ট",
+  account: "অ্যাকাউন্ট",
+  verification: "যাচাই (ভেরিফিকেশন)",
+  other: "অন্যান্য",
+};
+
+export function ticketStatusColor(status: string): string {
+  switch (status) {
+    case "open":
+      return "bg-amber-100 text-amber-800";
+    case "in_progress":
+      return "bg-sky-100 text-sky-800";
+    case "waiting_customer":
+      return "bg-orange-100 text-orange-800";
+    case "resolved":
+      return "bg-[#087A35] text-white";
+    case "closed":
+      return "bg-[#E5EAE5] text-[#737B73]";
+    default:
+      return "bg-[#E5EAE5] text-[#737B73]";
+  }
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return async () => {
@@ -416,6 +522,52 @@ export const Icon = {
   share: (c?: string) =>
     svg(
       <path d="M12 3.5v10.5M12 3.5 8.9 6.6M12 3.5l3.1 3.1M6.5 10h-1A1.5 1.5 0 0 0 4 11.5v8A1.5 1.5 0 0 0 5.5 21h13A1.5 1.5 0 0 0 20 19.5v-8A1.5 1.5 0 0 0 18.5 10h-1" />,
+      c ?? "w-5 h-5",
+    ),
+  // Social platform glyphs (Master Phase 6). Simple filled marks drawn
+  // in the same 24px grid; they render ONLY for owner-added, enabled
+  // social links — never as decoration for accounts that do not exist.
+  facebook: (c?: string) =>
+    svg(
+      <path d="M14.2 8.2V6.6c0-.8.5-1 1-1h2.3V2.5h-3.2c-3 0-3.9 2.2-3.9 4v1.7H8v3.3h2.4v10h3.8v-10h2.7l.5-3.3h-3.2z" fill="currentColor" stroke="none" />,
+      c ?? "w-5 h-5",
+    ),
+  instagram: (c?: string) =>
+    svg(
+      <>
+        <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" />
+        <circle cx="12" cy="12" r="3.8" />
+        <path d="M17.2 6.9h.01" strokeWidth="2.6" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
+  youtube: (c?: string) =>
+    svg(
+      <>
+        <rect x="2.8" y="5.5" width="18.4" height="13" rx="4" />
+        <path d="M10.3 9.4v5.2L14.9 12z" fill="currentColor" stroke="none" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
+  tiktok: (c?: string) =>
+    svg(
+      <path d="M16.6 3c.4 2.3 1.9 3.8 4.2 4v3.1c-1.6 0-3-.5-4.2-1.3v6.4c0 3.4-2.4 5.8-5.7 5.8A5.5 5.5 0 0 1 5.4 15c0-3.2 2.6-5.7 6-5.5v3.2c-1.5-.3-2.9.8-2.9 2.3 0 1.3 1 2.3 2.3 2.3 1.5 0 2.6-1.1 2.6-2.7V3h3.2z" fill="currentColor" stroke="none" />,
+      c ?? "w-5 h-5",
+    ),
+  whatsapp: (c?: string) =>
+    svg(
+      <>
+        <path d="M12 3.8a8.2 8.2 0 0 0-7 13.1L3.8 20.5l3.7-1.1A8.2 8.2 0 1 0 12 3.8z" />
+        <path d="M9.2 8.6c.2-.5.5-.5.8-.5h.7c.2 0 .4 0 .5.4l.6 1.5c.1.2 0 .4-.1.6l-.4.5c.5 1 1.4 1.9 2.5 2.4l.5-.4c.2-.1.4-.2.6-.1l1.5.6c.4.1.4.3.4.5v.7c0 .3-.2.6-.8.7-2.9.5-6.9-2.9-7.4-5.8-.1-.6 0-1.2.3-1.9z" fill="currentColor" stroke="none" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
+  globe: (c?: string) =>
+    svg(
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M3.5 12h17M12 3.5c2.3 2.3 3.4 5.2 3.4 8.5s-1.1 6.2-3.4 8.5c-2.3-2.3-3.4-5.2-3.4-8.5s1.1-6.2 3.4-8.5z" />
+      </>,
       c ?? "w-5 h-5",
     ),
 };

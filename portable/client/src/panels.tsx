@@ -9,7 +9,12 @@ EmptyState,
 ErrorBox,
 Icon,
 PRO_STATUS_BN,
+SOCIAL_PLATFORM_BN,
 Spinner,
+TICKET_CATEGORY_BN,
+TICKET_STATUS_BN,
+socialIcon,
+ticketStatusColor,
 Stars,
 bdt,
 errMsg,
@@ -273,7 +278,261 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
   );
 }
 
+
+// ------------------------------------------- support tickets (Phase 6)
+//
+// The ticket system is the primary support channel: a signed-in user
+// opens a ticket, the support team replies in the same thread, and the
+// status moves open → in_progress → waiting_customer → resolved →
+// closed. The older complaints form/list below it is unchanged and
+// keeps working alongside.
+
+function TicketStatusChip({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${ticketStatusColor(status)}`}>
+      {TICKET_STATUS_BN[status] ?? status}
+    </span>
+  );
+}
+
+function TicketThread({ token, ticketId, admin = false }: { token: string; ticketId: number; admin?: boolean }) {
+  const qc = useQueryClient();
+  const thread = useQuery({
+    queryKey: ["ticket-thread", ticketId],
+    queryFn: () => api.getSupportTicket({ token, ticketId }),
+  });
+  const [body, setBody] = useState("");
+  const [error, setError] = useState("");
+  const reply = useMutation({
+    mutationFn: () => api.replyToSupportTicket({ token, ticketId, body }),
+    onSuccess: () => {
+      setBody("");
+      qc.invalidateQueries({ queryKey: ["ticket-thread", ticketId] });
+      qc.invalidateQueries({ queryKey: ["my-tickets"] });
+      qc.invalidateQueries({ queryKey: ["admin-tickets"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const setStatus = useMutation({
+    mutationFn: (status: "open" | "in_progress" | "waiting_customer" | "resolved" | "closed") =>
+      api.adminSetTicketStatus({ token, ticketId, status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ticket-thread", ticketId] });
+      qc.invalidateQueries({ queryKey: ["my-tickets"] });
+      qc.invalidateQueries({ queryKey: ["admin-tickets"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  if (thread.isPending) return <Spinner />;
+  if (thread.isError || !thread.data) return <ErrorBox message={errMsg(thread.error ?? new Error("টিকিট লোড করা যায়নি।"))} />;
+  const t = thread.data.ticket;
+  const closed = t.status === "closed";
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-en text-[13px] font-semibold text-[#737B73]">{t.code}</span>
+        <TicketStatusChip status={t.status} />
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#F0FAF2] text-[#064B27]">
+          {TICKET_CATEGORY_BN[t.category] ?? t.category}
+        </span>
+        {t.bookingCode && <span className="font-en text-[13px] text-[#737B73]">বুকিং: {t.bookingCode}</span>}
+        {admin && (
+          <span className="text-[13px] text-[#737B73]">
+            {t.ownerName} • <span className="font-en">{t.ownerPhone}</span> • {t.ownerRole === "professional" ? "প্রফেশনাল" : "গ্রাহক"}
+          </span>
+        )}
+      </div>
+      <ul className="mt-3 space-y-2.5">
+        {thread.data.messages.map((m) => (
+          <li
+            key={m.id}
+            className={`rounded-2xl px-3.5 py-2.5 text-sm ${
+              m.authorRole === "admin" ? "bg-[#F0FAF2] border border-[#cfe3d3]" : "bg-[#F7F9F7] border border-[#E5EAE5]"
+            }`}
+          >
+            <p className="text-[12.5px] font-semibold text-[#064B27]">
+              {m.authorRole === "admin" ? "সাপোর্ট টিম" : m.authorName}
+              <span className="ml-2 font-normal text-[#737B73]">{fmtDateTime(m.createdAt)}</span>
+            </p>
+            <p className="mt-0.5 whitespace-pre-wrap text-[#374237]">{m.body}</p>
+          </li>
+        ))}
+      </ul>
+      {admin && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="text-sm font-medium" htmlFor={`ticket-status-${ticketId}`}>টিকিটের অবস্থা</label>
+          <select
+            id={`ticket-status-${ticketId}`}
+            className="border border-[#E5EAE5] rounded-xl px-3 py-2 bg-white text-sm"
+            value={t.status}
+            disabled={setStatus.isPending}
+            onChange={(e) =>
+              setStatus.mutate(e.target.value as "open" | "in_progress" | "waiting_customer" | "resolved" | "closed")
+            }
+          >
+            {Object.keys(TICKET_STATUS_BN).map((s) => (
+              <option key={s} value={s}>{TICKET_STATUS_BN[s]}</option>
+            ))}
+          </select>
+          {setStatus.isPending && <span className="text-sm text-[#737B73]">বদলানো হচ্ছে…</span>}
+        </div>
+      )}
+      {closed ? (
+        <p className="mt-3 text-sm text-[#737B73]">এই টিকিট বন্ধ করা হয়েছে — নতুন সাহায্য লাগলে নতুন টিকিট খুলুন।</p>
+      ) : (
+        <form
+          className="mt-3 flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            reply.mutate();
+          }}
+        >
+          <label className={labelCls} htmlFor={`ticket-reply-${ticketId}`}>উত্তর লিখুন</label>
+          <textarea
+            id={`ticket-reply-${ticketId}`}
+            className={inputCls}
+            rows={3}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            required
+            placeholder="আপনার বার্তা লিখুন…"
+          />
+          {error && <ErrorBox message={error} />}
+          <button
+            type="submit"
+            disabled={reply.isPending || !body.trim()}
+            className="self-start bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+          >
+            {reply.isPending ? "পাঠানো হচ্ছে…" : "উত্তর পাঠান"}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function TicketSupport({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const mine = useQuery({ queryKey: ["my-tickets"], queryFn: () => api.getMyTickets({ token }) });
+  const [subject, setSubject] = useState("");
+  const [category, setCategory] = useState("general");
+  const [message, setMessage] = useState("");
+  const [bookingCode, setBookingCode] = useState("");
+  const [error, setError] = useState("");
+  const [openId, setOpenId] = useState<number | null>(null);
+  const create = useMutation({
+    mutationFn: () =>
+      api.createSupportTicket({
+        token,
+        subject,
+        message,
+        category: category as "general" | "booking" | "payment" | "account" | "verification" | "other",
+        bookingCode: bookingCode || undefined,
+      }),
+    onSuccess: (res) => {
+      setSubject("");
+      setMessage("");
+      setBookingCode("");
+      setCategory("general");
+      setOpenId(res.ticket.id);
+      qc.invalidateQueries({ queryKey: ["my-tickets"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const tickets = mine.data?.tickets ?? [];
+  return (
+    <div className="grid lg:grid-cols-2 gap-6 items-start">
+      <form
+        className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError("");
+          create.mutate();
+        }}
+      >
+        <h2 className="font-bold text-[#064B27]">সাপোর্ট টিকিট খুলুন</h2>
+        <p className="text-sm text-[#737B73] -mt-2">আমাদের টিম এই থ্রেডেই উত্তর দেবে — উত্তর এলে নোটিফিকেশন পাবেন।</p>
+        <div>
+          <label className={labelCls} htmlFor="tk-subject">বিষয় *</label>
+          <input id="tk-subject" className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: পেমেন্ট নিয়ে প্রশ্ন" />
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="tk-category">বিষয়ের ধরন</label>
+          <select id="tk-category" className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)}>
+            {Object.entries(TICKET_CATEGORY_BN).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="tk-code">বুকিং কোড (যদি থাকে)</label>
+          <input id="tk-code" className={inputCls} value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} placeholder="GS-XXXXXX-XX" />
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="tk-msg">বিস্তারিত *</label>
+          <textarea id="tk-msg" className={inputCls} rows={4} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
+        </div>
+        {error && <ErrorBox message={error} />}
+        <button type="submit" disabled={create.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+          {create.isPending ? "খোলা হচ্ছে…" : "টিকিট খুলুন"}
+        </button>
+      </form>
+      <div>
+        <h2 className="font-bold text-[#064B27] mb-3">আমার সাপোর্ট টিকিট</h2>
+        {mine.isPending ? (
+          <Spinner />
+        ) : tickets.length === 0 ? (
+          <EmptyState title="কোনো টিকিট নেই" body="সাহায্য লাগলে বামে ফর্মটি পূরণ করে টিকিট খুলুন।" />
+        ) : (
+          <ul className="space-y-3">
+            {tickets.map((t) => (
+              <li key={t.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  aria-expanded={openId === t.id}
+                  onClick={() => setOpenId(openId === t.id ? null : t.id)}
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="font-semibold">{t.subject}</span>
+                    <TicketStatusChip status={t.status} />
+                  </span>
+                  <span className="mt-1 block text-[12.5px] text-[#737B73]">
+                    <span className="font-en">{t.code}</span> • {t.messageCount}টি বার্তা • {fmtDateTime(t.updatedAt)}
+                  </span>
+                </button>
+                {openId === t.id && (
+                  <div className="mt-3 border-t border-[#E5EAE5] pt-3">
+                    <TicketThread token={token} ticketId={t.id} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SupportTab({ token }: { token: string }) {
+  return (
+    <div className="space-y-10">
+      <TicketSupport token={token} />
+      <div>
+        <h2 className="font-bold text-[#064B27] mb-3">অভিযোগ (আগের পদ্ধতি)</h2>
+        <p className="text-sm text-[#737B73] mb-4 -mt-1">
+          আগের অভিযোগগুলো এখানেই আছে — নতুন করে সাহায্য চাইতে উপরের সাপোর্ট টিকিট ব্যবহার করুন, সেখানে সরাসরি উত্তর পাবেন।
+        </p>
+        <ComplaintsSection token={token} />
+      </div>
+    </div>
+  );
+}
+
+function ComplaintsSection({ token }: { token: string }) {
   const qc = useQueryClient();
   const mine = useQuery({
     queryKey: ["my-complaints"],
@@ -1847,7 +2106,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
   const tabRaw = params.get("tab") ?? "overview";
-  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "payments", "settings", "staff", "logs"].includes(tabRaw)
+  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "tickets", "social", "payments", "settings", "staff", "logs"].includes(tabRaw)
     ? tabRaw
     : "overview";
   const overview = useQuery({
@@ -1889,8 +2148,10 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
       : []),
     ...(canOps || canSupport ? [{ key: "reviews", label: "রিভিউ", badge: ov?.pendingReviews }] : []),
     ...(canSupport ? [{ key: "complaints", label: "অভিযোগ", badge: ov?.openComplaints }] : []),
+    ...(canSupport ? [{ key: "tickets", label: "সাপোর্ট টিকিট", badge: ov?.openTickets }] : []),
     ...(canFinance ? [{ key: "payments", label: "পেমেন্ট", badge: ov?.pendingPayments }] : []),
     ...(canFinance ? [{ key: "settings", label: "সেটিংস" }] : []),
+    ...(canOps ? [{ key: "social", label: "সোশ্যাল লিংক" }] : []),
     ...(level === "super"
       ? [
           { key: "staff", label: "অ্যাডমিন টিম" },
@@ -1919,6 +2180,8 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
         {shownTab === "locations" && <AdminLocations token={token} />}
         {shownTab === "reviews" && <AdminReviews token={token} />}
         {shownTab === "complaints" && <AdminComplaints token={token} />}
+        {shownTab === "tickets" && <AdminTickets token={token} />}
+        {shownTab === "social" && <AdminSocialLinks token={token} />}
         {shownTab === "payments" && <AdminPayments token={token} />}
         {shownTab === "settings" && <AdminSettings token={token} />}
         {shownTab === "staff" && <AdminStaff token={token} />}
@@ -2006,6 +2269,7 @@ function AdminOverview({ token }: { token: string }) {
         <StatCard label="সম্পন্ন বুকিং" value={d.completedBookings} icon={Icon.checkCircle("w-5 h-5")} />
         <StatCard label="বাতিল বুকিং" value={d.cancelledBookings} icon={Icon.x("w-5 h-5")} />
         <StatCard label="খোলা অভিযোগ" value={d.openComplaints} icon={Icon.message("w-5 h-5")} />
+        <StatCard label="খোলা সাপোর্ট টিকিট" value={d.openTickets} icon={Icon.message("w-5 h-5")} />
       </div>
       <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
         <h2 className="font-bold text-[#064B27] mb-3">টাকার হিসাব (যাচাইকৃত পেমেন্ট ও লেজার থেকে)</h2>
@@ -2828,6 +3092,249 @@ function AdminComplaints({ token }: { token: string }) {
 }
 
 
+// ------------------------------------- support tickets admin (Phase 6)
+
+function AdminTickets({ token }: { token: string }) {
+  const [filter, setFilter] = useState("");
+  const [openId, setOpenId] = useState<number | null>(null);
+  const list = useQuery({
+    queryKey: ["admin-tickets", filter],
+    queryFn: () =>
+      api.adminListTickets({
+        token,
+        status: (filter || undefined) as
+          | "open"
+          | "in_progress"
+          | "waiting_customer"
+          | "resolved"
+          | "closed"
+          | undefined,
+      }),
+  });
+  const rows = list.data?.tickets ?? [];
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <h2 className="font-bold text-[#064B27]">সাপোর্ট টিকিট</h2>
+        <label className="sr-only" htmlFor="admin-ticket-filter">অবস্থা অনুযায়ী ছাঁকুন</label>
+        <select
+          id="admin-ticket-filter"
+          className="border border-[#E5EAE5] rounded-xl px-3 py-2 bg-white text-sm"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        >
+          <option value="">সব অবস্থা</option>
+          {Object.entries(TICKET_STATUS_BN).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
+      </div>
+      {list.isPending ? (
+        <Spinner />
+      ) : list.isError ? (
+        <ErrorBox message={errMsg(list.error)} />
+      ) : rows.length === 0 ? (
+        <EmptyState title="কোনো টিকিট নেই" />
+      ) : (
+        <ul className="space-y-3">
+          {rows.map((t) => (
+            <li key={t.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <button
+                type="button"
+                className="w-full text-left"
+                aria-expanded={openId === t.id}
+                onClick={() => setOpenId(openId === t.id ? null : t.id)}
+              >
+                <span className="flex items-start justify-between gap-3">
+                  <span className="font-semibold">{t.subject}</span>
+                  <TicketStatusChip status={t.status} />
+                </span>
+                <span className="mt-1 block text-[12.5px] text-[#737B73]">
+                  <span className="font-en">{t.code}</span> • {t.ownerName} (<span className="font-en">{t.ownerPhone}</span>) •{" "}
+                  {t.ownerRole === "professional" ? "প্রফেশনাল" : "গ্রাহক"} • {t.messageCount}টি বার্তা • {fmtDateTime(t.updatedAt)}
+                </span>
+              </button>
+              {openId === t.id && (
+                <div className="mt-3 border-t border-[#E5EAE5] pt-3">
+                  <TicketThread token={token} ticketId={t.id} admin />
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------- social links manager (Phase 6)
+//
+// Owner-supplied social links only. The list starts empty and the
+// public site shows no social icons until a real link is added here
+// and enabled. The server validates every URL against the platform's
+// domain, so a wrong or placeholder URL cannot be saved.
+
+type AdminSocialLink = ApiResponse<typeof api, "adminListSocialLinks">["links"][number];
+type SocialPlatform = "facebook" | "instagram" | "youtube" | "tiktok" | "whatsapp" | "other";
+
+const SOCIAL_PLATFORMS: SocialPlatform[] = ["facebook", "instagram", "youtube", "tiktok", "whatsapp", "other"];
+
+function SocialLinkEditor({
+  token,
+  link,
+}: {
+  token: string;
+  link?: AdminSocialLink;
+}) {
+  const qc = useQueryClient();
+  const [platform, setPlatform] = useState<SocialPlatform>((link?.platform as SocialPlatform) ?? "facebook");
+  const [label, setLabel] = useState(link?.label ?? "");
+  const [url, setUrl] = useState(link?.url ?? "");
+  const [sortOrder, setSortOrder] = useState(String(link?.sortOrder ?? 0));
+  const [enabled, setEnabled] = useState(link?.enabled ?? true);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState(false);
+  const save = useMutation({
+    mutationFn: () =>
+      api.adminSaveSocialLink({
+        token,
+        id: link?.id,
+        platform,
+        label: label.trim() || null,
+        url: url.trim(),
+        enabled,
+        sortOrder: Number(sortOrder) || 0,
+      }),
+    onSuccess: () => {
+      setOk(true);
+      if (!link) {
+        setLabel("");
+        setUrl("");
+        setSortOrder("0");
+        setEnabled(true);
+      }
+      qc.invalidateQueries({ queryKey: ["admin-social-links"] });
+      qc.invalidateQueries({ queryKey: ["social-links"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const del = useMutation({
+    mutationFn: () => api.adminDeleteSocialLink({ token, id: link!.id }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-social-links"] });
+      qc.invalidateQueries({ queryKey: ["social-links"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const fid = link ? `sl-${link.id}` : "sl-new";
+  return (
+    <form
+      className="rounded-2xl border border-[#E5EAE5] bg-white p-4 space-y-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setError("");
+        setOk(false);
+        save.mutate();
+      }}
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="text-[#087A35]">{socialIcon(platform, "w-5 h-5")}</span>
+        <span className="font-semibold">{link ? (link.label ?? SOCIAL_PLATFORM_BN[link.platform] ?? link.platform) : "নতুন লিংক যোগ করুন"}</span>
+        {link && (
+          <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ${link.enabled ? "bg-[#087A35] text-white" : "bg-[#E5EAE5] text-[#737B73]"}`}>
+            {link.enabled ? "চালু" : "বন্ধ"}
+          </span>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls} htmlFor={`${fid}-platform`}>প্ল্যাটফর্ম</label>
+          <select id={`${fid}-platform`} className={inputCls} value={platform} onChange={(e) => setPlatform(e.target.value as SocialPlatform)}>
+            {SOCIAL_PLATFORMS.map((p) => (
+              <option key={p} value={p}>{SOCIAL_PLATFORM_BN[p] ?? p}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor={`${fid}-label`}>নাম (ঐচ্ছিক)</label>
+          <input id={`${fid}-label`} className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="যেমন: GhorSheba অফিসিয়াল পেজ" />
+        </div>
+      </div>
+      <div>
+        <label className={labelCls} htmlFor={`${fid}-url`}>URL *</label>
+        <input
+          id={`${fid}-url`}
+          className={`${inputCls} font-en`}
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          required
+          placeholder={platform === "whatsapp" ? "https://wa.me/8801XXXXXXXXX" : "https://…"}
+        />
+        <p className="mt-1 text-[13px] text-[#737B73]">শুধু আসল অ্যাকাউন্ট/পেজের লিংক দিন — প্ল্যাটফর্মের নিজের ডোমেইন ছাড়া অন্য URL সার্ভার গ্রহণ করবে না।</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <label className={labelCls} htmlFor={`${fid}-order`}>ক্রম</label>
+          <input id={`${fid}-order`} type="number" min={0} max={999} className={`${inputCls} font-en w-24`} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+        </div>
+        <label className="flex items-center gap-2 font-medium pb-2" htmlFor={`${fid}-enabled`}>
+          <input id={`${fid}-enabled`} type="checkbox" className="w-4.5 h-4.5 accent-[#087A35]" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          সাইটে দেখান
+        </label>
+        <div className="ml-auto flex gap-2">
+          {link && (
+            <button
+              type="button"
+              disabled={del.isPending}
+              onClick={() => {
+                setError("");
+                del.mutate();
+              }}
+              className="border border-red-200 text-red-600 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60"
+            >
+              {del.isPending ? "মোছা হচ্ছে…" : "মুছুন"}
+            </button>
+          )}
+          <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+            {save.isPending ? "সংরক্ষণ হচ্ছে…" : link ? "সংরক্ষণ করুন" : "যোগ করুন"}
+          </button>
+        </div>
+      </div>
+      {error && <ErrorBox message={error} />}
+      {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">সংরক্ষিত হয়েছে।</p>}
+    </form>
+  );
+}
+
+function AdminSocialLinks({ token }: { token: string }) {
+  const list = useQuery({ queryKey: ["admin-social-links"], queryFn: () => api.adminListSocialLinks({ token }) });
+  const rows = list.data?.links ?? [];
+  return (
+    <div className="max-w-3xl space-y-4">
+      <div>
+        <h2 className="font-bold text-[#064B27]">সোশ্যাল মিডিয়া লিংক</h2>
+        <p className="mt-1 text-sm text-[#737B73]">
+          এখানে যোগ করা চালু লিংকগুলোই শুধু সাইটের ফুটার, যোগাযোগ পেজ ও মোবাইল মেনুতে দেখানো হবে।
+          কোনো লিংক না থাকলে সাইটে কোনো সোশ্যাল আইকন দেখানো হবে না।
+        </p>
+      </div>
+      {list.isPending ? (
+        <Spinner />
+      ) : list.isError ? (
+        <ErrorBox message={errMsg(list.error)} />
+      ) : (
+        <>
+          {rows.map((l) => (
+            <SocialLinkEditor key={l.id} token={token} link={l} />
+          ))}
+          {rows.length === 0 && <EmptyState title="এখনো কোনো সোশ্যাল লিংক যোগ হয়নি" body="আসল Facebook পেজ / YouTube চ্যানেল তৈরি হলে নিচে থেকে লিংক যোগ করুন।" />}
+          <SocialLinkEditor token={token} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ------------------------------------------------- payments (Phase 5)
 //
 // Payment Management: money figures come from the server (verified
@@ -3311,6 +3818,8 @@ function AdminSettings({ token }: { token: string }) {
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [hours, setHours] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const [payNumber, setPayNumber] = useState("");
   const [payProvider, setPayProvider] = useState("");
@@ -3322,6 +3831,8 @@ function AdminSettings({ token }: { token: string }) {
     setPhone(data.data.supportPhone ?? "");
     setWhatsapp(data.data.supportWhatsapp ?? "");
     setEmail(data.data.supportEmail ?? "");
+    setAddress(data.data.businessAddress ?? "");
+    setHours(data.data.officeHours ?? "");
     setAnnouncement(data.data.announcement ?? "");
     setPayNumber(data.data.paymentReceiveNumber ?? "");
     setPayProvider(data.data.paymentReceiveProvider ?? "");
@@ -3333,6 +3844,8 @@ function AdminSettings({ token }: { token: string }) {
         supportPhone: phone || null,
         supportWhatsapp: whatsapp || null,
         supportEmail: email || null,
+        businessAddress: address.trim() || null,
+        officeHours: hours.trim() || null,
         announcement: announcement || null,
         paymentReceiveNumber: payNumber.trim() || null,
         paymentReceiveProvider: (payProvider || null) as "bkash" | "nagad" | "rocket" | null,
@@ -3370,6 +3883,14 @@ function AdminSettings({ token }: { token: string }) {
       <div>
         <label className={labelCls} htmlFor="st-email">সাপোর্ট ইমেইল</label>
         <input id="st-email" type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="খালি রাখলে সাইটে দেখানো হবে না" />
+      </div>
+      <div>
+        <label className={labelCls} htmlFor="st-address">ব্যবসায়িক ঠিকানা (যোগাযোগ পেজ ও ফুটারে দেখানো হবে)</label>
+        <input id="st-address" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="খালি রাখলে শুধু এলাকা (টাঙ্গাইল) দেখানো হবে" />
+      </div>
+      <div>
+        <label className={labelCls} htmlFor="st-hours">অফিস সময়</label>
+        <input id="st-hours" className={inputCls} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="যেমন: প্রতিদিন সকাল ৯টা – রাত ৯টা (খালি রাখলে দেখানো হবে না)" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-ann">ঘোষণা (সাইটের উপরে দেখানো হবে)</label>

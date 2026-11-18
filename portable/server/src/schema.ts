@@ -304,6 +304,12 @@ export const settings = pgTable("settings", {
   supportWhatsapp: text("support_whatsapp"),
   supportEmail: text("support_email"),
   announcement: text("announcement"),
+  // Public contact details (Master Phase 6): the business address and
+  // office hours shown on the Contact page and in the footer. Null
+  // until the owner fills them in — the UI never invents an address
+  // or hours, it simply omits the lines while these are empty.
+  businessAddress: text("business_address"),
+  officeHours: text("office_hours"),
   // Manual-payment receiving number (Master Phase 3): the GhorSheba
   // MFS number customers send their online payment to before submitting
   // the TrxID at checkout. Set by a finance/super admin in Platform
@@ -539,4 +545,69 @@ export const accountDeletionRequests = pgTable("account_deletion_requests", {
     .default("pending"),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
+});
+
+// ---------------------------------------------------------------------------
+// Master Phase 6 — social links, support tickets.
+//
+// Social links are OWNER-supplied only (audit Decision 4): this table
+// starts EMPTY and no code anywhere seeds or invents a URL. The public
+// site renders only rows with enabled = 1; while the table is empty the
+// footer / contact page / mobile menu show no social icons at all.
+// URLs are validated server-side against the platform's domain.
+export const socialLinks = pgTable("social_links", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  platform: text("platform", {
+    enum: ["facebook", "instagram", "youtube", "tiktok", "whatsapp", "other"],
+  }).notNull(),
+  // Optional display label; mainly for platform = "other".
+  label: text("label"),
+  url: text("url").notNull(),
+  enabled: integer("enabled").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// Support tickets (Master Phase 6). A ticket belongs to exactly one
+// user (customer or professional); only that user — or a support/super
+// admin — can read its thread or post to it. The conversation lives in
+// support_ticket_messages; the ticket row carries the workflow status:
+// open → in_progress → waiting_customer → resolved → closed.
+// The older `complaints` flow is unchanged and keeps working alongside.
+export const supportTickets = pgTable("support_tickets", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  code: text("code").notNull().unique(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id),
+  subject: text("subject").notNull(),
+  category: text("category", {
+    enum: ["general", "booking", "payment", "account", "verification", "other"],
+  })
+    .notNull()
+    .default("general"),
+  bookingCode: text("booking_code"),
+  status: text("status", {
+    enum: ["open", "in_progress", "waiting_customer", "resolved", "closed"],
+  })
+    .notNull()
+    .default("open"),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+export const supportTicketMessages = pgTable("support_ticket_messages", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ticketId: integer("ticket_id")
+    .notNull()
+    .references(() => supportTickets.id),
+  authorId: integer("author_id")
+    .notNull()
+    .references(() => users.id),
+  authorRole: text("author_role", {
+    enum: ["customer", "professional", "admin"],
+  }).notNull(),
+  body: text("body").notNull(),
+  createdAt: ts("created_at"),
 });

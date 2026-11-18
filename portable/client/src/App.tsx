@@ -16,6 +16,10 @@ ServiceIcon,
 Spinner,
 Stars,
 STATUS_BN,
+SocialLinksRow,
+socialIcon,
+socialLabel,
+useSocialLinks,
 errMsg,
 fmtDate,
 getToken,
@@ -453,6 +457,10 @@ function Header({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
                 {label}
               </a>
             ))}
+            {/* Owner-added social links only; renders nothing while none exist. */}
+            <div className="px-3 pt-1.5">
+              <SocialLinksRow />
+            </div>
             {user ? (
               <>
                 <a href={dashHref} className="px-3 py-2.5 rounded-lg font-medium bg-[#F0FAF2] text-[#087A35]">
@@ -489,7 +497,12 @@ function Header({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
 // ---------------------------------------------------------------- Footer
 
 function Footer({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] }) {
-  const hasContact = catalog?.supportPhone || catalog?.supportEmail || catalog?.supportWhatsapp;
+  const hasContact =
+    catalog?.supportPhone ||
+    catalog?.supportEmail ||
+    catalog?.supportWhatsapp ||
+    catalog?.businessAddress ||
+    catalog?.officeHours;
   return (
     <footer className="bg-[#064B27] text-white mt-0">
       <div className="max-w-7xl mx-auto px-4 pt-12 pb-6 grid gap-10 md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1.2fr]">
@@ -498,7 +511,9 @@ function Footer({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
           <p className="mt-4 text-white/75 text-[15px] leading-relaxed max-w-xs">
             টাঙ্গাইলের যাচাইকৃত স্থানীয় মিস্ত্রি ও প্রফেশনালদের সাথে গ্রাহকদের সংযোগ দেওয়ার নির্ভরযোগ্য প্ল্যাটফর্ম।
           </p>
-          <p className="mt-3 text-white/50 text-sm">সোশ্যাল মিডিয়া লিংক শীঘ্রই যুক্ত হবে।</p>
+          <div className="mt-4">
+            <SocialLinksRow dark />
+          </div>
         </div>
         <nav aria-label="দ্রুত লিংক">
           <h3 className="font-bold text-[17px] mb-3.5">দ্রুত লিংক</h3>
@@ -530,12 +545,29 @@ function Footer({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
                   {Icon.phone("w-4 h-4")} <a href={`tel:${catalog.supportPhone}`} className="hover:text-white font-en">{catalog.supportPhone}</a>
                 </li>
               )}
+              {catalog?.supportWhatsapp && (
+                <li className="flex items-center gap-2">
+                  {Icon.whatsapp("w-4 h-4")}{" "}
+                  <a href={`https://wa.me/${catalog.supportWhatsapp.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="hover:text-white font-en">
+                    {catalog.supportWhatsapp}
+                  </a>
+                </li>
+              )}
               {catalog?.supportEmail && (
                 <li className="flex items-center gap-2">
                   {Icon.message("w-4 h-4")} <a href={`mailto:${catalog.supportEmail}`} className="hover:text-white font-en">{catalog.supportEmail}</a>
                 </li>
               )}
-              <li className="flex items-center gap-2">{Icon.pin("w-4 h-4")} টাঙ্গাইল, বাংলাদেশ</li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 shrink-0">{Icon.pin("w-4 h-4")}</span>
+                <span>{catalog?.businessAddress ?? "টাঙ্গাইল, বাংলাদেশ"}</span>
+              </li>
+              {catalog?.officeHours && (
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0">{Icon.clock("w-4 h-4")}</span>
+                  <span>{catalog.officeHours}</span>
+                </li>
+              )}
             </ul>
           ) : (
             <ul className="space-y-2.5 text-white/80 text-[15px]">
@@ -2054,8 +2086,19 @@ function AboutPage() {
 
 function ContactPage() {
   const catalog = useCatalog();
+  const social = useSocialLinks();
+  const me = useMe();
   const c = catalog.data;
-  const has = c?.supportPhone || c?.supportEmail || c?.supportWhatsapp;
+  const has =
+    c?.supportPhone || c?.supportEmail || c?.supportWhatsapp || c?.businessAddress || c?.officeHours;
+  const links = social.data?.links ?? [];
+  const user = me.data?.user;
+  const supportHref =
+    user?.role === "professional"
+      ? "#/pro-dashboard?tab=support"
+      : user?.role === "admin"
+        ? "#/admin?tab=tickets"
+        : "#/dashboard?tab=support";
   return (
     <PageShell title="যোগাযোগ করুন" sub="বুকিং বা সার্ভিস নিয়ে যেকোনো প্রয়োজনে আমাদের সাথে যোগাযোগ করুন।">
       {has ? (
@@ -2068,7 +2111,7 @@ function ContactPage() {
           )}
           {c?.supportWhatsapp && (
             <li className="flex items-center gap-3 rounded-2xl border border-[#E5EAE5] p-4">
-              <span className="text-[#087A35]">{Icon.message("w-5 h-5")}</span>
+              <span className="text-[#087A35]">{Icon.whatsapp("w-5 h-5")}</span>
               <span>WhatsApp: <a className="font-semibold font-en hover:underline" href={`https://wa.me/${c.supportWhatsapp.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer">{c.supportWhatsapp}</a></span>
             </li>
           )}
@@ -2078,20 +2121,63 @@ function ContactPage() {
               <span>ইমেইল: <a className="font-semibold font-en hover:underline" href={`mailto:${c.supportEmail}`}>{c.supportEmail}</a></span>
             </li>
           )}
-          <li className="flex items-center gap-3 rounded-2xl border border-[#E5EAE5] p-4">
-            <span className="text-[#087A35]">{Icon.pin("w-5 h-5")}</span>
-            <span>এলাকা: টাঙ্গাইল, বাংলাদেশ</span>
+          <li className="flex items-start gap-3 rounded-2xl border border-[#E5EAE5] p-4">
+            <span className="text-[#087A35] mt-0.5">{Icon.pin("w-5 h-5")}</span>
+            <span>ঠিকানা: {c?.businessAddress ?? "টাঙ্গাইল, বাংলাদেশ"}</span>
           </li>
+          {c?.officeHours && (
+            <li className="flex items-start gap-3 rounded-2xl border border-[#E5EAE5] p-4">
+              <span className="text-[#087A35] mt-0.5">{Icon.clock("w-5 h-5")}</span>
+              <span>অফিস সময়: {c.officeHours}</span>
+            </li>
+          )}
         </ul>
       ) : (
         <div className="rounded-2xl bg-[#F0FAF2] border border-[#cfe3d3] p-5">
           <p>আমাদের সরাসরি ফোন নম্বর ও ইমেইল শীঘ্রই এখানে যুক্ত হবে। আপাতত যোগাযোগের সবচেয়ে ভালো উপায়:</p>
           <ul className="list-disc list-inside mt-2 space-y-1.5">
             <li>সার্ভিস প্রয়োজন হলে সরাসরি <a className="text-[#087A35] font-semibold hover:underline" href="#/services">বুকিং করুন</a> — অ্যাডমিন আপনার দেওয়া নম্বরে যোগাযোগ করবেন।</li>
-            <li>অ্যাকাউন্ট থাকলে ড্যাশবোর্ড থেকে অভিযোগ/অনুরোধ পাঠান — আমরা সেখানেই উত্তর দিয়ে থাকি।</li>
+            <li>অ্যাকাউন্ট থাকলে নিচে থেকে সাপোর্ট টিকিট খুলুন — আমরা সেখানেই উত্তর দিয়ে থাকি।</li>
           </ul>
         </div>
       )}
+      {links.length > 0 && (
+        <div>
+          <h2 className="text-xl font-bold text-[#064B27]">সোশ্যাল মিডিয়ায় আমরা</h2>
+          <ul className="mt-3 space-y-3">
+            {links.map((l) => (
+              <li key={l.id}>
+                <a
+                  href={l.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-3 rounded-2xl border border-[#E5EAE5] p-4 hover:border-[#087A35] hover:bg-[#F0FAF2] transition-colors"
+                >
+                  <span className="text-[#087A35]">{socialIcon(l.platform, "w-5 h-5")}</span>
+                  <span className="font-semibold">{socialLabel(l)}</span>
+                  <span className="ml-auto text-[#087A35]">{Icon.arrowRight("w-4 h-4")}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="rounded-2xl bg-[#F0FAF2] border border-[#cfe3d3] p-5">
+        <h2 className="text-xl font-bold text-[#064B27]">সাপোর্ট টিকিট খুলুন</h2>
+        <p className="mt-1.5">
+          বুকিং, পেমেন্ট বা অ্যাকাউন্ট নিয়ে সাহায্য দরকার? সাপোর্ট টিকিট খুললে আমাদের টিম আপনার
+          ড্যাশবোর্ডেই উত্তর দেবে — টিকিটের অবস্থা (খোলা, কাজ চলছে, সমাধান হয়েছে) সেখানেই দেখতে পাবেন।
+        </p>
+        {user ? (
+          <a href={supportHref} className="inline-flex mt-3 bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl">
+            টিকিট খুলুন
+          </a>
+        ) : (
+          <a href="#/login" className="inline-flex mt-3 bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl">
+            লগইন করে টিকিট খুলুন
+          </a>
+        )}
+      </div>
     </PageShell>
   );
 }

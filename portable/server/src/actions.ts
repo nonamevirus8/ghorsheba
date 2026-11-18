@@ -330,6 +330,111 @@ async function logAdmin(ctx: Ctx, adminId: number, action: string, detail: strin
   await db.insert(schema.adminLogs).values({ adminId, action, detail });
 }
 
+// ------------------------------------------- Phase 6: social + tickets
+//
+// Social links are owner-supplied only (audit Decision 4): nothing in
+// this file seeds, guesses or defaults a social URL. Every URL an admin
+// saves is validated here, server-side: it must be a well-formed
+// http(s) URL and — for a named platform — its host must belong to
+// that platform (wa.me / whatsapp.com for WhatsApp). Platform "other"
+// accepts any well-formed http(s) URL.
+
+const SOCIAL_PLATFORM_DOMAINS: Record<string, string[]> = {
+  facebook: ["facebook.com", "fb.com"],
+  instagram: ["instagram.com"],
+  youtube: ["youtube.com", "youtu.be"],
+  tiktok: ["tiktok.com"],
+  whatsapp: ["wa.me", "whatsapp.com", "api.whatsapp.com"],
+};
+
+function hostMatchesDomain(host: string, domain: string): boolean {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+function validateSocialUrl(platform: string, rawUrl: string): string {
+  const url = rawUrl.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("সঠিক URL দিন — যেমন https://www.facebook.com/yourpage");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("URL অবশ্যই http:// বা https:// দিয়ে শুরু হতে হবে।");
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (!host.includes(".")) {
+    throw new Error("সঠিক URL দিন — যেমন https://www.facebook.com/yourpage");
+  }
+  const domains = SOCIAL_PLATFORM_DOMAINS[platform];
+  if (domains && !domains.some((d) => hostMatchesDomain(host, d))) {
+    throw new Error(
+      `এই প্ল্যাটফর্মের জন্য ${domains.join(" / ")} ডোমেইনের URL দিন।`,
+    );
+  }
+  return url;
+}
+
+const socialLinkOut = z.object({
+  id: z.number(),
+  platform: z.string(),
+  label: z.string().nullable(),
+  url: z.string(),
+  enabled: z.boolean(),
+  sortOrder: z.number(),
+});
+
+type SocialLinkRow = typeof schema.socialLinks.$inferSelect;
+
+function toSocialLinkOut(l: SocialLinkRow): z.infer<typeof socialLinkOut> {
+  return {
+    id: l.id,
+    platform: l.platform,
+    label: l.label,
+    url: l.url,
+    enabled: l.enabled === 1,
+    sortOrder: l.sortOrder,
+  };
+}
+
+// Support tickets: one ticket = one owner + a message thread. Only the
+// owner or a support/super admin may read or post to a thread; anyone
+// else gets the same "not found" error as a missing ticket, so ticket
+// existence is never leaked across accounts.
+const ticketOut = z.object({
+  id: z.number(),
+  code: z.string(),
+  subject: z.string(),
+  category: z.string(),
+  bookingCode: z.string().nullable(),
+  status: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+type TicketRow = typeof schema.supportTickets.$inferSelect;
+
+function toTicketOut(t: TicketRow): z.infer<typeof ticketOut> {
+  return {
+    id: t.id,
+    code: t.code,
+    subject: t.subject,
+    category: t.category,
+    bookingCode: t.bookingCode,
+    status: t.status,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+  };
+}
+
+const TICKET_STATUS_BN: Record<string, string> = {
+  open: "খোলা হয়েছে",
+  in_progress: "কাজ চলছে",
+  waiting_customer: "আপনার উত্তরের অপেক্ষায়",
+  resolved: "সমাধান হয়েছে",
+  closed: "বন্ধ করা হয়েছে",
+};
+
 async function addEvent(
   ctx: Ctx,
   bookingId: number,
@@ -1107,6 +1212,8 @@ export const Actions = {
       supportWhatsapp: z.string().nullable(),
       supportEmail: z.string().nullable(),
       announcement: z.string().nullable(),
+      businessAddress: z.string().nullable(),
+      officeHours: z.string().nullable(),
       paymentReceiveNumber: z.string().nullable(),
       paymentReceiveProvider: z.string().nullable(),
     }),
@@ -1137,6 +1244,10 @@ export const Actions = {
         supportWhatsapp: s?.supportWhatsapp ?? null,
         supportEmail: s?.supportEmail ?? null,
         announcement: s?.announcement ?? null,
+        // Owner-filled public contact details (Phase 6); null until
+        // the owner sets them — the UI omits the lines while empty.
+        businessAddress: s?.businessAddress ?? null,
+        officeHours: s?.officeHours ?? null,
         paymentReceiveNumber: s?.paymentReceiveNumber ?? null,
         paymentReceiveProvider: s?.paymentReceiveProvider ?? null,
       };
@@ -2582,6 +2693,7 @@ export const Actions = {
       completedBookings: z.number(),
       cancelledBookings: z.number(),
       openComplaints: z.number(),
+      openTickets: z.number(),
       pendingReviews: z.number(),
       // Payment Management figures (Master Phase 5, audit fix P-2).
       onlineCollected: z.number(),
@@ -2612,6 +2724,10 @@ export const Actions = {
       const pros = await db.select().from(schema.professionals);
       const bookings = await db.select().from(schema.bookings);
       const complaints = await db.select().from(schema.complaints).where(eq(schema.complaints.status, "open"));
+      const openTicketRows = await db
+        .select()
+        .from(schema.supportTickets)
+        .where(inArray(schema.supportTickets.status, ["open", "in_progress", "waiting_customer"]));
       const pendingRevs = await db.select().from(schema.reviews).where(eq(schema.reviews.status, "pending"));
       const st = await db.select().from(schema.settings).limit(1);
       const rates = dualRatesFromSettings(st[0]);
@@ -2660,6 +2776,7 @@ export const Actions = {
         completedBookings: bookings.filter((b) => b.status === "completed").length,
         cancelledBookings: bookings.filter((b) => b.status === "cancelled").length,
         openComplaints: complaints.length,
+        openTickets: openTicketRows.length,
         pendingReviews: pendingRevs.length,
         onlineCollected,
         customerFeesCollected,
@@ -3374,6 +3491,8 @@ export const Actions = {
       supportWhatsapp: z.string().nullable(),
       supportEmail: z.string().nullable(),
       announcement: z.string().nullable(),
+      businessAddress: z.string().nullable(),
+      officeHours: z.string().nullable(),
       paymentReceiveNumber: z.string().nullable(),
       paymentReceiveProvider: z.string().nullable(),
     }),
@@ -3393,6 +3512,8 @@ export const Actions = {
         supportWhatsapp: s?.supportWhatsapp ?? null,
         supportEmail: s?.supportEmail ?? null,
         announcement: s?.announcement ?? null,
+        businessAddress: s?.businessAddress ?? null,
+        officeHours: s?.officeHours ?? null,
         paymentReceiveNumber: s?.paymentReceiveNumber ?? null,
         paymentReceiveProvider: s?.paymentReceiveProvider ?? null,
       };
@@ -3419,6 +3540,10 @@ export const Actions = {
       supportWhatsapp: z.string().max(30).nullable().optional(),
       supportEmail: z.string().max(120).nullable().optional(),
       announcement: z.string().max(300).nullable().optional(),
+      // Public contact details (Master Phase 6). Same omitted = keep,
+      // explicit null = clear semantics as the other contact fields.
+      businessAddress: z.string().max(300).nullable().optional(),
+      officeHours: z.string().max(200).nullable().optional(),
       // Manual-payment receiving MFS number (Master Phase 3). Omitted
       // fields keep their current values; pass null to clear.
       paymentReceiveNumber: z.string().max(20).nullable().optional(),
@@ -3457,6 +3582,12 @@ export const Actions = {
             args.supportEmail !== undefined ? args.supportEmail : (cur?.supportEmail ?? null),
           announcement:
             args.announcement !== undefined ? args.announcement : (cur?.announcement ?? null),
+          businessAddress:
+            args.businessAddress !== undefined
+              ? args.businessAddress
+              : (cur?.businessAddress ?? null),
+          officeHours:
+            args.officeHours !== undefined ? args.officeHours : (cur?.officeHours ?? null),
           paymentReceiveNumber:
             args.paymentReceiveNumber !== undefined
               ? args.paymentReceiveNumber
@@ -4842,6 +4973,447 @@ export const Actions = {
             }
           : null,
       };
+    },
+  }),
+
+  // ------------------------------------------------ Phase 6: social links
+
+  getSocialLinks: defineAction({
+    description:
+      "Public: returns the ENABLED social links the owner has added, in display order. The table starts empty and nothing is ever invented — an empty result means the site shows no social icons at all.",
+    request: z.object({}),
+    response: z.object({ links: z.array(socialLinkOut) }),
+    async handler(ctx) {
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.socialLinks)
+        .where(eq(schema.socialLinks.enabled, 1))
+        .orderBy(asc(schema.socialLinks.sortOrder), asc(schema.socialLinks.id));
+      return { links: rows.map(toSocialLinkOut) };
+    },
+  }),
+
+  adminListSocialLinks: defineAction({
+    description: "Admin (operations): lists ALL social links including disabled ones, for the social-links manager.",
+    request: z.object({ token: z.string() }),
+    response: z.object({ links: z.array(socialLinkOut) }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.socialLinks)
+        .orderBy(asc(schema.socialLinks.sortOrder), asc(schema.socialLinks.id));
+      return { links: rows.map(toSocialLinkOut) };
+    },
+  }),
+
+  adminSaveSocialLink: defineAction({
+    description:
+      "Admin (operations): adds a social link or edits an existing one (platform, label, URL, enabled, display order). The URL is validated server-side: it must be a well-formed http(s) URL on the chosen platform's own domain. Only real owner-supplied URLs belong here — never a placeholder account.",
+    request: z.object({
+      token: z.string(),
+      id: z.number().int().optional(),
+      platform: z.enum(["facebook", "instagram", "youtube", "tiktok", "whatsapp", "other"]),
+      label: z.string().max(80).nullable().optional(),
+      url: z.string().max(500),
+      enabled: z.boolean().optional(),
+      sortOrder: z.number().int().min(0).max(999).optional(),
+    }),
+    response: z.object({ link: socialLinkOut }),
+    async handler(ctx, args) {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const url = validateSocialUrl(args.platform, args.url);
+      const label = args.label?.trim() ? args.label.trim() : null;
+      if (args.id !== undefined) {
+        const rows = await db
+          .select()
+          .from(schema.socialLinks)
+          .where(eq(schema.socialLinks.id, args.id))
+          .limit(1);
+        const cur = rows[0];
+        if (!cur) throw new Error("লিংকটি পাওয়া যায়নি।");
+        await db
+          .update(schema.socialLinks)
+          .set({
+            platform: args.platform,
+            label,
+            url,
+            enabled: args.enabled === undefined ? cur.enabled : args.enabled ? 1 : 0,
+            sortOrder: args.sortOrder ?? cur.sortOrder,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.socialLinks.id, cur.id));
+        await logAdmin(ctx, admin.id, "social_link_update", `#${cur.id} ${args.platform} ${url}`);
+        const after = await db
+          .select()
+          .from(schema.socialLinks)
+          .where(eq(schema.socialLinks.id, cur.id))
+          .limit(1);
+        ctx.invalidateQueries();
+        return { link: toSocialLinkOut(after[0] ?? cur) };
+      }
+      const inserted = await db
+        .insert(schema.socialLinks)
+        .values({
+          platform: args.platform,
+          label,
+          url,
+          enabled: args.enabled === false ? 0 : 1,
+          sortOrder: args.sortOrder ?? 0,
+        })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error("লিংক সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।");
+      await logAdmin(ctx, admin.id, "social_link_add", `#${row.id} ${args.platform} ${url}`);
+      ctx.invalidateQueries();
+      return { link: toSocialLinkOut(row) };
+    },
+  }),
+
+  adminDeleteSocialLink: defineAction({
+    description: "Admin (operations): permanently deletes a social link.",
+    request: z.object({ token: z.string(), id: z.number().int() }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.socialLinks)
+        .where(eq(schema.socialLinks.id, args.id))
+        .limit(1);
+      const cur = rows[0];
+      if (!cur) throw new Error("লিংকটি পাওয়া যায়নি।");
+      await db.delete(schema.socialLinks).where(eq(schema.socialLinks.id, cur.id));
+      await logAdmin(ctx, admin.id, "social_link_delete", `#${cur.id} ${cur.platform} ${cur.url}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  // ----------------------------------------------- Phase 6: support tickets
+
+  createSupportTicket: defineAction({
+    description:
+      "Opens a support ticket for the signed-in customer or professional, with the first message. Admins are notified. The older complaints flow is separate and unchanged.",
+    request: z.object({
+      token: z.string(),
+      subject: z.string().min(3).max(150),
+      message: z.string().min(5).max(2000),
+      category: z
+        .enum(["general", "booking", "payment", "account", "verification", "other"])
+        .optional(),
+      bookingCode: z.string().max(40).optional(),
+    }),
+    response: z.object({ ticket: ticketOut }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role === "admin") {
+        throw new Error("অ্যাডমিন অ্যাকাউন্ট থেকে টিকিট খোলা যায় না।");
+      }
+      const db = dbOf(ctx);
+      const code = `GS-T${randomHex(4).toUpperCase()}`;
+      const inserted = await db
+        .insert(schema.supportTickets)
+        .values({
+          code,
+          userId: user.id,
+          subject: args.subject.trim(),
+          category: args.category ?? "general",
+          bookingCode: args.bookingCode?.trim() ? args.bookingCode.trim() : null,
+          status: "open",
+        })
+        .returning();
+      const ticket = inserted[0];
+      if (!ticket) throw new Error("টিকিট খোলা যায়নি — আবার চেষ্টা করুন।");
+      await db.insert(schema.supportTicketMessages).values({
+        ticketId: ticket.id,
+        authorId: user.id,
+        authorRole: user.role === "professional" ? "professional" : "customer",
+        body: args.message.trim(),
+      });
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "support_ticket",
+        title: "নতুন সাপোর্ট টিকিট এসেছে",
+        body: `${ticket.code} — ${ticket.subject}`,
+      });
+      ctx.invalidateQueries();
+      return { ticket: toTicketOut(ticket) };
+    },
+  }),
+
+  getMyTickets: defineAction({
+    description: "Returns the signed-in user's own support tickets (never anyone else's), newest first, with message counts.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      tickets: z.array(ticketOut.extend({ messageCount: z.number() })),
+    }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.supportTickets)
+        .where(eq(schema.supportTickets.userId, user.id))
+        .orderBy(desc(schema.supportTickets.id));
+      const msgs = rows.length
+        ? await db
+            .select()
+            .from(schema.supportTicketMessages)
+            .where(
+              inArray(
+                schema.supportTicketMessages.ticketId,
+                rows.map((t) => t.id),
+              ),
+            )
+        : [];
+      return {
+        tickets: rows.map((t) => ({
+          ...toTicketOut(t),
+          messageCount: msgs.filter((m) => m.ticketId === t.id).length,
+        })),
+      };
+    },
+  }),
+
+  getSupportTicket: defineAction({
+    description:
+      "Returns one ticket with its full message thread. Only the ticket's owner or a support/super admin can read it — anyone else gets the same not-found error as a missing ticket.",
+    request: z.object({ token: z.string(), ticketId: z.number().int() }),
+    response: z.object({
+      ticket: ticketOut.extend({
+        ownerName: z.string(),
+        ownerPhone: z.string(),
+        ownerRole: z.string(),
+      }),
+      messages: z.array(
+        z.object({
+          id: z.number(),
+          authorRole: z.string(),
+          authorName: z.string(),
+          body: z.string(),
+          createdAt: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.supportTickets)
+        .where(eq(schema.supportTickets.id, args.ticketId))
+        .limit(1);
+      const ticket = rows[0];
+      const isAdmin = user.role === "admin";
+      if (isAdmin) {
+        // Admins read threads only at the support level (super passes).
+        await requireAdminLevel(ctx, args.token, ["support"]);
+      }
+      if (!ticket || (!isAdmin && ticket.userId !== user.id)) {
+        throw new Error("টিকিট পাওয়া যায়নি।");
+      }
+      const ownerRows = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.id, ticket.userId))
+        .limit(1);
+      const owner = ownerRows[0];
+      const msgs = await db
+        .select()
+        .from(schema.supportTicketMessages)
+        .where(eq(schema.supportTicketMessages.ticketId, ticket.id))
+        .orderBy(asc(schema.supportTicketMessages.id));
+      const authorIds = [...new Set(msgs.map((m) => m.authorId))];
+      const authors = authorIds.length
+        ? await db.select().from(schema.users).where(inArray(schema.users.id, authorIds))
+        : [];
+      const byId = new Map(authors.map((u) => [u.id, u]));
+      return {
+        ticket: {
+          ...toTicketOut(ticket),
+          ownerName: owner?.name ?? "ব্যবহারকারী",
+          ownerPhone: owner?.phone ?? "",
+          ownerRole: owner?.role ?? "customer",
+        },
+        messages: msgs.map((m) => ({
+          id: m.id,
+          authorRole: m.authorRole,
+          authorName: byId.get(m.authorId)?.name ?? "ব্যবহারকারী",
+          body: m.body,
+          createdAt: m.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  replyToSupportTicket: defineAction({
+    description:
+      "Posts a reply to a support ticket thread — the ticket's owner or a support/super admin only. An admin reply moves an open ticket to in-progress; an owner reply to a waiting/resolved ticket reopens it. The other side is notified on every reply. Closed tickets accept no replies.",
+    request: z.object({
+      token: z.string(),
+      ticketId: z.number().int(),
+      body: z.string().min(1).max(2000),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.supportTickets)
+        .where(eq(schema.supportTickets.id, args.ticketId))
+        .limit(1);
+      const ticket = rows[0];
+      const isAdmin = user.role === "admin";
+      if (isAdmin) {
+        await requireAdminLevel(ctx, args.token, ["support"]);
+      }
+      if (!ticket || (!isAdmin && ticket.userId !== user.id)) {
+        throw new Error("টিকিট পাওয়া যায়নি।");
+      }
+      if (ticket.status === "closed") {
+        throw new Error("এই টিকিট বন্ধ হয়ে গেছে — প্রয়োজনে নতুন টিকিট খুলুন।");
+      }
+      await db.insert(schema.supportTicketMessages).values({
+        ticketId: ticket.id,
+        authorId: user.id,
+        authorRole: isAdmin
+          ? "admin"
+          : user.role === "professional"
+            ? "professional"
+            : "customer",
+        body: args.body.trim(),
+      });
+      let nextStatus = ticket.status;
+      if (isAdmin) {
+        if (ticket.status === "open" || ticket.status === "resolved") {
+          nextStatus = "in_progress";
+        }
+      } else if (ticket.status === "waiting_customer" || ticket.status === "resolved") {
+        nextStatus = "open";
+      }
+      await db
+        .update(schema.supportTickets)
+        .set({ status: nextStatus, updatedAt: new Date() })
+        .where(eq(schema.supportTickets.id, ticket.id));
+      if (isAdmin) {
+        await notify(ctx, {
+          userId: ticket.userId,
+          type: "support_ticket_reply",
+          title: "আপনার সাপোর্ট টিকিটে উত্তর এসেছে",
+          body: `${ticket.code} — ${ticket.subject}`,
+        });
+      } else {
+        await notify(ctx, {
+          targetRole: "admin",
+          type: "support_ticket_reply",
+          title: "সাপোর্ট টিকিটে নতুন উত্তর এসেছে",
+          body: `${ticket.code} — ${ticket.subject}`,
+        });
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  adminListTickets: defineAction({
+    description: "Admin (support): lists all support tickets with owner details and message counts, optionally filtered by status.",
+    request: z.object({
+      token: z.string(),
+      status: z
+        .enum(["open", "in_progress", "waiting_customer", "resolved", "closed"])
+        .optional(),
+    }),
+    response: z.object({
+      tickets: z.array(
+        ticketOut.extend({
+          ownerName: z.string(),
+          ownerPhone: z.string(),
+          ownerRole: z.string(),
+          messageCount: z.number(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["support"]);
+      const db = dbOf(ctx);
+      const rows = args.status
+        ? await db
+            .select()
+            .from(schema.supportTickets)
+            .where(eq(schema.supportTickets.status, args.status))
+            .orderBy(desc(schema.supportTickets.id))
+        : await db
+            .select()
+            .from(schema.supportTickets)
+            .orderBy(desc(schema.supportTickets.id));
+      const users = await db.select().from(schema.users);
+      const byId = new Map(users.map((u) => [u.id, u]));
+      const msgs = rows.length
+        ? await db
+            .select()
+            .from(schema.supportTicketMessages)
+            .where(
+              inArray(
+                schema.supportTicketMessages.ticketId,
+                rows.map((t) => t.id),
+              ),
+            )
+        : [];
+      return {
+        tickets: rows.map((t) => ({
+          ...toTicketOut(t),
+          ownerName: byId.get(t.userId)?.name ?? "ব্যবহারকারী",
+          ownerPhone: byId.get(t.userId)?.phone ?? "",
+          ownerRole: byId.get(t.userId)?.role ?? "customer",
+          messageCount: msgs.filter((m) => m.ticketId === t.id).length,
+        })),
+      };
+    },
+  }),
+
+  adminSetTicketStatus: defineAction({
+    description:
+      "Admin (support): moves a support ticket to a new workflow status (open / in_progress / waiting_customer / resolved / closed) and notifies the ticket owner.",
+    request: z.object({
+      token: z.string(),
+      ticketId: z.number().int(),
+      status: z.enum(["open", "in_progress", "waiting_customer", "resolved", "closed"]),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["support"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.supportTickets)
+        .where(eq(schema.supportTickets.id, args.ticketId))
+        .limit(1);
+      const ticket = rows[0];
+      if (!ticket) throw new Error("টিকিট পাওয়া যায়নি।");
+      await db
+        .update(schema.supportTickets)
+        .set({ status: args.status, updatedAt: new Date() })
+        .where(eq(schema.supportTickets.id, ticket.id));
+      await notify(ctx, {
+        userId: ticket.userId,
+        type: "support_ticket_status",
+        title: "আপনার সাপোর্ট টিকিটের অবস্থা বদলেছে",
+        body: `${ticket.code} — ${ticket.subject}: ${TICKET_STATUS_BN[args.status] ?? args.status}`,
+      });
+      await logAdmin(
+        ctx,
+        admin.id,
+        "ticket_status",
+        `${ticket.code} → ${args.status}`,
+      );
+      ctx.invalidateQueries();
+      return { ok: true };
     },
   }),
 
