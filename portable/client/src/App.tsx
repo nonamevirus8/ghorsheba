@@ -2260,10 +2260,14 @@ function TermsPage() {
   );
 }
 
-export function BookingStatusChip({ status }: { status: string }) {
+export function BookingStatusChip({ status, stage }: { status: string; stage?: string }) {
+  // Prefer the master-flow stage (Phase 7) when the caller has it: a
+  // legacy "assigned" row whose professional already accepted reads
+  // as "accepted", a legacy "completed" as customer-confirmed, etc.
+  const shown = stage ?? status;
   return (
-    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${statusColor(status)}`}>
-      {STATUS_BN[status] ?? status}
+    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full ${statusColor(shown)}`}>
+      {STATUS_BN[shown] ?? shown}
     </span>
   );
 }

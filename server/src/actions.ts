@@ -519,6 +519,111 @@ function breakdownFromBooking(b: BookingRowFull): PaymentBreakdown | null {
   });
 }
 
+// ------------------------------------------------- booking stages (Phase 7)
+//
+// The master booking flow is a sequence of STAGES:
+//   pending → price_confirmed → assigned → accepted → in_progress →
+//   pro_completed → customer_confirmed → admin_reviewed
+// plus the side states cancelled / rejected / disputed / rescheduled.
+//
+// Rows written before Phase 7 carry the legacy status values
+// "confirmed" (= price_confirmed) and "completed" (=
+// customer_confirmed), and the accept / pro-done steps used to live
+// in the pro_response / pro_done flags instead of the status column.
+// bookingStage() maps ANY stored row — legacy or new — onto its
+// stage, and every flow rule in this file is expressed in stages, so
+// legacy rows keep moving through the flow untouched. New writes use
+// the canonical status value for the stage (stageStatus), so the two
+// legacy values are never written again.
+
+const BOOKING_STAGES = [
+  "pending",
+  "price_confirmed",
+  "assigned",
+  "accepted",
+  "in_progress",
+  "pro_completed",
+  "customer_confirmed",
+  "admin_reviewed",
+  "cancelled",
+  "rejected",
+  "disputed",
+  "rescheduled",
+] as const;
+
+type BookingStage = (typeof BOOKING_STAGES)[number];
+
+/** Maps a stored booking row (any vintage) onto its flow stage. */
+function bookingStage(b: {
+  status: string;
+  proResponse: string;
+  proDone: number;
+}): BookingStage {
+  switch (b.status) {
+    case "pending":
+      return "pending";
+    case "confirmed":
+    case "price_confirmed":
+      return "price_confirmed";
+    case "assigned":
+      return b.proResponse === "accepted" ? "accepted" : "assigned";
+    case "accepted":
+      return "accepted";
+    case "in_progress":
+      return b.proDone === 1 ? "pro_completed" : "in_progress";
+    case "pro_completed":
+      return "pro_completed";
+    case "completed":
+    case "customer_confirmed":
+      return "customer_confirmed";
+    case "admin_reviewed":
+      return "admin_reviewed";
+    case "cancelled":
+      return "cancelled";
+    case "rejected":
+      return "rejected";
+    case "disputed":
+      return "disputed";
+    case "rescheduled":
+      return "rescheduled";
+    default:
+      return "pending";
+  }
+}
+
+/** The canonical stored status value for a stage (Phase 7 writes). */
+function stageStatus(stage: BookingStage): BookingRowFull["status"] {
+  return stage;
+}
+
+/**
+ * Stage transitions an admin may perform through adminUpdateBooking.
+ * Anything not listed is rejected server-side — the admin UI only
+ * offers these, but the check here is the real gate. Entering
+ * "rescheduled" is NOT in this table: it needs a new date/time and
+ * goes through adminRescheduleBooking. Leaving "disputed" /
+ * "rescheduled" is also excluded — dedicated actions restore the
+ * parked stage (adminClearDispute / adminConfirmReschedule).
+ */
+const ADMIN_STAGE_TRANSITIONS: Record<BookingStage, BookingStage[]> = {
+  pending: ["price_confirmed", "assigned", "cancelled", "rejected"],
+  price_confirmed: ["assigned", "cancelled", "rejected", "disputed"],
+  assigned: ["price_confirmed", "cancelled", "disputed"],
+  accepted: ["in_progress", "cancelled", "disputed"],
+  in_progress: ["cancelled", "disputed"],
+  pro_completed: ["customer_confirmed", "disputed"],
+  customer_confirmed: ["admin_reviewed", "disputed"],
+  admin_reviewed: ["disputed"],
+  cancelled: [],
+  rejected: [],
+  disputed: [],
+  rescheduled: [],
+};
+
+/** Raw stored statuses that count as "work completed" for counters. */
+const COMPLETED_STATUSES = ["completed", "customer_confirmed", "admin_reviewed"] as const;
+const COMPLETED_STATUS_SET: ReadonlySet<string> = new Set(COMPLETED_STATUSES);
+
 
 // ------------------------------------------------- cancellation cleanup
 //
@@ -535,6 +640,10 @@ async function failPendingPaymentsForCancelledBooking(
   ctx: Ctx,
   booking: BookingRowFull,
   actor: { role: "customer" | "admin"; adminId: number | null },
+  // Phase 7: a booking terminated by admin rejection gets the same
+  // cleanup with rejection wording; the default keeps the original
+  // Phase 5 cancellation behaviour byte-for-byte.
+  terminatedAs: "cancelled" | "rejected" = "cancelled",
 ): Promise<void> {
   const db = dbOf(ctx);
   const pending = await db
@@ -548,6 +657,8 @@ async function failPendingPaymentsForCancelledBooking(
     );
   if (pending.length === 0) return;
   const now = new Date();
+  const reasonText =
+    terminatedAs === "rejected" ? "বুকিং প্রত্যাখ্যান করা হয়েছে" : "বুকিং বাতিল করা হয়েছে";
   for (const p of pending) {
     await db
       .update(schema.payments)
@@ -555,7 +666,7 @@ async function failPendingPaymentsForCancelledBooking(
         status: "failed",
         verifiedBy: actor.adminId,
         verifiedAt: now,
-        rejectionReason: "বুকিং বাতিল করা হয়েছে",
+        rejectionReason: reasonText,
         updatedAt: now,
       })
       .where(eq(schema.payments.id, p.id));
@@ -567,18 +678,27 @@ async function failPendingPaymentsForCancelledBooking(
       actorRole: actor.role,
       adminId: actor.adminId,
       reference: `${p.provider}:${p.providerTrxId}`,
-      note: "বুকিং বাতিল হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্ট বাতিল করা হলো",
+      note:
+        terminatedAs === "rejected"
+          ? "বুকিং প্রত্যাখ্যান হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্ট বাতিল করা হলো"
+          : "বুকিং বাতিল হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্ট বাতিল করা হলো",
     });
   }
   await db
     .update(schema.bookings)
-    .set({ extendedPaymentStatus: "cancelled", updatedAt: now })
+    .set({ extendedPaymentStatus: terminatedAs, updatedAt: now })
     .where(eq(schema.bookings.id, booking.id));
   await notify(ctx, {
     userId: booking.customerId,
     type: "payment_cancelled",
-    title: "বুকিং বাতিল হওয়ায় পেমেন্ট বাতিল হয়েছে",
-    body: `কোড: ${booking.code} — বুকিং বাতিল হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্টটি বাতিল করা হয়েছে।`,
+    title:
+      terminatedAs === "rejected"
+        ? "বুকিং প্রত্যাখ্যান হওয়ায় পেমেন্ট বাতিল হয়েছে"
+        : "বুকিং বাতিল হওয়ায় পেমেন্ট বাতিল হয়েছে",
+    body:
+      terminatedAs === "rejected"
+        ? `কোড: ${booking.code} — বুকিং প্রত্যাখ্যান হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্টটি বাতিল করা হয়েছে।`
+        : `কোড: ${booking.code} — বুকিং বাতিল হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্টটি বাতিল করা হয়েছে।`,
     bookingId: booking.id,
   });
   if (actor.adminId != null) {
@@ -644,6 +764,10 @@ interface ProMoney {
     paidOut: number;
     commission: number;
     availableBalance: number;
+    // Held money on DISPUTED bookings (Master Phase 7): settlement is
+    // frozen while a dispute is open, so this part of the held balance
+    // is NOT withdrawable and is reported separately.
+    frozenHeld: number;
   };
   openWithdrawalTotal: number;
 }
@@ -702,6 +826,16 @@ async function computeProMoney(ctx: Ctx, proId: number): Promise<ProMoney> {
     .filter((r) => r.status === "requested" || r.status === "approved")
     .reduce((a, r) => a + r.amount, 0);
   const heldNet = rows.reduce((a, r) => a + r.remainingHeld, 0);
+  // Settlement freeze (Master Phase 7): held money belonging to a
+  // booking currently in "disputed" status is frozen — it stays in
+  // the held total (it is still the pro's money, pending the Phase 9
+  // dispute outcome) but is excluded from the withdrawable balance.
+  const disputedIds = new Set(
+    myBookings.filter((b) => b.status === "disputed").map((b) => b.id),
+  );
+  const frozenHeld = rows
+    .filter((r) => disputedIds.has(r.bookingId))
+    .reduce((a, r) => a + r.remainingHeld, 0);
   return {
     rows,
     totals: {
@@ -709,7 +843,8 @@ async function computeProMoney(ctx: Ctx, proId: number): Promise<ProMoney> {
       held: heldNet,
       paidOut: rows.reduce((a, r) => a + r.paidOut, 0),
       commission: rows.reduce((a, r) => a + r.commission, 0),
-      availableBalance: heldNet - openWithdrawalTotal,
+      availableBalance: heldNet - frozenHeld - openWithdrawalTotal,
+      frozenHeld,
     },
     openWithdrawalTotal,
   };
@@ -846,7 +981,7 @@ async function toProOut(
     .where(
       and(
         eq(schema.bookings.professionalId, pro.id),
-        eq(schema.bookings.status, "completed"),
+        inArray(schema.bookings.status, COMPLETED_STATUSES),
       ),
     );
   const avg =
@@ -926,6 +1061,14 @@ const bookingOut = z.object({
   preferredDate: z.string(),
   preferredTime: z.string(),
   status: z.string(),
+  // Master Phase 7: the booking's stage in the master flow, mapped
+  // server-side from the stored status + flags (legacy rows included).
+  stage: z.string(),
+  // How the final price was finalized ("quotation" | "admin" | null).
+  priceFinalizedVia: z.string().nullable(),
+  // A pending customer reschedule request, if any.
+  rescheduleRequestedDate: z.string().nullable(),
+  rescheduleRequestedTime: z.string().nullable(),
   proResponse: z.string(),
   proDone: z.boolean(),
   finalPrice: z.number().nullable(),
@@ -991,6 +1134,10 @@ async function toBookingOut(
     preferredDate: b.preferredDate,
     preferredTime: b.preferredTime,
     status: b.status,
+    stage: bookingStage(b),
+    priceFinalizedVia: b.priceFinalizedVia ?? null,
+    rescheduleRequestedDate: b.rescheduleRequestedDate ?? null,
+    rescheduleRequestedTime: b.rescheduleRequestedTime ?? null,
     proResponse: b.proResponse,
     proDone: b.proDone === 1,
     finalPrice: b.finalPrice,
@@ -1084,6 +1231,91 @@ const breakdownOut = z.object({
   proTotal: z.number(),
   ghorshebaRevenue: z.number(),
 });
+
+// ------------------------------------------------- Phase 7 quotations
+
+const quotationOut = z.object({
+  id: z.number(),
+  bookingId: z.number(),
+  bookingCode: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  createdByUserId: z.number(),
+  createdByName: z.string(),
+  createdByRole: z.string(),
+  labourCharge: z.number(),
+  materialsCharge: z.number(),
+  transportCharge: z.number(),
+  additionalCharge: z.number(),
+  totalAmount: z.number(),
+  // The commission base this quotation contributes when approved:
+  // labour + additional charges (materials / transport excluded).
+  calcBasePart: z.number(),
+  note: z.string().nullable(),
+  decidedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+type QuotationRow = typeof schema.quotations.$inferSelect;
+
+function toQuotationOut(
+  q: QuotationRow,
+  bookingCode: string,
+  creatorName: string,
+): z.infer<typeof quotationOut> {
+  return {
+    id: q.id,
+    bookingId: q.bookingId,
+    bookingCode,
+    kind: q.kind,
+    status: q.status,
+    createdByUserId: q.createdByUserId,
+    createdByName: creatorName,
+    createdByRole: q.createdByRole,
+    labourCharge: q.labourCharge,
+    materialsCharge: q.materialsCharge,
+    transportCharge: q.transportCharge,
+    additionalCharge: q.additionalCharge,
+    totalAmount: q.totalAmount,
+    calcBasePart: q.labourCharge + q.additionalCharge,
+    note: q.note,
+    decidedAt: q.decidedAt ? q.decidedAt.toISOString() : null,
+    createdAt: q.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Recomputes a booking's extended payment status from its payments —
+ * used when a dispute is cleared and the pre-dispute value (which was
+ * never stored) has to be derived honestly from the payment rows.
+ */
+async function deriveExtendedPaymentStatus(
+  ctx: Ctx,
+  bookingId: number,
+): Promise<"unpaid" | "payment_pending" | "payment_verified" | "held_settlement_pending"> {
+  const db = dbOf(ctx);
+  const pays = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.bookingId, bookingId));
+  if (pays.some((p) => p.status === "verified")) {
+    const held = await db
+      .select()
+      .from(schema.paymentLedger)
+      .where(
+        and(
+          eq(schema.paymentLedger.bookingId, bookingId),
+          eq(schema.paymentLedger.entryType, "held_balance"),
+        ),
+      )
+      .limit(1);
+    return held.length ? "held_settlement_pending" : "payment_verified";
+  }
+  if (pays.some((p) => p.status === "pending" || p.status === "initiated")) {
+    return "payment_pending";
+  }
+  return "unpaid";
+}
 
 // ------------------------------------------------- Phase 3 output shapes
 
@@ -1961,7 +2193,7 @@ export const Actions = {
   }),
 
   cancelBooking: defineAction({
-    description: "Cancels the customer's own booking while it is still pending, confirmed or assigned.",
+    description: "Cancels the customer's own booking while it is still before work starts (pending, price confirmed, assigned, accepted or rescheduled stages).",
     request: z.object({ token: z.string(), bookingId: z.number().int() }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
@@ -1974,12 +2206,21 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b || b.customerId !== user.id) throw new Error("বুকিং পাওয়া যায়নি।");
-      if (!["pending", "confirmed", "assigned"].includes(b.status)) {
+      const stage = bookingStage(b);
+      if (
+        !["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(stage)
+      ) {
         throw new Error("এই অবস্থায় বুকিং বাতিল করা যাবে না।");
       }
       await db
         .update(schema.bookings)
-        .set({ status: "cancelled", updatedAt: new Date() })
+        .set({
+          status: "cancelled",
+          statusBeforeHold: null,
+          rescheduleRequestedDate: null,
+          rescheduleRequestedTime: null,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.bookings.id, b.id));
       await addEvent(ctx, b.id, "cancelled", "customer", "গ্রাহক বুকিং বাতিল করেছেন");
       // P-1: a still-pending online payment on a cancelled booking
@@ -2030,14 +2271,14 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b || b.customerId !== user.id) throw new Error("বুকিং পাওয়া যায়নি।");
-      if (b.status !== "in_progress" || b.proDone !== 1) {
+      if (bookingStage(b) !== "pro_completed") {
         throw new Error("প্রফেশনাল কাজ শেষ বলে জানালে তবেই সম্পন্ন নিশ্চিত করা যাবে।");
       }
       await db
         .update(schema.bookings)
-        .set({ status: "completed", updatedAt: new Date() })
+        .set({ status: "customer_confirmed", updatedAt: new Date() })
         .where(eq(schema.bookings.id, b.id));
-      await addEvent(ctx, b.id, "completed", "customer", "গ্রাহক কাজ সম্পন্ন নিশ্চিত করেছেন");
+      await addEvent(ctx, b.id, "customer_confirmed", "customer", "গ্রাহক কাজ সম্পন্ন নিশ্চিত করেছেন");
       await notify(ctx, {
         targetRole: "admin",
         type: "job_completed",
@@ -2085,7 +2326,10 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b || b.customerId !== user.id) throw new Error("বুকিং পাওয়া যায়নি।");
-      if (b.status !== "completed") throw new Error("কাজ সম্পন্ন হলেই রিভিউ দেওয়া যাবে।");
+      const doneStage = bookingStage(b);
+      if (doneStage !== "customer_confirmed" && doneStage !== "admin_reviewed") {
+        throw new Error("কাজ সম্পন্ন হলেই রিভিউ দেওয়া যাবে।");
+      }
       const existing = await db
         .select()
         .from(schema.reviews)
@@ -2284,7 +2528,7 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b || b.professionalId !== pro.id) throw new Error("এই কাজটি আপনার জন্য নয়।");
-      if (b.status !== "assigned" || b.proResponse !== "none") {
+      if (bookingStage(b) !== "assigned" || b.proResponse !== "none") {
         throw new Error("এই কাজে এখন সাড়া দেওয়া যাবে না।");
       }
       if (args.accept) {
@@ -2299,9 +2543,9 @@ export const Actions = {
         }
         await db
           .update(schema.bookings)
-          .set({ proResponse: "accepted", updatedAt: new Date() })
+          .set({ status: "accepted", proResponse: "accepted", updatedAt: new Date() })
           .where(eq(schema.bookings.id, b.id));
-        await addEvent(ctx, b.id, "assigned", "professional", "প্রফেশনাল কাজটি গ্রহণ করেছেন");
+        await addEvent(ctx, b.id, "accepted", "professional", "প্রফেশনাল কাজটি গ্রহণ করেছেন");
         await notify(ctx, {
           userId: b.customerId,
           type: "pro_accepted",
@@ -2312,9 +2556,9 @@ export const Actions = {
       } else {
         await db
           .update(schema.bookings)
-          .set({ professionalId: null, proResponse: "none", status: "confirmed", updatedAt: new Date() })
+          .set({ professionalId: null, proResponse: "none", status: "price_confirmed", updatedAt: new Date() })
           .where(eq(schema.bookings.id, b.id));
-        await addEvent(ctx, b.id, "confirmed", "professional", "প্রফেশনাল কাজটি নিতে পারেননি — নতুন করে অ্যাসাইন করতে হবে");
+        await addEvent(ctx, b.id, "price_confirmed", "professional", "প্রফেশনাল কাজটি নিতে পারেননি — নতুন করে অ্যাসাইন করতে হবে");
         await notify(ctx, {
           targetRole: "admin",
           type: "pro_rejected",
@@ -2349,7 +2593,7 @@ export const Actions = {
       const b = rows[0];
       if (!b || b.professionalId !== pro.id) throw new Error("এই কাজটি আপনার জন্য নয়।");
       if (args.action === "start") {
-        if (b.status !== "assigned" || b.proResponse !== "accepted") {
+        if (bookingStage(b) !== "accepted") {
           throw new Error("আগে কাজটি গ্রহণ করুন।");
         }
         await db
@@ -2365,12 +2609,12 @@ export const Actions = {
           bookingId: b.id,
         });
       } else {
-        if (b.status !== "in_progress") throw new Error("কাজ চলমান থাকলেই শেষ করা যাবে।");
+        if (bookingStage(b) !== "in_progress") throw new Error("কাজ চলমান থাকলেই শেষ করা যাবে।");
         await db
           .update(schema.bookings)
-          .set({ proDone: 1, updatedAt: new Date() })
+          .set({ status: "pro_completed", proDone: 1, updatedAt: new Date() })
           .where(eq(schema.bookings.id, b.id));
-        await addEvent(ctx, b.id, "in_progress", "professional", "প্রফেশনাল কাজ শেষ বলে জানিয়েছেন — গ্রাহকের নিশ্চিতকরণ বাকি");
+        await addEvent(ctx, b.id, "pro_completed", "professional", "প্রফেশনাল কাজ শেষ বলে জানিয়েছেন — গ্রাহকের নিশ্চিতকরণ বাকি");
         await notify(ctx, {
           userId: b.customerId,
           type: "job_done_pending",
@@ -2414,6 +2658,7 @@ export const Actions = {
         paidOut: z.number(),
         commission: z.number(),
         availableBalance: z.number(),
+        frozenHeld: z.number(),
       }),
     }),
     async handler(ctx, args) {
@@ -2433,6 +2678,7 @@ export const Actions = {
       held: z.number(),
       openWithdrawalTotal: z.number(),
       availableBalance: z.number(),
+      frozenHeld: z.number(),
       requests: z.array(
         z.object({
           id: z.number(),
@@ -2461,6 +2707,7 @@ export const Actions = {
         held: money.totals.held,
         openWithdrawalTotal: money.openWithdrawalTotal,
         availableBalance: money.totals.availableBalance,
+        frozenHeld: money.totals.frozenHeld,
         requests: reqs.map((r) => ({
           id: r.id,
           amount: r.amount,
@@ -2769,7 +3016,7 @@ export const Actions = {
       for (const b of bookings) {
         if (verifiedBookingIds.has(b.id)) {
           cashCollected += b.cashAmount ?? 0;
-        } else if (b.status === "completed" && b.paymentStatus === "cash_paid" && b.finalPrice != null) {
+        } else if (COMPLETED_STATUS_SET.has(b.status) && b.paymentStatus === "cash_paid" && b.finalPrice != null) {
           cashCollected += b.finalPrice;
         }
       }
@@ -2783,7 +3030,7 @@ export const Actions = {
         pendingVerifications: pros.filter((p) => p.status === "pending").length,
         totalBookings: bookings.length,
         pendingBookings: bookings.filter((b) => b.status === "pending").length,
-        completedBookings: bookings.filter((b) => b.status === "completed").length,
+        completedBookings: bookings.filter((b) => COMPLETED_STATUS_SET.has(b.status)).length,
         cancelledBookings: bookings.filter((b) => b.status === "cancelled").length,
         openComplaints: complaints.length,
         openTickets: openTicketRows.length,
@@ -2822,7 +3069,10 @@ export const Actions = {
       const proNames = await proNameMap(ctx);
       const out: z.infer<typeof bookingOut>[] = [];
       for (const b of rows) {
-        if (args.status && b.status !== args.status) continue;
+        // The filter value is a master-flow STAGE (Phase 7), so a
+        // "customer_confirmed" filter also matches legacy "completed"
+        // rows, "price_confirmed" matches legacy "confirmed", etc.
+        if (args.status && bookingStage(b) !== args.status) continue;
         out.push(await toBookingOut(ctx, b, names, proNames));
       }
       return { bookings: out };
@@ -2830,12 +3080,26 @@ export const Actions = {
   }),
 
   adminUpdateBooking: defineAction({
-    description: "Admin: updates booking status, assignment, final price, payment status or note.",
+    description: "Admin: updates booking status (master-flow transitions only), assignment, legacy final price, payment status or note. New prices are NOT set here — they are finalized only when the customer approves an itemized quotation (Master Phase 7).",
     request: z.object({
       token: z.string(),
       bookingId: z.number().int(),
       status: z
-        .enum(["pending", "confirmed", "assigned", "in_progress", "completed", "cancelled"])
+        .enum([
+          "pending",
+          "confirmed",
+          "price_confirmed",
+          "assigned",
+          "accepted",
+          "in_progress",
+          "pro_completed",
+          "completed",
+          "customer_confirmed",
+          "admin_reviewed",
+          "cancelled",
+          "rejected",
+          "disputed",
+        ])
         .optional(),
       professionalId: z.number().int().nullable().optional(),
       finalPrice: z.number().int().min(0).nullable().optional(),
@@ -2858,11 +3122,20 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
-      // Price re-snapshot freeze (Master Phase 5): once any online
-      // payment for this booking is verified, the confirmed price
-      // and the payment snapshot are immutable — the verified money
-      // was collected against exactly these figures, so neither the
-      // price, the model nor the commission base may change after.
+      const currentStage = bookingStage(b);
+      // Price rules (Master Phase 5 freeze + Phase 7 quotation lock):
+      //  • Once any online payment for this booking is verified, the
+      //    confirmed price and the payment snapshot are immutable —
+      //    the verified money was collected against exactly these
+      //    figures (Phase 5, unchanged).
+      //  • A price finalized by a customer-approved quotation is
+      //    locked: it can change ONLY through a new approved
+      //    additional quotation, never by editing here (Phase 7).
+      //  • A first price is never set here at all: an itemized
+      //    quotation + the customer's approval is mandatory before
+      //    any price becomes final (Phase 7). Legacy bookings priced
+      //    directly by an admin before Phase 7 (priceFinalizedVia =
+      //    "admin") keep the old direct-edit behaviour above.
       const priceChangeRequested =
         (args.finalPrice !== undefined && args.finalPrice !== b.finalPrice) ||
         (args.paymentModel !== undefined && args.paymentModel !== b.paymentModel) ||
@@ -2881,6 +3154,16 @@ export const Actions = {
         if (verifiedPays.length > 0) {
           throw new Error(
             "এই বুকিংয়ের অনলাইন পেমেন্ট ইতিমধ্যে যাচাই হয়েছে — যাচাইকৃত পেমেন্টের মূল্য ও পেমেন্ট স্ন্যাপশট আর বদলানো যাবে না।",
+          );
+        }
+        if (b.priceFinalizedVia === "quotation") {
+          throw new Error(
+            "এই বুকিংয়ের মূল্য গ্রাহক-অনুমোদিত কোটেশন দিয়ে নির্ধারিত — মূল্য বদলাতে হলে নতুন অতিরিক্ত কাজের কোটেশন তৈরি করে গ্রাহকের অনুমোদন নিতে হবে।",
+          );
+        }
+        if (b.finalPrice == null && args.finalPrice != null) {
+          throw new Error(
+            "মূল্য এখানে সরাসরি বসানো যাবে না — প্রথমে আইটেমভিত্তিক কোটেশন তৈরি করুন; গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে।",
           );
         }
       }
@@ -2905,23 +3188,76 @@ export const Actions = {
           assignedProUserId = p.userId;
         }
       }
-      if (args.status) patch.status = args.status;
+      // Status transitions (Master Phase 7): the requested status —
+      // legacy values included — is mapped to its master-flow stage,
+      // and the move must be an allowed transition from the current
+      // stage (ADMIN_STAGE_TRANSITIONS). Illegal jumps are rejected
+      // here on the server, not just hidden in the UI. Parked bookings
+      // (disputed / rescheduled) only leave through their dedicated
+      // actions, which restore the exact stage they were parked from.
+      let targetStatus: BookingRow["status"] | null = null;
+      if (args.status) {
+        const requestedStage = bookingStage({
+          status: args.status,
+          proResponse: "none",
+          proDone: 0,
+        });
+        if (requestedStage !== currentStage) {
+          if (currentStage === "disputed" || currentStage === "rescheduled") {
+            throw new Error(
+              "এই বুকিংটি বর্তমানে বিরোধ / পুনঃনির্ধারণ অবস্থায় আছে — আগে সেই প্রক্রিয়া শেষ করুন।",
+            );
+          }
+          if (!ADMIN_STAGE_TRANSITIONS[currentStage].includes(requestedStage)) {
+            throw new Error(
+              "এই স্ট্যাটাস পরিবর্তনটি বুকিংয়ের ধাপ অনুযায়ী অনুমোদিত নয় — ধাপে ধাপে এগিয়ে যান।",
+            );
+          }
+          targetStatus = stageStatus(requestedStage);
+          if (
+            requestedStage === "pro_completed" ||
+            requestedStage === "customer_confirmed" ||
+            requestedStage === "admin_reviewed"
+          ) {
+            patch.proDone = 1;
+          }
+          if (requestedStage === "disputed") {
+            // Park the booking: remember the exact stage to restore
+            // and freeze settlement (extended payment status).
+            patch.statusBeforeHold = b.status;
+            patch.extendedPaymentStatus = "disputed";
+          }
+          if (requestedStage === "cancelled" || requestedStage === "rejected") {
+            patch.statusBeforeHold = null;
+            patch.rescheduleRequestedDate = null;
+            patch.rescheduleRequestedTime = null;
+          }
+        }
+      }
+      if (targetStatus) patch.status = targetStatus;
       // Assigning a professional puts the booking at the "assigned" stage.
-      // Never leave a booking sitting at pending/confirmed with a pro
-      // attached: the pro could not respond to it and it would be hidden
-      // from their dashboard filters, dead-ending the whole journey. The
-      // admin form's status dropdown defaults to the current status, so
-      // this promotion must happen even when a status was sent. An
-      // explicit later-stage status (in_progress / completed / cancelled)
-      // chosen by the admin is respected.
+      // Never leave a booking sitting at pending/price-confirmed with a
+      // pro attached: the pro could not respond to it and it would be
+      // hidden from their dashboard filters, dead-ending the whole
+      // journey. The admin form's status dropdown defaults to the
+      // current status, so this promotion must happen even when a
+      // status was sent.
       if (
         assignedProUserId &&
-        b.status !== "in_progress" &&
-        b.status !== "completed" &&
-        b.status !== "cancelled" &&
-        (!patch.status || patch.status === "pending" || patch.status === "confirmed")
+        (currentStage === "pending" || currentStage === "price_confirmed") &&
+        (!targetStatus || targetStatus === "pending" || targetStatus === "price_confirmed")
       ) {
         patch.status = "assigned";
+      }
+      // Unassigning returns an assigned / accepted booking to the
+      // price-confirmed stage so another professional can be assigned.
+      if (
+        args.professionalId === null &&
+        b.professionalId != null &&
+        !targetStatus &&
+        (currentStage === "assigned" || currentStage === "accepted")
+      ) {
+        patch.status = "price_confirmed";
       }
       if (args.finalPrice !== undefined) patch.finalPrice = args.finalPrice;
       // Dual Payment snapshot: when the price is confirmed (or the
@@ -2960,17 +3296,37 @@ export const Actions = {
           patch.calcBase = args.calcBase;
         }
       }
+      // A price maintained through this legacy direct path is marked
+      // as admin-finalized (Phase 7 bookkeeping), so it stays
+      // distinguishable from a quotation-locked price.
+      if (
+        wantsSnapshot &&
+        b.priceFinalizedVia == null &&
+        (args.finalPrice !== undefined ? args.finalPrice : b.finalPrice) != null
+      ) {
+        patch.priceFinalizedVia = "admin";
+      }
       if (args.paymentStatus) patch.paymentStatus = args.paymentStatus;
       if (args.adminNote !== undefined) patch.adminNote = args.adminNote;
       await db.update(schema.bookings).set(patch).where(eq(schema.bookings.id, b.id));
       const newStatus = patch.status ?? b.status;
       // P-1: cancelling a booking auto-fails any still-pending
       // online payment on it (adjustment ledger entry, no delete).
-      if (newStatus === "cancelled" && b.status !== "cancelled") {
-        await failPendingPaymentsForCancelledBooking(ctx, b, {
-          role: "admin",
-          adminId: admin.id,
-        });
+      // Phase 7: rejecting a booking does the same — a terminated
+      // booking must never leave a verifiable payment behind.
+      if (
+        (newStatus === "cancelled" && b.status !== "cancelled") ||
+        (newStatus === "rejected" && b.status !== "rejected")
+      ) {
+        await failPendingPaymentsForCancelledBooking(
+          ctx,
+          b,
+          {
+            role: "admin",
+            adminId: admin.id,
+          },
+          newStatus === "rejected" ? "rejected" : "cancelled",
+        );
       }
       if (patch.status && patch.status !== b.status) {
         await addEvent(ctx, b.id, patch.status, "admin", args.adminNote ?? null);
@@ -3777,7 +4133,7 @@ export const Actions = {
       const bookings = await db
         .select()
         .from(schema.bookings)
-        .where(eq(schema.bookings.status, "completed"));
+        .where(inArray(schema.bookings.status, COMPLETED_STATUSES));
       return {
         professionals: pros.map((p) => {
           let areas: string[] = [];
@@ -3860,12 +4216,17 @@ export const Actions = {
       if (!b || b.customerId !== user.id) {
         throw new Error("বুকিং পাওয়া যায়নি।");
       }
-      if (b.status === "cancelled") {
-        throw new Error("বাতিল করা বুকিংয়ে পেমেন্ট দেওয়া যাবে না।");
+      if (b.status === "cancelled" || b.status === "rejected") {
+        throw new Error("বাতিল / প্রত্যাখ্যাত বুকিংয়ে পেমেন্ট দেওয়া যাবে না।");
+      }
+      if (b.status === "disputed") {
+        throw new Error(
+          "এই বুকিংয়ে বিরোধ চলমান — বিরোধ নিষ্পত্তি না হওয়া পর্যন্ত নতুন পেমেন্ট জমা দেওয়া যাবে না।",
+        );
       }
       if (b.finalPrice == null || b.finalPrice <= 0) {
         throw new Error(
-          "এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি — অ্যাডমিন মূল্য নিশ্চিত করলেই পেমেন্ট করা যাবে।",
+          "এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি — কোটেশন অনুমোদিত হলেই পেমেন্ট করা যাবে।",
         );
       }
       if (b.paymentModel && b.paymentModel !== args.paymentModel) {
@@ -4325,6 +4686,10 @@ export const Actions = {
           paidOut: z.number(),
           remainingHeld: z.number(),
           extendedPaymentStatus: z.string(),
+          // Master Phase 7: settlement of a disputed booking is
+          // frozen — it is listed (with this flag) but excluded from
+          // the releasable total below.
+          disputed: z.boolean(),
         }),
       ),
       withdrawalRequests: z.array(
@@ -4342,6 +4707,7 @@ export const Actions = {
       ),
       totals: z.object({
         heldAwaitingRelease: z.number(),
+        frozenDisputedHeld: z.number(),
         openWithdrawalCount: z.number(),
         openWithdrawalAmount: z.number(),
       }),
@@ -4372,6 +4738,7 @@ export const Actions = {
         paidOut: number;
         remainingHeld: number;
         extendedPaymentStatus: string;
+        disputed: boolean;
       }[] = [];
       for (const [bookingId, s] of byBooking) {
         const remainingHeld = s.held - s.commission - s.paidOut;
@@ -4389,6 +4756,7 @@ export const Actions = {
           paidOut: s.paidOut,
           remainingHeld,
           extendedPaymentStatus: b.extendedPaymentStatus,
+          disputed: b.status === "disputed",
         });
       }
       heldBookings.sort((x, y) => y.bookingId - x.bookingId);
@@ -4412,7 +4780,12 @@ export const Actions = {
         heldBookings,
         withdrawalRequests,
         totals: {
-          heldAwaitingRelease: heldBookings.reduce((a, h) => a + h.remainingHeld, 0),
+          heldAwaitingRelease: heldBookings
+            .filter((h) => !h.disputed)
+            .reduce((a, h) => a + h.remainingHeld, 0),
+          frozenDisputedHeld: heldBookings
+            .filter((h) => h.disputed)
+            .reduce((a, h) => a + h.remainingHeld, 0),
           openWithdrawalCount: withdrawalRequests.length,
           openWithdrawalAmount: withdrawalRequests.reduce((a, w) => a + w.amount, 0),
         },
@@ -4470,12 +4843,17 @@ export const Actions = {
       if (!b || b.customerId !== user.id) {
         throw new Error("বুকিং পাওয়া যায়নি।");
       }
-      if (b.status === "cancelled") {
-        throw new Error("বাতিল করা বুকিংয়ে পেমেন্ট করা যাবে না।");
+      if (b.status === "cancelled" || b.status === "rejected") {
+        throw new Error("বাতিল / প্রত্যাখ্যাত বুকিংয়ে পেমেন্ট করা যাবে না।");
+      }
+      if (b.status === "disputed") {
+        throw new Error(
+          "এই বুকিংয়ে বিরোধ চলমান — বিরোধ নিষ্পত্তি না হওয়া পর্যন্ত পেমেন্ট করা যাবে না।",
+        );
       }
       if (b.finalPrice == null || b.finalPrice <= 0) {
         throw new Error(
-          "এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি — অ্যাডমিন মূল্য নিশ্চিত করলেই পেমেন্ট করা যাবে।",
+          "এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি — কোটেশন অনুমোদিত হলেই পেমেন্ট করা যাবে।",
         );
       }
       const stRows = await db.select().from(schema.settings).limit(1);
@@ -5449,6 +5827,797 @@ export const Actions = {
         "ticket_status",
         `${ticket.code} → ${args.status}`,
       );
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  // ------------------------------------------- Phase 7: quotations
+
+  createQuotation: defineAction({
+    description:
+      "Creates an itemized quotation (labour / materials / transport / additional charges) for a booking. Admins (operations level) may quote any eligible booking; a professional may quote only a booking assigned to them. Creating one supersedes any still-pending quotation for the booking. The price is NOT final until the customer approves the quotation.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      kind: z.enum(["initial", "additional"]),
+      labourCharge: z.number().int().min(0).max(10000000),
+      materialsCharge: z.number().int().min(0).max(10000000).default(0),
+      transportCharge: z.number().int().min(0).max(10000000).default(0),
+      additionalCharge: z.number().int().min(0).max(10000000).default(0),
+      note: z.string().max(600).optional(),
+    }),
+    response: z.object({ quotation: quotationOut }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      const stage = bookingStage(b);
+      let creatorRole: "admin" | "professional";
+      if (user.role === "admin") {
+        await requireAdminLevel(ctx, args.token, ["operations"]);
+        creatorRole = "admin";
+      } else if (user.role === "professional") {
+        const pro = await myProfessional(ctx, user.id);
+        if (!pro || b.professionalId !== pro.id) {
+          throw new Error("শুধুমাত্র অ্যাসাইন করা প্রফেশনালই এই বুকিংয়ের কোটেশন দিতে পারবেন।");
+        }
+        creatorRole = "professional";
+      } else {
+        throw new Error("কোটেশন তৈরি করার অনুমতি নেই।");
+      }
+      const total =
+        args.labourCharge + args.materialsCharge + args.transportCharge + args.additionalCharge;
+      if (total <= 0) throw new Error("কোটেশনের মোট পরিমাণ শূন্যের বেশি হতে হবে।");
+      if (args.kind === "initial") {
+        if (b.finalPrice != null) {
+          throw new Error(
+            "এই বুকিংয়ের মূল্য ইতিমধ্যে চূড়ান্ত — অতিরিক্ত কাজের জন্য 'অতিরিক্ত' ধরনের কোটেশন তৈরি করুন।",
+          );
+        }
+        if (!["pending", "price_confirmed", "assigned", "accepted", "in_progress"].includes(stage)) {
+          throw new Error("এই অবস্থায় কোটেশন তৈরি করা যাবে না।");
+        }
+        if (
+          creatorRole === "professional" &&
+          !["assigned", "accepted", "in_progress"].includes(stage)
+        ) {
+          throw new Error("কাজ অ্যাসাইন হওয়ার পরেই প্রফেশনাল কোটেশন দিতে পারবেন।");
+        }
+      } else {
+        if (b.finalPrice == null) {
+          throw new Error("আগে প্রাথমিক কোটেশন অনুমোদন করিয়ে মূল্য চূড়ান্ত করুন।");
+        }
+        if (
+          !["price_confirmed", "assigned", "accepted", "in_progress", "pro_completed"].includes(stage)
+        ) {
+          throw new Error("এই অবস্থায় অতিরিক্ত কাজের কোটেশন তৈরি করা যাবে না।");
+        }
+        // Extra charges can never ride on top of money already moving:
+        // a verified payment freezes the price (Phase 5), and a still
+        // pending claim was submitted against the old figures.
+        const livePays = await db
+          .select()
+          .from(schema.payments)
+          .where(
+            and(
+              eq(schema.payments.bookingId, b.id),
+              inArray(schema.payments.status, ["initiated", "pending", "verified"]),
+            ),
+          );
+        if (livePays.some((p) => p.status === "verified")) {
+          throw new Error(
+            "এই বুকিংয়ের অনলাইন পেমেন্ট ইতিমধ্যে যাচাই হয়েছে — যাচাইকৃত পেমেন্টের পরে মূল্য আর বদলানো যাবে না।",
+          );
+        }
+        if (livePays.length > 0) {
+          throw new Error(
+            "এই বুকিংয়ের একটি অনলাইন পেমেন্ট যাচাইয়ের অপেক্ষায় আছে — সেটি নিষ্পত্তি হওয়ার আগে অতিরিক্ত কোটেশন তৈরি করা যাবে না।",
+          );
+        }
+      }
+      // One open quotation at a time: a fresh quotation supersedes
+      // any still-pending one for this booking.
+      await db
+        .update(schema.quotations)
+        .set({ status: "superseded", updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.quotations.bookingId, b.id),
+            eq(schema.quotations.status, "pending_approval"),
+          ),
+        );
+      const inserted = await db
+        .insert(schema.quotations)
+        .values({
+          bookingId: b.id,
+          kind: args.kind,
+          status: "pending_approval",
+          createdByUserId: user.id,
+          createdByRole: creatorRole,
+          labourCharge: args.labourCharge,
+          materialsCharge: args.materialsCharge,
+          transportCharge: args.transportCharge,
+          additionalCharge: args.additionalCharge,
+          totalAmount: total,
+          note: args.note?.trim() ? args.note.trim() : null,
+        })
+        .returning();
+      const q = inserted[0];
+      if (!q) throw new Error("কোটেশন তৈরি করা যায়নি।");
+      await addEvent(
+        ctx,
+        b.id,
+        b.status,
+        creatorRole,
+        `নতুন ${args.kind === "additional" ? "অতিরিক্ত কাজের " : ""}কোটেশন পাঠানো হয়েছে (মোট ৳${total}) — গ্রাহকের অনুমোদন বাকি`,
+      );
+      await notify(ctx, {
+        userId: b.customerId,
+        type: "quotation_created",
+        title: "নতুন কোটেশন এসেছে",
+        body: `কোড: ${b.code} — মোট ৳${total}। বিস্তারিত দেখে অনুমোদন দিন।`,
+        bookingId: b.id,
+      });
+      if (creatorRole === "professional") {
+        await notify(ctx, {
+          targetRole: "admin",
+          type: "quotation_created",
+          title: "প্রফেশনাল কোটেশন পাঠিয়েছেন",
+          body: `কোড: ${b.code} — মোট ৳${total}`,
+          bookingId: b.id,
+        });
+      } else {
+        await logAdmin(ctx, user.id, "quotation_created", `${b.code}: ${args.kind} কোটেশন ৳${total}`);
+      }
+      ctx.invalidateQueries();
+      return { quotation: toQuotationOut(q, b.code, user.name) };
+    },
+  }),
+
+  getBookingQuotations: defineAction({
+    description:
+      "Lists a booking's quotations, newest first. Visible only to the booking's customer, its assigned professional, or an admin.",
+    request: z.object({ token: z.string(), bookingId: z.number().int() }),
+    response: z.object({ quotations: z.array(quotationOut) }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      const pro = await myProfessional(ctx, user.id);
+      const allowed =
+        user.role === "admin" ||
+        b.customerId === user.id ||
+        (pro !== null && b.professionalId === pro.id);
+      if (!allowed) throw new Error("এই বুকিংয়ের কোটেশন দেখার অনুমতি নেই।");
+      const qs = await db
+        .select()
+        .from(schema.quotations)
+        .where(eq(schema.quotations.bookingId, b.id))
+        .orderBy(desc(schema.quotations.id));
+      const users = await db.select().from(schema.users);
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      return {
+        quotations: qs.map((q) => toQuotationOut(q, b.code, nameById.get(q.createdByUserId) ?? "")),
+      };
+    },
+  }),
+
+  respondToQuotation: defineAction({
+    description:
+      "Customer approves or rejects a pending quotation for their own booking. Approval is the ONLY moment a price becomes final: an initial approval sets the booking's final price and commission base from the itemized charges (labour + additional) and moves a pending booking to the price-confirmed stage; an additional approval adds the approved extra total on top of the finalized price and re-snapshots the payment breakdown. Rejection leaves the price untouched.",
+    request: z.object({
+      token: z.string(),
+      quotationId: z.number().int(),
+      approve: z.boolean(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই কোটেশন অনুমোদন করতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const qrows = await db
+        .select()
+        .from(schema.quotations)
+        .where(eq(schema.quotations.id, args.quotationId))
+        .limit(1);
+      const q = qrows[0];
+      if (!q) throw new Error("কোটেশন পাওয়া যায়নি।");
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, q.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) throw new Error("কোটেশন পাওয়া যায়নি।");
+      if (q.status !== "pending_approval") {
+        throw new Error("এই কোটেশনের সিদ্ধান্ত ইতিমধ্যে হয়ে গেছে।");
+      }
+      const now = new Date();
+      if (!args.approve) {
+        await db
+          .update(schema.quotations)
+          .set({ status: "rejected", decidedByUserId: user.id, decidedAt: now, updatedAt: now })
+          .where(eq(schema.quotations.id, q.id));
+        await addEvent(
+          ctx,
+          b.id,
+          b.status,
+          "customer",
+          `কোটেশন গৃহীত হয়নি (মোট ৳${q.totalAmount}) — মূল্য অপরিবর্তিত আছে`,
+        );
+        await notify(ctx, {
+          userId: q.createdByUserId,
+          type: "quotation_rejected",
+          title: "কোটেশন গৃহীত হয়নি",
+          body: `কোড: ${b.code} — গ্রাহক কোটেশনটি গ্রহণ করেননি।`,
+          bookingId: b.id,
+        });
+        if (q.createdByRole === "professional") {
+          await notify(ctx, {
+            targetRole: "admin",
+            type: "quotation_rejected",
+            title: "কোটেশন গৃহীত হয়নি",
+            body: `কোড: ${b.code}`,
+            bookingId: b.id,
+          });
+        }
+        ctx.invalidateQueries();
+        return { ok: true };
+      }
+      // ---- approval: this is the price-confirmation moment ----
+      if (b.status === "cancelled" || b.status === "rejected" || b.status === "disputed") {
+        throw new Error("এই অবস্থায় কোটেশন অনুমোদন করা যাবে না।");
+      }
+      const stage = bookingStage(b);
+      const calcBasePart = q.labourCharge + q.additionalCharge;
+      let newFinalPrice: number;
+      let newCalcBase: number;
+      let newStatus: BookingRow["status"] | null = null;
+      if (q.kind === "initial") {
+        if (b.finalPrice != null) {
+          throw new Error("এই বুকিংয়ের মূল্য ইতিমধ্যে চূড়ান্ত হয়ে গেছে।");
+        }
+        newFinalPrice = q.totalAmount;
+        newCalcBase = calcBasePart;
+        if (stage === "pending") newStatus = "price_confirmed";
+      } else {
+        if (b.finalPrice == null) {
+          throw new Error("প্রাথমিক মূল্য এখনো চূড়ান্ত হয়নি।");
+        }
+        // Re-checked at approval time: a payment submitted after the
+        // quotation was created freezes the price again.
+        const livePays = await db
+          .select()
+          .from(schema.payments)
+          .where(
+            and(
+              eq(schema.payments.bookingId, b.id),
+              inArray(schema.payments.status, ["initiated", "pending", "verified"]),
+            ),
+          );
+        if (livePays.length > 0) {
+          throw new Error(
+            "এই বুকিংয়ের একটি অনলাইন পেমেন্ট প্রক্রিয়াধীন বা যাচাইকৃত আছে — মূল্য এখন বদলানো যাবে না।",
+          );
+        }
+        newFinalPrice = b.finalPrice + q.totalAmount;
+        newCalcBase = (b.calcBase ?? b.finalPrice) + calcBasePart;
+      }
+      const patch: Partial<BookingRow> = {
+        finalPrice: newFinalPrice,
+        calcBase: newCalcBase,
+        priceFinalizedVia: "quotation",
+        updatedAt: now,
+      };
+      if (newStatus) patch.status = newStatus;
+      // When a payment model was already chosen for the booking,
+      // snapshot the Dual Payment breakdown for the new price — from
+      // the booking's own snapshotted rates when they exist, else the
+      // current settings (the same rule submitManualPayment uses).
+      // This approval IS the Phase 1/3/5 price-confirmation snapshot
+      // moment; no other path re-snapshots afterwards.
+      if (b.paymentModel) {
+        let bd = breakdownFromBooking({ ...b, finalPrice: newFinalPrice, calcBase: newCalcBase });
+        if (!bd) {
+          const stRows = await db.select().from(schema.settings).limit(1);
+          bd = computeBreakdown({
+            bill: newFinalPrice,
+            paymentModel: b.paymentModel,
+            calcBase: newCalcBase,
+            rates: dualRatesFromSettings(stRows[0]),
+          });
+        }
+        patch.paymentModel = bd.paymentModel;
+        patch.customerFeePercent = bd.customerFeePercent;
+        patch.proCommissionPercent = bd.proCommissionPercent;
+        patch.onlineAmount = bd.customerPaysOnline;
+        patch.cashAmount = bd.cashAmount;
+        patch.customerFee = bd.customerFee;
+        patch.proCommission = bd.proCommission;
+      }
+      const statements: BatchItem<"sqlite">[] = [
+        db
+          .update(schema.quotations)
+          .set({ status: "approved", decidedByUserId: user.id, decidedAt: now, updatedAt: now })
+          .where(eq(schema.quotations.id, q.id)),
+        db.update(schema.bookings).set(patch).where(eq(schema.bookings.id, b.id)),
+      ];
+      const [first, ...rest] = statements;
+      if (first) await db.batch([first, ...rest]);
+      await addEvent(
+        ctx,
+        b.id,
+        patch.status ?? b.status,
+        "customer",
+        q.kind === "initial"
+          ? `গ্রাহক কোটেশন অনুমোদন করেছেন — মূল্য চূড়ান্ত: ৳${newFinalPrice}`
+          : `গ্রাহক অতিরিক্ত কাজের কোটেশন অনুমোদন করেছেন — নতুন মোট মূল্য: ৳${newFinalPrice}`,
+      );
+      await notify(ctx, {
+        userId: q.createdByUserId,
+        type: "quotation_approved",
+        title: "কোটেশন অনুমোদিত হয়েছে",
+        body: `কোড: ${b.code} — মূল্য চূড়ান্ত: ৳${newFinalPrice}`,
+        bookingId: b.id,
+      });
+      if (q.createdByRole === "professional") {
+        await notify(ctx, {
+          targetRole: "admin",
+          type: "quotation_approved",
+          title: "কোটেশন অনুমোদিত হয়েছে",
+          body: `কোড: ${b.code} — মূল্য চূড়ান্ত: ৳${newFinalPrice}`,
+          bookingId: b.id,
+        });
+      }
+      if (b.professionalId) {
+        const pros = await db
+          .select()
+          .from(schema.professionals)
+          .where(eq(schema.professionals.id, b.professionalId))
+          .limit(1);
+        const p = pros[0];
+        if (p && p.userId !== q.createdByUserId) {
+          await notify(ctx, {
+            userId: p.userId,
+            type: "quotation_approved",
+            title: "কোটেশন অনুমোদিত হয়েছে",
+            body: `কোড: ${b.code} — মূল্য চূড়ান্ত: ৳${newFinalPrice}`,
+            bookingId: b.id,
+          });
+        }
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  // ------------------------------------------- Phase 7: reschedule
+
+  requestReschedule: defineAction({
+    description:
+      "Customer asks to move their own booking to a new date/time. The request is stored on the booking and written into its status history; an admin then confirms it (adminRescheduleBooking) or declines it (adminDeclineReschedule).",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      date: z.string().min(4).max(20),
+      time: z.string().min(2).max(40),
+      note: z.string().max(400).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b || b.customerId !== user.id) throw new Error("বুকিং পাওয়া যায়নি।");
+      const stage = bookingStage(b);
+      if (!["pending", "price_confirmed", "assigned", "accepted"].includes(stage)) {
+        throw new Error("এই অবস্থায় সময় বদলের অনুরোধ করা যাবে না।");
+      }
+      await db
+        .update(schema.bookings)
+        .set({
+          rescheduleRequestedDate: args.date,
+          rescheduleRequestedTime: args.time,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.bookings.id, b.id));
+      await addEvent(
+        ctx,
+        b.id,
+        b.status,
+        "customer",
+        `সময় বদলের অনুরোধ: ${b.preferredDate} ${b.preferredTime} → ${args.date} ${args.time}${args.note ? ` — ${args.note}` : ""}`,
+      );
+      await notify(ctx, {
+        targetRole: "admin",
+        type: "reschedule_requested",
+        title: "সময় বদলের অনুরোধ",
+        body: `কোড: ${b.code} — নতুন সময়: ${args.date} ${args.time}`,
+        bookingId: b.id,
+      });
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  adminRescheduleBooking: defineAction({
+    description:
+      "Admin (operations) moves a booking into the Rescheduled state with a new date/time — the admin's own choice, or the customer's pending request when no date/time is passed. The booking's current stage is remembered (status_before_hold) and the change is written into the booking's status history; adminConfirmReschedule returns it to that stage on the new schedule.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      date: z.string().min(4).max(20).optional(),
+      time: z.string().min(2).max(40).optional(),
+      note: z.string().max(400).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      const stage = bookingStage(b);
+      if (!["pending", "price_confirmed", "assigned", "accepted"].includes(stage)) {
+        throw new Error("এই অবস্থায় বুকিং পুনঃনির্ধারণ করা যাবে না।");
+      }
+      const date = args.date ?? b.rescheduleRequestedDate;
+      const time = args.time ?? b.rescheduleRequestedTime;
+      if (!date || !time) {
+        throw new Error("নতুন তারিখ ও সময় দিন (অথবা আগে গ্রাহকের অনুরোধ থাকতে হবে)।");
+      }
+      await db
+        .update(schema.bookings)
+        .set({
+          status: "rescheduled",
+          statusBeforeHold: b.status,
+          preferredDate: date,
+          preferredTime: time,
+          rescheduleRequestedDate: null,
+          rescheduleRequestedTime: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.bookings.id, b.id));
+      await addEvent(
+        ctx,
+        b.id,
+        "rescheduled",
+        "admin",
+        `সময় পুনঃনির্ধারিত: ${b.preferredDate} ${b.preferredTime} → ${date} ${time}${args.note ? ` — ${args.note}` : ""}`,
+      );
+      await notify(ctx, {
+        userId: b.customerId,
+        type: "booking_rescheduled",
+        title: "বুকিংয়ের সময় বদলেছে",
+        body: `কোড: ${b.code} — নতুন সময়: ${date} ${time}`,
+        bookingId: b.id,
+      });
+      if (b.professionalId) {
+        const pros = await db
+          .select()
+          .from(schema.professionals)
+          .where(eq(schema.professionals.id, b.professionalId))
+          .limit(1);
+        if (pros[0]) {
+          await notify(ctx, {
+            userId: pros[0].userId,
+            type: "booking_rescheduled",
+            title: "কাজের সময় বদলেছে",
+            body: `কোড: ${b.code} — নতুন সময়: ${date} ${time}`,
+            bookingId: b.id,
+          });
+        }
+      }
+      await logAdmin(
+        ctx,
+        admin.id,
+        "booking_rescheduled",
+        `${b.code}: ${b.preferredDate} ${b.preferredTime} → ${date} ${time}`,
+      );
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  adminConfirmReschedule: defineAction({
+    description:
+      "Admin (operations) confirms a rescheduled booking: it leaves the Rescheduled state and returns to exactly the stage it was parked from, now on its new date/time.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      note: z.string().max(400).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      if (bookingStage(b) !== "rescheduled") {
+        throw new Error("এই বুকিংটি পুনঃনির্ধারণ অবস্থায় নেই।");
+      }
+      const restore = b.statusBeforeHold ?? "pending";
+      await db
+        .update(schema.bookings)
+        .set({ status: restore, statusBeforeHold: null, updatedAt: new Date() })
+        .where(eq(schema.bookings.id, b.id));
+      await addEvent(
+        ctx,
+        b.id,
+        restore,
+        "admin",
+        `পুনঃনির্ধারিত সময় নিশ্চিত — কাজ হবে ${b.preferredDate} ${b.preferredTime}${args.note ? ` — ${args.note}` : ""}`,
+      );
+      await notify(ctx, {
+        userId: b.customerId,
+        type: "booking_reschedule_confirmed",
+        title: "নতুন সময় নিশ্চিত হয়েছে",
+        body: `কোড: ${b.code} — ${b.preferredDate} ${b.preferredTime}`,
+        bookingId: b.id,
+      });
+      if (b.professionalId) {
+        const pros = await db
+          .select()
+          .from(schema.professionals)
+          .where(eq(schema.professionals.id, b.professionalId))
+          .limit(1);
+        if (pros[0]) {
+          await notify(ctx, {
+            userId: pros[0].userId,
+            type: "booking_reschedule_confirmed",
+            title: "নতুন সময় নিশ্চিত হয়েছে",
+            body: `কোড: ${b.code} — ${b.preferredDate} ${b.preferredTime}`,
+            bookingId: b.id,
+          });
+        }
+      }
+      await logAdmin(ctx, admin.id, "booking_reschedule_confirmed", `${b.code} → ${restore}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  adminDeclineReschedule: defineAction({
+    description:
+      "Admin (operations) declines a customer's pending reschedule request: the request is cleared, the booking keeps its original date/time, and the decision is written into the booking's history.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      note: z.string().max(400).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      if (!b.rescheduleRequestedDate) {
+        throw new Error("এই বুকিংয়ে কোনো সময়-বদলের অনুরোধ অপেক্ষমাণ নেই।");
+      }
+      await db
+        .update(schema.bookings)
+        .set({ rescheduleRequestedDate: null, rescheduleRequestedTime: null, updatedAt: new Date() })
+        .where(eq(schema.bookings.id, b.id));
+      await addEvent(
+        ctx,
+        b.id,
+        b.status,
+        "admin",
+        `সময় বদলের অনুরোধ গৃহীত হয়নি (চাওয়া হয়েছিল: ${b.rescheduleRequestedDate} ${b.rescheduleRequestedTime ?? ""}) — আগের সময়ই থাকছে${args.note ? ` — ${args.note}` : ""}`,
+      );
+      await notify(ctx, {
+        userId: b.customerId,
+        type: "reschedule_declined",
+        title: "সময় বদলের অনুরোধ গৃহীত হয়নি",
+        body: `কোড: ${b.code} — আগের সময়ই থাকছে: ${b.preferredDate} ${b.preferredTime}`,
+        bookingId: b.id,
+      });
+      await logAdmin(ctx, admin.id, "booking_reschedule_declined", b.code);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  // ------------------------------------------- Phase 7: dispute state
+
+  setBookingDisputed: defineAction({
+    description:
+      "Puts a booking into the Disputed state. The booking's current stage is remembered, its extended payment status becomes 'disputed', and settlement of its held money is frozen (the professional's withdrawable balance excludes disputed bookings) until an admin clears the dispute. The booking's customer (once a professional is involved) or an admin (operations) can raise it; the full dispute workflow is Master Phase 9.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      note: z.string().max(600).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      let actorRole: "customer" | "admin";
+      if (user.role === "admin") {
+        await requireAdminLevel(ctx, args.token, ["operations"]);
+        actorRole = "admin";
+      } else if (user.role === "customer" && b.customerId === user.id) {
+        actorRole = "customer";
+      } else {
+        throw new Error("এই বুকিংয়ে বিরোধ জানানোর অনুমতি নেই।");
+      }
+      const stage = bookingStage(b);
+      if (
+        ![
+          "price_confirmed",
+          "assigned",
+          "accepted",
+          "in_progress",
+          "pro_completed",
+          "customer_confirmed",
+          "admin_reviewed",
+        ].includes(stage)
+      ) {
+        throw new Error("এই অবস্থায় বিরোধ জানানো যাবে না।");
+      }
+      await db
+        .update(schema.bookings)
+        .set({
+          status: "disputed",
+          statusBeforeHold: b.status,
+          extendedPaymentStatus:
+            b.extendedPaymentStatus === "paid" || b.extendedPaymentStatus === "refunded"
+              ? b.extendedPaymentStatus
+              : "disputed",
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.bookings.id, b.id));
+      await addEvent(
+        ctx,
+        b.id,
+        "disputed",
+        actorRole,
+        args.note ? `বিরোধ জানানো হয়েছে — ${args.note}` : "বিরোধ জানানো হয়েছে",
+      );
+      if (actorRole === "customer") {
+        await notify(ctx, {
+          targetRole: "admin",
+          type: "booking_disputed",
+          title: "বুকিংয়ে বিরোধ জানানো হয়েছে",
+          body: `কোড: ${b.code}`,
+          bookingId: b.id,
+        });
+      } else {
+        await notify(ctx, {
+          userId: b.customerId,
+          type: "booking_disputed",
+          title: "আপনার বুকিংয়ে বিরোধ চলমান",
+          body: `কোড: ${b.code} — নিষ্পত্তি না হওয়া পর্যন্ত সেটেলমেন্ট স্থগিত থাকবে।`,
+          bookingId: b.id,
+        });
+        await logAdmin(ctx, user.id, "booking_disputed", b.code);
+      }
+      if (b.professionalId) {
+        const pros = await db
+          .select()
+          .from(schema.professionals)
+          .where(eq(schema.professionals.id, b.professionalId))
+          .limit(1);
+        if (pros[0]) {
+          await notify(ctx, {
+            userId: pros[0].userId,
+            type: "booking_disputed",
+            title: "একটি কাজে বিরোধ চলমান",
+            body: `কোড: ${b.code} — নিষ্পত্তি না হওয়া পর্যন্ত এই কাজের সেটেলমেন্ট স্থগিত থাকবে।`,
+            bookingId: b.id,
+          });
+        }
+      }
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  adminClearDispute: defineAction({
+    description:
+      "Admin (operations) clears a booking's Disputed state: the booking returns to exactly the stage it was disputed from, its extended payment status is recomputed from its payments, and the settlement freeze on its held money is lifted. The full dispute workflow (evidence, decisions, refunds) is Master Phase 9.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      note: z.string().max(600).optional(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      if (bookingStage(b) !== "disputed") {
+        throw new Error("এই বুকিংটি বিরোধ অবস্থায় নেই।");
+      }
+      const restore = b.statusBeforeHold ?? "pending";
+      const ext = await deriveExtendedPaymentStatus(ctx, b.id);
+      await db
+        .update(schema.bookings)
+        .set({
+          status: restore,
+          statusBeforeHold: null,
+          extendedPaymentStatus: ext,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.bookings.id, b.id));
+      await addEvent(
+        ctx,
+        b.id,
+        restore,
+        "admin",
+        args.note ? `বিরোধ নিষ্পত্তি হয়েছে — ${args.note}` : "বিরোধ নিষ্পত্তি হয়েছে — বুকিং আগের অবস্থায় ফিরেছে",
+      );
+      await notify(ctx, {
+        userId: b.customerId,
+        type: "booking_dispute_cleared",
+        title: "বিরোধ নিষ্পত্তি হয়েছে",
+        body: `কোড: ${b.code}`,
+        bookingId: b.id,
+      });
+      if (b.professionalId) {
+        const pros = await db
+          .select()
+          .from(schema.professionals)
+          .where(eq(schema.professionals.id, b.professionalId))
+          .limit(1);
+        if (pros[0]) {
+          await notify(ctx, {
+            userId: pros[0].userId,
+            type: "booking_dispute_cleared",
+            title: "বিরোধ নিষ্পত্তি হয়েছে",
+            body: `কোড: ${b.code} — সেটেলমেন্ট আবার চালু হয়েছে।`,
+            bookingId: b.id,
+          });
+        }
+      }
+      await logAdmin(ctx, admin.id, "booking_dispute_cleared", `${b.code} → ${restore}`);
       ctx.invalidateQueries();
       return { ok: true };
     },

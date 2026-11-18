@@ -10,6 +10,8 @@ ErrorBox,
 Icon,
 Spinner,
 Stars,
+STAGE_BN,
+STAGE_ORDER,
 STATUS_BN,
 bdt,
 errMsg,
@@ -601,6 +603,222 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
   );
 }
 
+// --------------------------------------------------------- quotations (Phase 7)
+
+const QUOTATION_STATUS_BN: Record<string, { label: string; cls: string }> = {
+  pending_approval: { label: "অনুমোদনের অপেক্ষায়", cls: "bg-amber-100 text-amber-800" },
+  approved: { label: "অনুমোদিত", cls: "bg-[#087a35] text-white" },
+  rejected: { label: "গৃহীত হয়নি", cls: "bg-red-100 text-red-700" },
+  superseded: { label: "নতুন কোটেশন এসেছে", cls: "bg-[#F0F3F0] text-[#737B73]" },
+};
+
+/**
+ * Itemized quotations for one booking (Master Phase 7). The customer
+ * approves or rejects a pending quotation — approval is the only way
+ * the price becomes final. Admins and the assigned professional can
+ * create quotations (initial, or "additional" for extra work) with
+ * labour / materials / transport / additional charges.
+ */
+export function QuotationPanel({
+  token,
+  booking,
+  viewerRole,
+  isOwnerCustomer,
+  isAssignedPro,
+}: {
+  token: string;
+  booking: Booking;
+  viewerRole: string | undefined;
+  isOwnerCustomer: boolean;
+  isAssignedPro: boolean;
+}) {
+  const qc = useQueryClient();
+  const list = useQuery({
+    queryKey: ["quotations", booking.id],
+    queryFn: () => api.getBookingQuotations({ token, bookingId: booking.id }),
+    retry: false,
+  });
+  const [kind, setKind] = useState<"initial" | "additional">(booking.finalPrice == null ? "initial" : "additional");
+  const [labour, setLabour] = useState("");
+  const [materials, setMaterials] = useState("");
+  const [transport, setTransport] = useState("");
+  const [additional, setAdditional] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["quotations", booking.id] });
+    qc.invalidateQueries({ queryKey: ["booking", booking.code] });
+    qc.invalidateQueries({ queryKey: ["my-bookings"] });
+    qc.invalidateQueries({ queryKey: ["pro-jobs"] });
+    qc.invalidateQueries({ queryKey: ["admin-bookings"] });
+  };
+  const create = useMutation({
+    mutationFn: () =>
+      api.createQuotation({
+        token,
+        bookingId: booking.id,
+        kind,
+        labourCharge: Number(labour || 0),
+        materialsCharge: Number(materials || 0),
+        transportCharge: Number(transport || 0),
+        additionalCharge: Number(additional || 0),
+        note: note || undefined,
+      }),
+    onSuccess: () => {
+      setMsg("কোটেশন পাঠানো হয়েছে — গ্রাহকের অনুমোদনের অপেক্ষায়।");
+      setError("");
+      setLabour("");
+      setMaterials("");
+      setTransport("");
+      setAdditional("");
+      setNote("");
+      refresh();
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const respond = useMutation({
+    mutationFn: (v: { id: number; approve: boolean }) =>
+      api.respondToQuotation({ token, quotationId: v.id, approve: v.approve }),
+    onSuccess: (_d, v) => {
+      setMsg(v.approve ? "কোটেশন অনুমোদিত — মূল্য চূড়ান্ত হয়েছে।" : "কোটেশন গৃহীত হয়নি — মূল্য অপরিবর্তিত আছে।");
+      setError("");
+      refresh();
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const canCreate =
+    (viewerRole === "admin" || isAssignedPro) &&
+    !["cancelled", "rejected", "disputed", "rescheduled", "customer_confirmed", "admin_reviewed"].includes(booking.stage);
+  const total =
+    Number(labour || 0) + Number(materials || 0) + Number(transport || 0) + Number(additional || 0);
+  const quotations = list.data?.quotations ?? [];
+  return (
+    <section aria-label="কোটেশন" className="mt-8 border-t border-[#F0F3F0] pt-6">
+      <h2 className="font-bold text-[#064B27]">কোটেশন ও মূল্য</h2>
+      <p className="mt-1 text-sm text-[#737B73]">
+        {booking.finalPrice != null
+          ? booking.priceFinalizedVia === "quotation"
+            ? "মূল্য গ্রাহক-অনুমোদিত কোটেশনে চূড়ান্ত হয়েছে। অতিরিক্ত কাজ লাগলে নতুন কোটেশন ও আবার অনুমোদন লাগবে।"
+            : "মূল্য নির্ধারিত হয়েছে।"
+          : "আইটেমভিত্তিক কোটেশন তৈরি হলে গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে — তার আগে পেমেন্ট করা যাবে না।"}
+      </p>
+      {msg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{msg}</p>}
+      {error && (
+        <div className="mt-3">
+          <ErrorBox message={error} />
+        </div>
+      )}
+      {list.isPending ? (
+        <Spinner label="কোটেশন লোড হচ্ছে…" />
+      ) : quotations.length === 0 ? (
+        <p className="mt-3 text-sm text-[#737B73]">এখনো কোনো কোটেশন তৈরি হয়নি।</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {quotations.map((q) => {
+            const st = QUOTATION_STATUS_BN[q.status] ?? { label: q.status, cls: "bg-[#F0F3F0] text-[#4c584c]" };
+            return (
+              <div key={q.id} className="rounded-2xl border border-[#E5EAE5] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-bold text-[15px]">
+                    {q.kind === "additional" ? "অতিরিক্ত কাজের কোটেশন" : "কোটেশন"} — {bdt(q.totalAmount)}
+                  </p>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                </div>
+                <p className="mt-0.5 text-[13px] text-[#737B73]">
+                  {q.createdByRole === "admin" ? "অ্যাডমিন" : "প্রফেশনাল"}: {q.createdByName} • {fmtDateTime(q.createdAt)}
+                  {q.decidedAt ? ` • সিদ্ধান্ত: ${fmtDateTime(q.decidedAt)}` : ""}
+                </p>
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">শ্রম / সার্ভিস চার্জ</dt><dd className="font-semibold">{bdt(q.labourCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">মালামাল</dt><dd className="font-semibold">{bdt(q.materialsCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">যাতায়াত</dt><dd className="font-semibold">{bdt(q.transportCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">অতিরিক্ত চার্জ</dt><dd className="font-semibold">{bdt(q.additionalCharge)}</dd></div>
+                </dl>
+                {q.note && <p className="mt-2 text-sm text-[#4c584c]">{q.note}</p>}
+                {isOwnerCustomer && q.status === "pending_approval" && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={respond.isPending}
+                      onClick={() => respond.mutate({ id: q.id, approve: true })}
+                      className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl"
+                    >
+                      অনুমোদন করুন — মূল্য চূড়ান্ত হবে
+                    </button>
+                    <button
+                      type="button"
+                      disabled={respond.isPending}
+                      onClick={() => respond.mutate({ id: q.id, approve: false })}
+                      className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60"
+                    >
+                      গ্রহণ করছি না
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {canCreate && (
+        <form
+          className="mt-5 rounded-2xl bg-[#F8FAF8] border border-[#E5EAE5] p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            setMsg("");
+            create.mutate();
+          }}
+        >
+          <p className="font-bold text-[15px] text-[#064B27]">নতুন কোটেশন তৈরি করুন</p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={labelCls} htmlFor={`q-kind-${booking.id}`}>ধরন</label>
+              <select
+                id={`q-kind-${booking.id}`}
+                className={inputCls}
+                value={kind}
+                onChange={(e) => setKind(e.target.value as "initial" | "additional")}
+              >
+                <option value="initial" disabled={booking.finalPrice != null}>প্রাথমিক কোটেশন</option>
+                <option value="additional" disabled={booking.finalPrice == null}>অতিরিক্ত কাজের কোটেশন</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`q-labour-${booking.id}`}>শ্রম / সার্ভিস চার্জ (৳)</label>
+              <input id={`q-labour-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={labour} onChange={(e) => setLabour(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`q-materials-${booking.id}`}>মালামাল (৳)</label>
+              <input id={`q-materials-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`q-transport-${booking.id}`}>যাতায়াত (৳)</label>
+              <input id={`q-transport-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={transport} onChange={(e) => setTransport(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor={`q-additional-${booking.id}`}>অতিরিক্ত চার্জ (৳)</label>
+              <input id={`q-additional-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={additional} onChange={(e) => setAdditional(e.target.value)} placeholder="0" />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls} htmlFor={`q-note-${booking.id}`}>নোট (ঐচ্ছিক)</label>
+              <input id={`q-note-${booking.id}`} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} placeholder="কাজের বিবরণ বা শর্ত" />
+            </div>
+          </div>
+          <p className="mt-2.5 text-sm text-[#4c584c]">
+            মোট: <b className="font-en">{bdt(total)}</b>
+            <span className="text-[#737B73]"> • কমিশনের ভিত্তি হবে শ্রম + অতিরিক্ত চার্জ (মালামাল ও যাতায়াত বাদে)</span>
+          </p>
+          <button type="submit" disabled={create.isPending || total <= 0} className="mt-3 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl">
+            {create.isPending ? "পাঠানো হচ্ছে…" : "কোটেশন পাঠান — গ্রাহকের অনুমোদন লাগবে"}
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 // --------------------------------------------------------- booking detail
 
 export function BookingDetailPage({ code }: { code: string }) {
@@ -666,6 +884,27 @@ export function BookingDetailPage({ code }: { code: string }) {
     },
     onError: (e) => setActionError(errMsg(e)),
   });
+  const [reschedDate, setReschedDate] = useState("");
+  const [reschedTime, setReschedTime] = useState("");
+  const [disputeNote, setDisputeNote] = useState("");
+  const reschedule = useMutation({
+    mutationFn: (id: number) =>
+      api.requestReschedule({ token: token ?? "", bookingId: id, date: reschedDate, time: reschedTime }),
+    onSuccess: () => {
+      setMsg("সময় বদলের অনুরোধ পাঠানো হয়েছে — অ্যাডমিন নিশ্চিত করলে নতুন সময় কার্যকর হবে।");
+      refresh();
+    },
+    onError: (e) => setActionError(errMsg(e)),
+  });
+  const dispute = useMutation({
+    mutationFn: (id: number) =>
+      api.setBookingDisputed({ token: token ?? "", bookingId: id, note: disputeNote || undefined }),
+    onSuccess: () => {
+      setMsg("বিরোধ জানানো হয়েছে — নিষ্পত্তি না হওয়া পর্যন্ত সেটেলমেন্ট স্থগিত থাকবে।");
+      refresh();
+    },
+    onError: (e) => setActionError(errMsg(e)),
+  });
 
   if (!token) {
     return (
@@ -712,24 +951,37 @@ export function BookingDetailPage({ code }: { code: string }) {
               বুকিং কোড: <span className="font-en font-semibold text-[#202820]">{b.code}</span> • {fmtDateTime(b.createdAt)}
             </p>
           </div>
-          <BookingStatusChip status={b.status} />
+          <BookingStatusChip status={b.status} stage={b.stage} />
         </div>
 
-        {/* progress */}
-        <ol className="mt-6 grid grid-cols-3 sm:grid-cols-6 gap-1.5" aria-label="বুকিংয়ের অগ্রগতি">
-          {["pending", "confirmed", "assigned", "in_progress", "completed"].map((s) => {
-            const order = ["pending", "confirmed", "assigned", "in_progress", "completed"];
-            const active = b.status !== "cancelled" && order.indexOf(b.status) >= order.indexOf(s);
-            return (
-              <li key={s} className={`rounded-lg px-1 py-2 text-center text-[11px] sm:text-xs font-semibold ${active ? "bg-[#087A35] text-white" : "bg-[#F0F3F0] text-[#737B73]"}`}>
-                {STATUS_BN[s]}
-              </li>
-            );
-          })}
-          <li className={`rounded-lg px-1 py-2 text-center text-[11px] sm:text-xs font-semibold ${b.status === "cancelled" ? "bg-red-600 text-white" : "bg-[#F0F3F0] text-[#737B73]"}`}>
-            বাতিল
-          </li>
-        </ol>
+        {/* progress — master-flow stages (Phase 7) */}
+        {b.stage === "cancelled" || b.stage === "rejected" ? (
+          <p className="mt-6 rounded-xl bg-red-600 text-white text-center font-bold text-sm px-4 py-2.5">
+            {b.stage === "cancelled" ? "এই বুকিং বাতিল হয়েছে" : "এই বুকিং প্রত্যাখ্যাত হয়েছে"}
+          </p>
+        ) : (
+          <ol className="mt-6 grid grid-cols-4 lg:grid-cols-8 gap-1.5" aria-label="বুকিংয়ের অগ্রগতি">
+            {STAGE_ORDER.map((s) => {
+              const idx = STAGE_ORDER.indexOf(b.stage as (typeof STAGE_ORDER)[number]);
+              const active = idx >= 0 && STAGE_ORDER.indexOf(s) <= idx;
+              return (
+                <li key={s} className={`rounded-lg px-1 py-2 text-center text-[11px] sm:text-xs font-semibold ${active ? "bg-[#087A35] text-white" : "bg-[#F0F3F0] text-[#737B73]"}`}>
+                  {STAGE_BN[s]}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        {b.stage === "disputed" && (
+          <p className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm px-4 py-3">
+            এই বুকিংয়ে <b>বিরোধ চলমান</b> — নিষ্পত্তি না হওয়া পর্যন্ত পেমেন্ট ও সেটেলমেন্ট স্থগিত থাকবে।
+          </p>
+        )}
+        {b.stage === "rescheduled" && (
+          <p className="mt-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-sm px-4 py-3">
+            বুকিংয়ের সময় <b>পুনঃনির্ধারিত</b> হয়েছে — নতুন সময়: {fmtDate(b.preferredDate)} • {b.preferredTime}। অ্যাডমিন নিশ্চিত করলেই আগের ধাপে ফিরবে।
+          </p>
+        )}
 
         <dl className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-3 text-[15px]">
           <div><dt className="text-[#737B73] text-[13px]">গ্রাহক</dt><dd className="font-medium">{b.customerName} • <span className="font-en">{b.phone}</span></dd></div>
@@ -772,7 +1024,7 @@ export function BookingDetailPage({ code }: { code: string }) {
 
         {/* actions */}
         <div className="mt-6 flex flex-wrap gap-2.5">
-          {isOwner && ["pending", "confirmed", "assigned"].includes(b.status) && (
+          {isOwner && ["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(b.stage) && (
             <button
               type="button"
               disabled={cancel.isPending}
@@ -782,7 +1034,7 @@ export function BookingDetailPage({ code }: { code: string }) {
               বুকিং বাতিল করুন
             </button>
           )}
-          {isOwner && b.status === "in_progress" && b.proDone && (
+          {isOwner && b.stage === "pro_completed" && (
             <button
               type="button"
               disabled={confirmDone.isPending}
@@ -792,10 +1044,10 @@ export function BookingDetailPage({ code }: { code: string }) {
               কাজ সম্পন্ন নিশ্চিত করুন
             </button>
           )}
-          {isOwner && b.status === "in_progress" && !b.proDone && (
+          {isOwner && b.stage === "in_progress" && (
             <p className="text-sm text-[#737B73]">প্রফেশনাল কাজ শেষ বলে জানালে আপনি সম্পন্ন নিশ্চিত করতে পারবেন।</p>
           )}
-          {isAssignedPro && b.status === "assigned" && b.proResponse === "none" && (
+          {isAssignedPro && b.stage === "assigned" && (
             <>
               <button type="button" disabled={respond.isPending} onClick={() => respond.mutate({ id: b.id, accept: true })} className="bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
                 কাজটি গ্রহণ করুন
@@ -805,29 +1057,106 @@ export function BookingDetailPage({ code }: { code: string }) {
               </button>
             </>
           )}
-          {isAssignedPro && b.status === "assigned" && b.proResponse === "accepted" && (
+          {isAssignedPro && b.stage === "accepted" && (
             <button type="button" disabled={advance.isPending} onClick={() => advance.mutate({ id: b.id, action: "start" })} className="bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
               কাজ শুরু করুন
             </button>
           )}
-          {isAssignedPro && b.status === "in_progress" && !b.proDone && (
+          {isAssignedPro && b.stage === "in_progress" && (
             <button type="button" disabled={advance.isPending} onClick={() => advance.mutate({ id: b.id, action: "done" })} className="bg-[#FF8A00] hover:bg-[#E67A00] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
               কাজ শেষ — গ্রাহককে জানান
             </button>
           )}
-          {isAssignedPro && b.status === "in_progress" && b.proDone && (
+          {isAssignedPro && b.stage === "pro_completed" && (
             <p className="text-sm text-[#737B73]">আপনি কাজ শেষ বলে জানিয়েছেন — গ্রাহকের নিশ্চিতকরণের অপেক্ষায়।</p>
           )}
         </div>
 
+        {/* quotations — approval finalizes the price (Phase 7) */}
+        {token && (isOwner || isAssignedPro || role === "admin") && (
+          <QuotationPanel
+            token={token}
+            booking={b}
+            viewerRole={role}
+            isOwnerCustomer={isOwner && role === "customer"}
+            isAssignedPro={isAssignedPro}
+          />
+        )}
+
+        {/* customer reschedule request + dispute (Phase 7) */}
+        {isOwner && role === "customer" && ["pending", "price_confirmed", "assigned", "accepted"].includes(b.stage) && (
+          <section aria-label="সময় বদলের অনুরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
+            <h2 className="font-bold text-[#064B27]">সময় বদল করতে চান?</h2>
+            {b.rescheduleRequestedDate ? (
+              <p className="mt-2 text-sm text-[#4c584c]">
+                আপনার অনুরোধ পাঠানো হয়েছে: <b>{fmtDate(b.rescheduleRequestedDate)} • {b.rescheduleRequestedTime}</b> — অ্যাডমিন নিশ্চিত করলে সময় বদলাবে।
+              </p>
+            ) : (
+              <form
+                className="mt-3 grid grid-cols-2 gap-3 max-w-lg"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setActionError("");
+                  reschedule.mutate(b.id);
+                }}
+              >
+                <div>
+                  <label className={labelCls} htmlFor="rs-date">নতুন তারিখ</label>
+                  <input id="rs-date" type="date" required className={inputCls} value={reschedDate} onChange={(e) => setReschedDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className={labelCls} htmlFor="rs-time">নতুন সময়</label>
+                  <select id="rs-time" required className={inputCls} value={reschedTime} onChange={(e) => setReschedTime(e.target.value)}>
+                    <option value="">— সময় বেছে নিন —</option>
+                    {TIME_SLOTS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" disabled={reschedule.isPending} className="col-span-2 sm:col-span-1 border-[1.5px] border-[#087A35] text-[#087A35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
+                  {reschedule.isPending ? "পাঠানো হচ্ছে…" : "সময় বদলের অনুরোধ পাঠান"}
+                </button>
+              </form>
+            )}
+          </section>
+        )}
+        {isOwner && role === "customer" && ["assigned", "accepted", "in_progress", "pro_completed", "customer_confirmed", "admin_reviewed"].includes(b.stage) && (
+          <section aria-label="বিরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
+            <h2 className="font-bold text-[#064B27]">কাজ নিয়ে সমস্যা হয়েছে?</h2>
+            <p className="mt-1 text-sm text-[#737B73]">
+              বিরোধ জানালে অ্যাডমিন বিষয়টি দেখবেন; নিষ্পত্তি না হওয়া পর্যন্ত এই বুকিংয়ের সেটেলমেন্ট স্থগিত থাকবে।
+            </p>
+            <form
+              className="mt-3 flex flex-col sm:flex-row gap-2.5 max-w-xl"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setActionError("");
+                dispute.mutate(b.id);
+              }}
+            >
+              <input
+                aria-label="বিরোধের কারণ"
+                className={`${inputCls} flex-1`}
+                value={disputeNote}
+                onChange={(e) => setDisputeNote(e.target.value)}
+                maxLength={600}
+                placeholder="সমস্যাটি সংক্ষেপে লিখুন"
+              />
+              <button type="submit" disabled={dispute.isPending} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
+                {dispute.isPending ? "পাঠানো হচ্ছে…" : "বিরোধ জানান"}
+              </button>
+            </form>
+          </section>
+        )}
+
         {/* checkout — only for the booking's own customer, only once the
             price is confirmed, and never on a cancelled booking */}
-        {isOwner && role === "customer" && b.finalPrice != null && b.status !== "cancelled" && token && (
+        {isOwner && role === "customer" && b.finalPrice != null && !["cancelled", "rejected", "disputed"].includes(b.stage) && token && (
           <CheckoutPanel token={token} code={b.code} />
         )}
 
         {/* review */}
-        {isOwner && b.status === "completed" && (
+        {isOwner && (b.stage === "customer_confirmed" || b.stage === "admin_reviewed") && (
           <div className="mt-8 border-t border-[#F0F3F0] pt-6">
             <h2 className="font-bold text-[#064B27]">আপনার রিভিউ</h2>
             {myReview ? (

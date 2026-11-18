@@ -148,18 +148,69 @@ export const bookings = sqliteTable("bookings", {
   photoKeys: text("photo_keys").notNull().default("[]"), // JSON array of blob keys
   preferredDate: text("preferred_date").notNull(), // YYYY-MM-DD as entered
   preferredTime: text("preferred_time").notNull(),
+  // Booking status (Master Phase 7 extends the legacy flow). The
+  // master flow is: pending → price_confirmed → assigned → accepted →
+  // in_progress → pro_completed → customer_confirmed → admin_reviewed,
+  // plus cancelled / rejected / disputed / rescheduled. The legacy
+  // values "confirmed" and "completed" are kept for rows written
+  // before Phase 7 — they mean exactly price_confirmed and
+  // customer_confirmed (see bookingStage in actions.ts); no existing
+  // row's status value is rewritten by the Phase 7 migration.
   status: text("status", {
     enum: [
       "pending",
       "confirmed",
+      "price_confirmed",
       "assigned",
+      "accepted",
       "in_progress",
+      "pro_completed",
       "completed",
+      "customer_confirmed",
+      "admin_reviewed",
       "cancelled",
+      "rejected",
+      "disputed",
+      "rescheduled",
     ],
   })
     .notNull()
     .default("pending"),
+  // Master Phase 7: the raw status the booking was in when it was
+  // parked in "disputed" or "rescheduled"; leaving the parked state
+  // returns it to exactly this status. Null otherwise.
+  statusBeforeHold: text("status_before_hold", {
+    enum: [
+      "pending",
+      "confirmed",
+      "price_confirmed",
+      "assigned",
+      "accepted",
+      "in_progress",
+      "pro_completed",
+      "completed",
+      "customer_confirmed",
+      "admin_reviewed",
+      "cancelled",
+      "rejected",
+      "disputed",
+      "rescheduled",
+    ],
+  }),
+  // How the current final price was finalized: "quotation" (the
+  // customer approved an itemized quotation — the price is then
+  // locked; only a new approved additional quotation can change it)
+  // or "admin" (legacy direct admin pricing from before Phase 7 —
+  // the Phase 7 migration backfills existing priced bookings).
+  priceFinalizedVia: text("price_finalized_via", {
+    enum: ["quotation", "admin"],
+  }),
+  // A customer's pending reschedule request (Master Phase 7): the new
+  // date/time they asked for. An admin confirms it with
+  // adminRescheduleBooking (which parks the booking in "rescheduled"
+  // at the new time) or declines it; either way these are cleared.
+  rescheduleRequestedDate: text("reschedule_requested_date"),
+  rescheduleRequestedTime: text("reschedule_requested_time"),
   proResponse: text("pro_response", { enum: ["none", "accepted", "rejected"] })
     .notNull()
     .default("none"),
@@ -589,4 +640,51 @@ export const supportTicketMessages = sqliteTable("support_ticket_messages", {
   }).notNull(),
   body: text("body").notNull(),
   createdAt: ts("created_at"),
+});
+
+// ---------------------------------------------------------------------------
+// Master Phase 7 — itemized quotations.
+//
+// A quotation is the ONLY way a booking's price becomes final: an
+// admin (operations) or the assigned professional itemizes the work
+// (labour / materials / transport / additional charges), and the
+// customer must approve it before any price is finalized, any payment
+// quote is issued or any TrxID can be submitted. `kind = "initial"`
+// prices the booking for the first time; `kind = "additional"` covers
+// extra work discovered later and, once approved, ADDS its total to
+// the finalized price — extra charges can never be folded into an
+// approved price silently. `totalAmount` is always computed
+// server-side as the sum of the four charge columns; the commission
+// base an approval contributes is labour + additional (itemized
+// materials / transport are excluded, per the Dual Payment rules in
+// payments.ts). Creating a new quotation supersedes any still-pending
+// one for the same booking, so at most one quotation per booking is
+// ever awaiting the customer's decision.
+export const quotations = sqliteTable("quotations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  bookingId: integer("booking_id")
+    .notNull()
+    .references(() => bookings.id),
+  kind: text("kind", { enum: ["initial", "additional"] }).notNull(),
+  status: text("status", {
+    enum: ["pending_approval", "approved", "rejected", "superseded"],
+  })
+    .notNull()
+    .default("pending_approval"),
+  createdByUserId: integer("created_by_user_id")
+    .notNull()
+    .references(() => users.id),
+  createdByRole: text("created_by_role", {
+    enum: ["admin", "professional"],
+  }).notNull(),
+  labourCharge: integer("labour_charge").notNull().default(0),
+  materialsCharge: integer("materials_charge").notNull().default(0),
+  transportCharge: integer("transport_charge").notNull().default(0),
+  additionalCharge: integer("additional_charge").notNull().default(0),
+  totalAmount: integer("total_amount").notNull(),
+  note: text("note"),
+  decidedByUserId: integer("decided_by_user_id").references(() => users.id),
+  decidedAt: integer("decided_at", { mode: "timestamp_ms" }),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
 });

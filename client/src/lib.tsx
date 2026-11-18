@@ -192,11 +192,67 @@ export function go(path: string) {
 
 export const STATUS_BN: Record<string, string> = {
   pending: "অপেক্ষমাণ",
-  confirmed: "নিশ্চিত হয়েছে",
+  confirmed: "মূল্য নিশ্চিত হয়েছে",
+  price_confirmed: "মূল্য নিশ্চিত হয়েছে",
   assigned: "প্রফেশনাল দেওয়া হয়েছে",
+  accepted: "প্রফেশনাল গ্রহণ করেছেন",
   in_progress: "কাজ চলছে",
-  completed: "সম্পন্ন",
+  pro_completed: "কাজ শেষ — নিশ্চিতকরণ বাকি",
+  completed: "সম্পন্ন নিশ্চিত হয়েছে",
+  customer_confirmed: "সম্পন্ন নিশ্চিত হয়েছে",
+  admin_reviewed: "অ্যাডমিন যাচাই সম্পন্ন",
   cancelled: "বাতিল",
+  rejected: "প্রত্যাখ্যাত",
+  disputed: "বিরোধ চলমান",
+  rescheduled: "সময় পুনঃনির্ধারিত",
+};
+
+/** Master-flow stage order for progress displays (Phase 7). */
+export const STAGE_ORDER = [
+  "pending",
+  "price_confirmed",
+  "assigned",
+  "accepted",
+  "in_progress",
+  "pro_completed",
+  "customer_confirmed",
+  "admin_reviewed",
+] as const;
+
+export const STAGE_BN: Record<string, string> = {
+  pending: "অপেক্ষমাণ",
+  price_confirmed: "মূল্য নিশ্চিত",
+  assigned: "প্রফেশনাল দেওয়া হয়েছে",
+  accepted: "গৃহীত",
+  in_progress: "কাজ চলছে",
+  pro_completed: "কাজ শেষ",
+  customer_confirmed: "গ্রাহক নিশ্চিত করেছেন",
+  admin_reviewed: "যাচাই সম্পন্ন",
+  cancelled: "বাতিল",
+  rejected: "প্রত্যাখ্যাত",
+  disputed: "বিরোধ চলমান",
+  rescheduled: "পুনঃনির্ধারিত",
+};
+
+/**
+ * Stage moves the admin form may offer from each stage — mirrors the
+ * server's ADMIN_STAGE_TRANSITIONS (the server re-checks every move;
+ * this only shapes the dropdown). Entering "rescheduled" is not here:
+ * it needs a new date/time and has its own controls.
+ */
+export const ADMIN_STAGE_NEXT: Record<string, string[]> = {
+  pending: ["price_confirmed", "assigned", "cancelled", "rejected"],
+  price_confirmed: ["assigned", "cancelled", "rejected", "disputed"],
+  assigned: ["price_confirmed", "cancelled", "disputed"],
+  accepted: ["in_progress", "cancelled", "disputed"],
+  in_progress: ["cancelled", "disputed"],
+  pro_completed: ["customer_confirmed", "disputed"],
+  customer_confirmed: ["admin_reviewed", "disputed"],
+  admin_reviewed: ["disputed"],
+  cancelled: [],
+  rejected: [],
+  disputed: [],
+  rescheduled: [],
 };
 
 export const PRO_STATUS_BN: Record<string, string> = {
@@ -209,14 +265,24 @@ export const PRO_STATUS_BN: Record<string, string> = {
 export function statusColor(status: string): string {
   switch (status) {
     case "completed":
+    case "customer_confirmed":
+    case "admin_reviewed":
       return "bg-[#087a35] text-white";
     case "cancelled":
+    case "rejected":
       return "bg-red-100 text-red-700";
+    case "disputed":
+      return "bg-red-600 text-white";
+    case "rescheduled":
+      return "bg-sky-100 text-sky-800";
     case "in_progress":
+    case "pro_completed":
       return "bg-blue-100 text-blue-800";
     case "assigned":
+    case "accepted":
       return "bg-violet-100 text-violet-800";
     case "confirmed":
+    case "price_confirmed":
       return "bg-emerald-100 text-emerald-800";
     default:
       return "bg-amber-100 text-amber-800";

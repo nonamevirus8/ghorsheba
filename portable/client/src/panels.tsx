@@ -4,12 +4,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiResponse } from "./api";
 import {
+ADMIN_STAGE_NEXT,
 Avatar,
 EmptyState,
 ErrorBox,
 Icon,
 PRO_STATUS_BN,
 SOCIAL_PLATFORM_BN,
+STAGE_BN,
 Spinner,
 TICKET_CATEGORY_BN,
 TICKET_STATUS_BN,
@@ -33,6 +35,7 @@ BreakdownRows,
 PAYMENT_MODEL_BN,
 PaymentStatusChip,
 PROVIDER_BN,
+QuotationPanel,
 type PaymentView,
 } from "./booking";
 
@@ -96,18 +99,24 @@ export function BookingCard({ b }: { b: Booking }) {
             <span className="font-en">{b.code}</span> • {b.upazila}
           </p>
         </div>
-        <BookingStatusChip status={b.status} />
+        <BookingStatusChip status={b.status} stage={b.stage} />
       </div>
       <p className="mt-2 text-sm text-[#4c584c] line-clamp-2">{b.description}</p>
       <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-[#737B73]">
         <span className="inline-flex items-center gap-1">{Icon.calendar("w-4 h-4")} {fmtDate(b.preferredDate)} • {b.preferredTime}</span>
         <span className="inline-flex items-center gap-1">{Icon.user("w-4 h-4")} {b.professionalName ?? "প্রফেশনাল অ্যাসাইন হয়নি"}</span>
       </p>
-      {b.status === "assigned" && b.proResponse === "none" && (
+      {b.stage === "assigned" && (
         <p className="mt-2 text-[13px] font-semibold text-[#B45309]">প্রফেশনালের সাড়ার অপেক্ষায়</p>
       )}
-      {b.status === "in_progress" && b.proDone && (
+      {b.stage === "pro_completed" && (
         <p className="mt-2 text-[13px] font-semibold text-[#087A35]">কাজ শেষ — নিশ্চিতকরণ বাকি</p>
+      )}
+      {b.stage === "disputed" && (
+        <p className="mt-2 text-[13px] font-semibold text-red-700">এই বুকিংয়ে বিরোধ চলমান — সেটেলমেন্ট স্থগিত</p>
+      )}
+      {b.stage === "rescheduled" && (
+        <p className="mt-2 text-[13px] font-semibold text-sky-800">সময় পুনঃনির্ধারিত হয়েছে — অ্যাডমিনের নিশ্চিতকরণ বাকি</p>
       )}
     </a>
   );
@@ -218,7 +227,9 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
     );
   }
   const list = bookings.data?.bookings ?? [];
-  const active = list.filter((b) => ["pending", "confirmed", "assigned", "in_progress"].includes(b.status));
+  const active = list.filter((b) =>
+    ["pending", "price_confirmed", "assigned", "accepted", "in_progress", "pro_completed", "rescheduled", "disputed"].includes(b.stage),
+  );
   const openRefunds = (refundsQ.data?.requests ?? []).filter((r) => r.status === "requested").length;
   const tabs = [
     { key: "bookings", label: "আমার বুকিং", badge: active.length },
@@ -245,7 +256,7 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
       <div className="grid grid-cols-3 gap-3 mb-6">
         <StatCard label="মোট বুকিং" value={list.length} icon={Icon.briefcase("w-5 h-5")} />
         <StatCard label="চলমান বুকিং" value={active.length} icon={Icon.clock("w-5 h-5")} />
-        <StatCard label="সম্পন্ন কাজ" value={list.filter((b) => b.status === "completed").length} icon={Icon.checkCircle("w-5 h-5")} />
+        <StatCard label="সম্পন্ন কাজ" value={list.filter((b) => b.stage === "customer_confirmed" || b.stage === "admin_reviewed").length} icon={Icon.checkCircle("w-5 h-5")} />
       </div>
       <TabsBar tabs={tabs} active={tab} href={(k) => `#/dashboard?tab=${k}`} />
       <div className="mt-6">
@@ -1342,11 +1353,11 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
     );
   }
   const list = jobs.data?.bookings ?? [];
-  const newReq = list.filter((b) => b.status === "assigned" && b.proResponse === "none");
-  const accepted = list.filter((b) => b.status === "assigned" && b.proResponse === "accepted");
-  const activeJobs = list.filter((b) => b.status === "in_progress");
-  const completed = list.filter((b) => b.status === "completed");
-  const cancelled = list.filter((b) => b.status === "cancelled");
+  const newReq = list.filter((b) => b.stage === "assigned");
+  const accepted = list.filter((b) => b.stage === "accepted");
+  const activeJobs = list.filter((b) => b.stage === "in_progress" || b.stage === "pro_completed");
+  const completed = list.filter((b) => b.stage === "customer_confirmed" || b.stage === "admin_reviewed");
+  const cancelled = list.filter((b) => b.stage === "cancelled" || b.stage === "rejected");
   const filtered =
     filter === "requests"
       ? newReq
@@ -1600,6 +1611,11 @@ function ProEarningsTab({ token }: { token: string }) {
           উত্তোলনযোগ্য ব্যালেন্স: <b className="font-en text-[#064B27]">{bdt(wallet.availableBalance)}</b>
           {wallet.openWithdrawalTotal > 0 && (
             <span className="text-[#737B73]"> (হেল্ড {bdt(wallet.held)} থেকে অপেক্ষমাণ অনুরোধ {bdt(wallet.openWithdrawalTotal)} বাদ দিয়ে)</span>
+          )}
+          {wallet.frozenHeld > 0 && (
+            <span className="block mt-1 font-semibold text-red-700">
+              বিরোধ চলমান বুকিংয়ে {bdt(wallet.frozenHeld)} স্থগিত আছে — নিষ্পত্তি না হওয়া পর্যন্ত এটি তোলা যাবে না।
+            </span>
           )}
         </p>
 
@@ -2317,11 +2333,17 @@ function AdminBookings({ token }: { token: string }) {
           [
             ["", "সব"],
             ["pending", "অপেক্ষমাণ"],
-            ["confirmed", "নিশ্চিত"],
+            ["price_confirmed", "মূল্য নিশ্চিত"],
             ["assigned", "অ্যাসাইনড"],
+            ["accepted", "গৃহীত"],
             ["in_progress", "চলমান"],
-            ["completed", "সম্পন্ন"],
+            ["pro_completed", "কাজ শেষ"],
+            ["customer_confirmed", "সম্পন্ন"],
+            ["admin_reviewed", "যাচাই সম্পন্ন"],
+            ["disputed", "বিরোধ"],
+            ["rescheduled", "পুনঃনির্ধারিত"],
             ["cancelled", "বাতিল"],
+            ["rejected", "প্রত্যাখ্যাত"],
           ] as [string, string][]
         ).map(([k, label]) => (
           <button
@@ -2353,7 +2375,14 @@ function AdminBookings({ token }: { token: string }) {
 function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState(b.status);
+  // The form works in master-flow STAGES (Phase 7); the server maps
+  // the chosen stage to the canonical stored status and re-validates
+  // the transition.
+  const [status, setStatus] = useState(b.stage);
+  // Price editing survives only for legacy admin-priced bookings:
+  // a quotation-locked price is read-only here, and an unpriced
+  // booking gets its price from a customer-approved quotation.
+  const priceEditable = b.finalPrice != null && b.priceFinalizedVia !== "quotation";
   const [proId, setProId] = useState<string>(b.professionalId ? String(b.professionalId) : "");
   const [price, setPrice] = useState(b.finalPrice != null ? String(b.finalPrice) : "");
   const [payment, setPayment] = useState(b.paymentStatus);
@@ -2371,9 +2400,20 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
       api.adminUpdateBooking({
         token,
         bookingId: b.id,
-        status: status as "pending" | "confirmed" | "assigned" | "in_progress" | "completed" | "cancelled",
+        status: status as
+          | "pending"
+          | "price_confirmed"
+          | "assigned"
+          | "accepted"
+          | "in_progress"
+          | "pro_completed"
+          | "customer_confirmed"
+          | "admin_reviewed"
+          | "cancelled"
+          | "rejected"
+          | "disputed",
         professionalId: proId === "" ? null : Number(proId),
-        finalPrice: price === "" ? null : Number(price),
+        finalPrice: priceEditable ? (price === "" ? null : Number(price)) : undefined,
         paymentStatus: payment as "unpaid" | "cash_paid",
         adminNote: note || undefined,
       }),
@@ -2396,7 +2436,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
           </p>
           <p className="text-[13px] text-[#737B73] font-en">{b.phone}</p>
         </div>
-        <BookingStatusChip status={b.status} />
+        <BookingStatusChip status={b.status} stage={b.stage} />
       </div>
       <p className="mt-2 text-sm text-[#4c584c] line-clamp-2">{b.description}</p>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -2406,7 +2446,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
             // Re-sync the form from the latest booking data every time it is
             // opened, so a refetch never leaves stale values in the fields.
             if (!open) {
-              setStatus(b.status);
+              setStatus(b.stage);
               setProId(b.professionalId ? String(b.professionalId) : "");
               setPrice(b.finalPrice != null ? String(b.finalPrice) : "");
               setPayment(b.paymentStatus);
@@ -2439,6 +2479,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
         </div>
       )}
       {open && (
+        <>
         <form
           className="mt-4 border-t border-[#F0F3F0] pt-4 grid sm:grid-cols-2 gap-3.5"
           onSubmit={(e) => {
@@ -2449,15 +2490,26 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
           }}
         >
           <div>
-            <label className={labelCls} htmlFor={`ab-status-${b.id}`}>স্ট্যাটাস</label>
-            <select id={`ab-status-${b.id}`} className={inputCls} value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="pending">অপেক্ষমাণ</option>
-              <option value="confirmed">নিশ্চিত</option>
-              <option value="assigned">প্রফেশনাল দেওয়া হয়েছে</option>
-              <option value="in_progress">কাজ চলছে</option>
-              <option value="completed">সম্পন্ন</option>
-              <option value="cancelled">বাতিল</option>
+            <label className={labelCls} htmlFor={`ab-status-${b.id}`}>স্ট্যাটাস (ধাপ)</label>
+            <select
+              id={`ab-status-${b.id}`}
+              className={inputCls}
+              value={status}
+              disabled={b.stage === "disputed" || b.stage === "rescheduled"}
+              onChange={(e) => setStatus(e.target.value)}
+            >
+              <option value={b.stage}>{STAGE_BN[b.stage] ?? b.stage} (বর্তমান)</option>
+              {(ADMIN_STAGE_NEXT[b.stage] ?? []).map((s) => (
+                <option key={s} value={s}>{STAGE_BN[s] ?? s}</option>
+              ))}
             </select>
+            {(b.stage === "disputed" || b.stage === "rescheduled") && (
+              <p className="text-xs text-[#737B73] mt-1">
+                {b.stage === "disputed"
+                  ? "বিরোধ নিষ্পত্তি না হলে স্ট্যাটাস বদলানো যাবে না — নিচের বোতামে নিষ্পত্তি করুন।"
+                  : "পুনঃনির্ধারণ নিশ্চিত না হলে স্ট্যাটাস বদলানো যাবে না — নিচের বোতামে নিশ্চিত করুন।"}
+              </p>
+            )}
           </div>
           <div>
             <label className={labelCls} htmlFor={`ab-pro-${b.id}`}>প্রফেশনাল অ্যাসাইন</label>
@@ -2471,7 +2523,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
                 // Picking a professional moves the booking to the assigned
                 // stage — reflect that in the status dropdown so what the
                 // admin sees is exactly what will be saved.
-                if (v !== "" && (status === "pending" || status === "confirmed")) setStatus("assigned");
+                if (v !== "" && (status === "pending" || status === "price_confirmed")) setStatus("assigned");
               }}
             >
               <option value="">— কেউ না —</option>
@@ -2488,7 +2540,19 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
           </div>
           <div>
             <label className={labelCls} htmlFor={`ab-price-${b.id}`}>চূড়ান্ত মূল্য (৳)</label>
-            <input id={`ab-price-${b.id}`} type="number" min={0} className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="কোটেশনের পর লিখুন" />
+            {b.finalPrice == null ? (
+              <>
+                <input id={`ab-price-${b.id}`} type="number" className={inputCls} value="" disabled placeholder="এখনো নির্ধারিত হয়নি" />
+                <p className="text-xs text-[#737B73] mt-1">মূল্য এখানে বসানো যায় না — নিচে কোটেশন তৈরি করুন; গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে।</p>
+              </>
+            ) : b.priceFinalizedVia === "quotation" ? (
+              <>
+                <input id={`ab-price-${b.id}`} type="number" className={inputCls} value={price} disabled />
+                <p className="text-xs text-[#737B73] mt-1">গ্রাহক-অনুমোদিত কোটেশনে নির্ধারিত — বদলাতে হলে নতুন অতিরিক্ত কোটেশন লাগবে।</p>
+              </>
+            ) : (
+              <input id={`ab-price-${b.id}`} type="number" min={0} className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="চূড়ান্ত মূল্য" />
+            )}
           </div>
           <div>
             <label className={labelCls} htmlFor={`ab-pay-${b.id}`}>পেমেন্ট</label>
@@ -2509,6 +2573,123 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
           {saved && <p className="sm:col-span-2 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">সংরক্ষিত হয়েছে — গ্রাহক নোটিফিকেশন পেয়েছেন।</p>}
           <button type="submit" disabled={save.isPending} className="sm:col-span-2 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold py-2.5 rounded-xl">
             {save.isPending ? "সংরক্ষণ হচ্ছে…" : "পরিবর্তন সংরক্ষণ করুন"}
+          </button>
+        </form>
+        <div className="mt-5 border-t border-[#F0F3F0] pt-4">
+          <QuotationPanel token={token} booking={b} viewerRole="admin" isOwnerCustomer={false} isAssignedPro={false} />
+        </div>
+        <AdminBookingFlowControls b={b} token={token} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Phase 7 admin controls for the parked states (rescheduled /
+ *  disputed) and for customer reschedule requests. Each button maps
+ *  to exactly one server action; the server re-validates everything. */
+function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
+  const qc = useQueryClient();
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["admin-bookings"] });
+    qc.invalidateQueries({ queryKey: ["admin-overview"] });
+  };
+  const handlers = (okMsg: string) => ({
+    onSuccess: () => {
+      setDone(okMsg);
+      setError("");
+      refresh();
+    },
+    onError: (e: unknown) => setError(errMsg(e)),
+  });
+  const confirmResched = useMutation({
+    mutationFn: () => api.adminConfirmReschedule({ token, bookingId: b.id }),
+    ...handlers("পুনঃনির্ধারিত সময় নিশ্চিত হয়েছে।"),
+  });
+  const applyResched = useMutation({
+    mutationFn: (v: { date?: string; time?: string }) =>
+      api.adminRescheduleBooking({ token, bookingId: b.id, date: v.date, time: v.time }),
+    ...handlers("বুকিং পুনঃনির্ধারণ করা হয়েছে।"),
+  });
+  const declineResched = useMutation({
+    mutationFn: () => api.adminDeclineReschedule({ token, bookingId: b.id }),
+    ...handlers("সময় বদলের অনুরোধ বাতিল করা হয়েছে।"),
+  });
+  const clearDispute = useMutation({
+    mutationFn: () => api.adminClearDispute({ token, bookingId: b.id }),
+    ...handlers("বিরোধ নিষ্পত্তি হয়েছে — বুকিং আগের অবস্থায় ফিরেছে।"),
+  });
+  const busy = confirmResched.isPending || applyResched.isPending || declineResched.isPending || clearDispute.isPending;
+  const canReschedule = ["pending", "price_confirmed", "assigned", "accepted"].includes(b.stage);
+  if (b.stage !== "rescheduled" && b.stage !== "disputed" && !b.rescheduleRequestedDate && !canReschedule) {
+    return null;
+  }
+  return (
+    <div className="mt-5 border-t border-[#F0F3F0] pt-4">
+      <h3 className="font-bold text-[#064B27] text-[15px]">সময় পুনঃনির্ধারণ ও বিরোধ</h3>
+      {error && (
+        <div className="mt-3">
+          <ErrorBox message={error} />
+        </div>
+      )}
+      {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+      {b.stage === "disputed" && (
+        <div className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+          <p className="text-sm text-red-800 font-semibold">এই বুকিংয়ে বিরোধ চলমান — সেটেলমেন্ট স্থগিত আছে।</p>
+          <button type="button" disabled={busy} onClick={() => clearDispute.mutate()} className="mt-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
+            বিরোধ নিষ্পত্তি করে আগের অবস্থায় ফেরান
+          </button>
+        </div>
+      )}
+      {b.stage === "rescheduled" && (
+        <div className="mt-3 rounded-xl bg-sky-50 border border-sky-200 px-4 py-3">
+          <p className="text-sm text-sky-900">
+            নতুন সময়: <b>{fmtDate(b.preferredDate)} • {b.preferredTime}</b> — নিশ্চিত করলে বুকিং আগের ধাপে ফিরে যাবে।
+          </p>
+          <button type="button" disabled={busy} onClick={() => confirmResched.mutate()} className="mt-2.5 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
+            পুনঃনির্ধারণ নিশ্চিত করুন
+          </button>
+        </div>
+      )}
+      {b.stage !== "rescheduled" && b.rescheduleRequestedDate && (
+        <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+          <p className="text-sm text-amber-900">
+            গ্রাহক সময় বদলের অনুরোধ করেছেন: <b>{fmtDate(b.rescheduleRequestedDate)} • {b.rescheduleRequestedTime}</b>
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => applyResched.mutate({})} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
+              অনুরোধ অনুযায়ী পুনঃনির্ধারণ করুন
+            </button>
+            <button type="button" disabled={busy} onClick={() => declineResched.mutate()} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
+              অনুরোধ বাতিল করুন
+            </button>
+          </div>
+        </div>
+      )}
+      {canReschedule && (
+        <form
+          className="mt-3 grid grid-cols-2 gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            setDone("");
+            applyResched.mutate({ date, time });
+          }}
+        >
+          <div>
+            <label className={labelCls} htmlFor={`rs-date-${b.id}`}>নতুন তারিখ</label>
+            <input id={`rs-date-${b.id}`} type="date" required className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`rs-time-${b.id}`}>নতুন সময়</label>
+            <input id={`rs-time-${b.id}`} type="text" required className={inputCls} value={time} onChange={(e) => setTime(e.target.value)} placeholder="যেমন: সকাল ১০টা" />
+          </div>
+          <button type="submit" disabled={busy} className="col-span-2 border-[1.5px] border-[#087A35] text-[#087A35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
+            এই সময়ে পুনঃনির্ধারণ করুন
           </button>
         </form>
       )}
@@ -3644,6 +3825,11 @@ function SettlementQueue({ token }: { token: string }) {
           <div>
             <h3 className="font-semibold text-[#064B27] mb-2">
               হেল্ড ব্যালেন্স — ছাড়ের অপেক্ষায় (মোট {bdt(q.data!.totals.heldAwaitingRelease)})
+              {q.data!.totals.frozenDisputedHeld > 0 && (
+                <span className="block text-[13px] font-semibold text-red-700">
+                  বিরোধের কারণে স্থগিত: {bdt(q.data!.totals.frozenDisputedHeld)} (ছাড়যোগ্য মোটে ধরা হয়নি)
+                </span>
+              )}
             </h3>
             {q.data!.heldBookings.length === 0 ? (
               <EmptyState title="কোনো হেল্ড ব্যালেন্স বাকি নেই" />
@@ -3658,7 +3844,10 @@ function SettlementQueue({ token }: { token: string }) {
                       প্রফেশনাল: {h.professionalName ?? "—"} • হেল্ড {bdt(h.heldTotal)} • কমিশন {bdt(h.commissionDue)} •
                       পেআউট হয়েছে {bdt(h.paidOut)}
                     </p>
-                    <p className="text-[14px] font-semibold text-[#064B27]">ছাড়যোগ্য: {bdt(h.remainingHeld)}</p>
+                    <p className="text-[14px] font-semibold text-[#064B27]">
+                      ছাড়যোগ্য: {bdt(h.remainingHeld)}
+                      {h.disputed && <span className="ml-2 text-red-700">• বিরোধ চলমান — সেটেলমেন্ট স্থগিত</span>}
+                    </p>
                   </div>
                 ))}
               </div>
