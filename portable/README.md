@@ -122,6 +122,34 @@ deliberately no full-database mode: restorable backups belong in a
 separate owner-only channel (e.g. a database dump), not behind a
 query-string token.
 
+## Online payments — Manual TrxID + SSLCOMMERZ sandbox (Phase 8)
+
+Two collection paths exist side by side; both write the same payment
+and ledger records, and both are priced by the server from the
+booking's snapshotted Dual Payment rates:
+
+- **Manual TrxID (default, always available):** the customer sends
+  money to the MFS number an admin sets in Platform Settings and
+  submits the TrxID; a Finance Admin verifies it.
+- **SSLCOMMERZ gateway (sandbox only, optional):** appears at checkout
+  only when the owner sets `SSLCOMMERZ_STORE_ID`,
+  `SSLCOMMERZ_STORE_PASSWD` and `SSLCOMMERZ_SANDBOX=true` in the Vercel
+  environment (see `.env.example`). The code contains ONLY the sandbox
+  endpoints and refuses to run in any other mode — going live is a
+  separate, separately-approved provider arrangement (live carries a
+  one-time setup fee plus a per-transaction percentage). A payment is
+  marked successful ONLY after the server verifies it through the
+  SSLCOMMERZ Order Validation API: the gateway's IPN
+  (`POST /api/sslcommerz/ipn`) and the browser return
+  (`POST /api/sslcommerz/return`) both run the signature check +
+  validation before settling, and duplicate callbacks are no-ops.
+  Pathao Pay remains a labelled placeholder — it has no public
+  merchant API.
+
+To test the gateway: create a free SSLCOMMERZ sandbox store, set the
+three variables in Vercel, redeploy, and pay at checkout with the
+sandbox's test credentials.
+
 ## Run locally
 
 ```bash

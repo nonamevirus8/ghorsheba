@@ -13,6 +13,17 @@ import {
   type PaymentBreakdown,
 } from "./payments";
 import {
+  fetchSslcommerzTransport,
+  initiateSslcommerzSession,
+  isSslcommerzSuccessStatus,
+  sslcommerzAmountToTaka,
+  sslcommerzConfigFromEnv,
+  validateSslcommerzOrder,
+  verifySslcommerzCallbackSignature,
+  type SslcommerzConfig,
+  type SslcommerzTransport,
+} from "./sslcommerz";
+import {
   buildExport,
   exportPayloadSchema,
   exportTokenAuthorized,
@@ -517,6 +528,357 @@ function breakdownFromBooking(b: BookingRowFull): PaymentBreakdown | null {
     calcBase: b.calcBase ?? b.finalPrice,
     rates: own,
   });
+}
+
+// ------------------------------------------------- SSLCOMMERZ (Phase 8)
+//
+// Sandbox-only gateway collection, layered ON TOP of the existing Dual
+// Payment records: a gateway payment is a normal `payments` row
+// (method/provider "sslcommerz", providerTrxId = the gateway tran_id,
+// the client's idempotency key in idempotency_key) whose settlement
+// writes exactly the same immutable ledger entries as an admin
+// verifying a manual payment. The layer is DISABLED until the owner
+// sets SSLCOMMERZ_STORE_ID / SSLCOMMERZ_STORE_PASSWD /
+// SSLCOMMERZ_SANDBOX=true in the server environment; while disabled no
+// gateway option is offered anywhere and Manual TrxID remains the only
+// working path. Only sandbox endpoints exist in the code (see
+// sslcommerz.ts) — there is no live mode to switch on.
+//
+// Settlement rule (the security core of this phase): a payment is
+// marked verified ONLY after the gateway's Order Validation API —
+// called server-to-server with the store credentials — confirms this
+// exact tran_id, the exact expected amount and BDT currency. A browser
+// redirect, an IPN body, or even a valid IPN signature alone never
+// settles anything. Duplicate callbacks are no-ops: an already
+// verified payment returns `duplicate` without touching the ledger,
+// so one payment can never produce two ledger sets.
+
+/** Gateway config from the host environment; null = gateway disabled. */
+async function loadSslcommerzConfig(
+  ctx: Ctx,
+): Promise<SslcommerzConfig | null> {
+  const env = await ctx.executePrivileged(Privileged.readSslcommerzConfig, {});
+  return sslcommerzConfigFromEnv(env);
+}
+
+export interface SslcommerzCallbackResult {
+  ok: boolean;
+  /** Machine-readable outcome for the HTTP adapters and the tests. */
+  outcome:
+    | "settled"
+    | "duplicate"
+    | "failed"
+    | "cancelled"
+    | "not_configured"
+    | "unknown_transaction"
+    | "already_settled"
+    | "bad_signature"
+    | "validation_failed"
+    | "amount_mismatch"
+    | "booking_blocked";
+  bookingCode: string | null;
+  paymentId: number | null;
+}
+
+/** Builds the sandbox session parameters for one gateway payment. */
+async function buildSslcommerzInitInput(
+  ctx: Ctx,
+  b: BookingRowFull,
+  tranId: string,
+  amount: number,
+  baseUrl: string,
+  supportEmail: string,
+) {
+  const names = await serviceNameMap(ctx);
+  return {
+    tranId,
+    totalAmount: amount,
+    // On the Vercel deployment these are the api/sslcommerz functions;
+    // the return endpoint runs the same settlement path as the IPN and
+    // then redirects the browser back to the booking page.
+    successUrl: `${baseUrl}/api/sslcommerz/return`,
+    failUrl: `${baseUrl}/api/sslcommerz/return`,
+    cancelUrl: `${baseUrl}/api/sslcommerz/return`,
+    ipnUrl: `${baseUrl}/api/sslcommerz/ipn`,
+    productName: names.get(b.serviceSlug) ?? "GhorSheba service",
+    customerName: b.customerName,
+    // The gateway requires a contact email; the platform's own
+    // admin-configured support email is used (payment receipts are a
+    // platform concern) — a customer's email is never invented.
+    customerEmail: supportEmail,
+    customerPhone: b.phone,
+    customerAddress: b.address,
+    customerCity: "Tangail",
+    customerCountry: "Bangladesh",
+  };
+}
+
+/**
+ * Handles one SSLCOMMERZ callback payload (the IPN POST and the
+ * browser success/fail/cancel returns all carry the same fields).
+ * Exported so the deployment's HTTP endpoints and the test-suite drive
+ * the exact code the `sslcommerzIpn` / `sslcommerzReturn` actions run.
+ */
+export async function processSslcommerzCallback(
+  ctx: Ctx,
+  payload: Record<string, string>,
+  deps?: {
+    config?: SslcommerzConfig | null;
+    transport?: SslcommerzTransport;
+  },
+): Promise<SslcommerzCallbackResult> {
+  const db = dbOf(ctx);
+  const base: SslcommerzCallbackResult = {
+    ok: false,
+    outcome: "not_configured",
+    bookingCode: null,
+    paymentId: null,
+  };
+  const config =
+    deps?.config !== undefined ? deps.config : await loadSslcommerzConfig(ctx);
+  if (!config) return base;
+  const transport = deps?.transport ?? fetchSslcommerzTransport;
+  const tranId = (payload["tran_id"] ?? "").trim();
+  if (!tranId) return { ...base, outcome: "unknown_transaction" };
+  const prows = await db
+    .select()
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.provider, "sslcommerz"),
+        eq(schema.payments.providerTrxId, tranId),
+      ),
+    )
+    .limit(1);
+  const p = prows[0];
+  if (!p || p.method !== "sslcommerz") {
+    return { ...base, outcome: "unknown_transaction" };
+  }
+  const brows = await db
+    .select()
+    .from(schema.bookings)
+    .where(eq(schema.bookings.id, p.bookingId))
+    .limit(1);
+  const b = brows[0];
+  if (!b) return { ...base, outcome: "unknown_transaction", paymentId: p.id };
+  const found: SslcommerzCallbackResult = {
+    ...base,
+    bookingCode: b.code,
+    paymentId: p.id,
+  };
+  // Duplicate delivery of an already-settled callback: a pure no-op —
+  // no second payment, no second ledger set, no second notification.
+  if (p.status === "verified") return { ...found, ok: true, outcome: "duplicate" };
+  if (p.status !== "initiated" && p.status !== "pending") {
+    return { ...found, outcome: "already_settled" };
+  }
+  const gatewayStatus = (payload["status"] ?? "").trim().toUpperCase();
+  const now = new Date();
+
+  if (gatewayStatus === "FAILED" || gatewayStatus === "CANCELLED") {
+    const newStatus = gatewayStatus === "FAILED" ? "failed" : "cancelled";
+    const statements: BatchItem<"sqlite">[] = [
+      db
+        .update(schema.payments)
+        .set({
+          status: newStatus,
+          rejectionReason:
+            gatewayStatus === "FAILED"
+              ? "গেটওয়েতে পেমেন্ট ব্যর্থ হয়েছে"
+              : "গ্রাহক গেটওয়েতে পেমেন্ট বাতিল করেছেন",
+          updatedAt: now,
+        })
+        .where(eq(schema.payments.id, p.id)),
+      db
+        .update(schema.bookings)
+        .set({ extendedPaymentStatus: newStatus, updatedAt: now })
+        .where(eq(schema.bookings.id, b.id)),
+      db.insert(schema.notifications).values({
+        userId: b.customerId,
+        targetRole: null,
+        type: "payment_failed",
+        title: "অনলাইন পেমেন্ট সম্পন্ন হয়নি",
+        body: `কোড: ${b.code} — গেটওয়ে পেমেন্ট ${gatewayStatus === "FAILED" ? "ব্যর্থ হয়েছে" : "বাতিল হয়েছে"}। আবার চেষ্টা করুন, অথবা TrxID পদ্ধতিতে পেমেন্ট করুন।`,
+        bookingId: b.id,
+      }),
+      db.insert(schema.adminLogs).values({
+        adminId: null,
+        action: "gateway_payment_closed",
+        detail: `${b.code}: sslcommerz payment #${p.id} (${tranId}) -> ${newStatus}`,
+      }),
+    ];
+    const [first, ...rest] = statements;
+    if (first) await db.batch([first, ...rest]);
+    ctx.invalidateQueries();
+    return { ...found, ok: true, outcome: newStatus };
+  }
+
+  if (!isSslcommerzSuccessStatus(gatewayStatus)) {
+    return { ...found, outcome: "validation_failed" };
+  }
+  // Claimed success — trust nothing in the payload yet. First the
+  // gateway's own signature over the callback fields…
+  if (!verifySslcommerzCallbackSignature(config, payload)) {
+    await db.insert(schema.adminLogs).values({
+      adminId: null,
+      action: "gateway_callback_rejected",
+      detail: `${b.code}: sslcommerz tran ${tranId} — verify_sign মেলেনি, সেটলমেন্ট হয়নি`,
+    });
+    return { ...found, outcome: "bad_signature" };
+  }
+  // …then the authoritative check: the Order Validation API.
+  const valId = (payload["val_id"] ?? "").trim();
+  if (!valId) return { ...found, outcome: "validation_failed" };
+  let validation: Awaited<ReturnType<typeof validateSslcommerzOrder>>;
+  try {
+    validation = await validateSslcommerzOrder(transport, config, valId);
+  } catch {
+    return { ...found, outcome: "validation_failed" };
+  }
+  if (
+    !isSslcommerzSuccessStatus(validation.status) ||
+    validation.tranId !== tranId
+  ) {
+    await db.insert(schema.adminLogs).values({
+      adminId: null,
+      action: "gateway_callback_rejected",
+      detail: `${b.code}: sslcommerz tran ${tranId} — Order Validation status=${validation.status || "(খালি)"}, সেটলমেন্ট হয়নি`,
+    });
+    return { ...found, outcome: "validation_failed" };
+  }
+  if (
+    validation.currency !== "BDT" ||
+    sslcommerzAmountToTaka(validation.amount) !== p.amount
+  ) {
+    await db.insert(schema.adminLogs).values({
+      adminId: null,
+      action: "gateway_callback_rejected",
+      detail: `${b.code}: sslcommerz tran ${tranId} — validated amount/currency (${validation.amount ?? "?"} ${validation.currency ?? "?"}) পেমেন্টের ৳${p.amount} BDT-এর সাথে মেলেনি`,
+    });
+    return { ...found, outcome: "amount_mismatch" };
+  }
+  // Settlement freezes apply to gateway money exactly as to manual
+  // money: a disputed booking's settlement stays frozen (Phase 7) and
+  // a cancelled/rejected booking is never settled (Phase 5, P-1).
+  if (b.status === "disputed" || b.status === "cancelled" || b.status === "rejected") {
+    await db.insert(schema.adminLogs).values({
+      adminId: null,
+      action: "gateway_settlement_blocked",
+      detail: `${b.code}: sslcommerz tran ${tranId} validated ৳${p.amount} but booking status=${b.status} — settlement blocked`,
+    });
+    return { ...found, outcome: "booking_blocked" };
+  }
+  const bd = breakdownFromBooking(b);
+  if (!bd || p.amount !== bd.customerPaysOnline) {
+    return { ...found, outcome: "amount_mismatch" };
+  }
+  // Settle: exactly the ledger set an admin verification writes, with
+  // the gateway as the actor. All of it lands atomically or not at all.
+  const ref = `sslcommerz:${tranId}`;
+  let proUserId: number | null = null;
+  if (b.professionalId) {
+    const pros = await db
+      .select()
+      .from(schema.professionals)
+      .where(eq(schema.professionals.id, b.professionalId))
+      .limit(1);
+    proUserId = pros[0]?.userId ?? null;
+  }
+  const entries: (typeof schema.paymentLedger.$inferInsert)[] = [];
+  entries.push({
+    bookingId: b.id,
+    paymentId: p.id,
+    entryType: "online_collection",
+    amount: p.amount,
+    actorRole: "system",
+    adminId: null,
+    reference: ref,
+    note: "SSLCOMMERZ গেটওয়ে যাচাইয়ে অনলাইন সংগ্রহ (sandbox)",
+  });
+  if (bd.customerFee > 0) {
+    entries.push({
+      bookingId: b.id,
+      paymentId: p.id,
+      entryType: "customer_fee",
+      amount: bd.customerFee,
+      actorRole: "system",
+      adminId: null,
+      reference: ref,
+      note: "গ্রাহক প্ল্যাটফর্ম ফি",
+    });
+  }
+  entries.push({
+    bookingId: b.id,
+    paymentId: p.id,
+    entryType: "held_balance",
+    amount: bd.heldAmount,
+    actorRole: "system",
+    adminId: null,
+    reference: ref,
+    note: "সেটলমেন্টের জন্য হেল্ড ব্যালেন্স",
+  });
+  if (bd.proCommission > 0) {
+    entries.push({
+      bookingId: b.id,
+      paymentId: p.id,
+      entryType: "commission_due",
+      amount: bd.proCommission,
+      actorRole: "system",
+      adminId: null,
+      reference: ref,
+      note: "প্রফেশনালের কমিশন পাওনা",
+    });
+  }
+  const statements: BatchItem<"sqlite">[] = [
+    db
+      .update(schema.payments)
+      .set({
+        status: "verified",
+        verifiedBy: null,
+        verifiedAt: now,
+        rejectionReason: null,
+        updatedAt: now,
+      })
+      .where(eq(schema.payments.id, p.id)),
+    db.insert(schema.paymentLedger).values(entries),
+    db
+      .update(schema.bookings)
+      .set({
+        heldBalance: bd.heldAmount,
+        extendedPaymentStatus: "held_settlement_pending",
+        updatedAt: now,
+      })
+      .where(eq(schema.bookings.id, b.id)),
+    db.insert(schema.notifications).values({
+      userId: b.customerId,
+      targetRole: null,
+      type: "payment_verified",
+      title: "আপনার পেমেন্ট যাচাই সম্পন্ন হয়েছে",
+      body: `কোড: ${b.code} — ৳${p.amount} অনলাইন পেমেন্ট (SSLCOMMERZ) সার্ভার যাচাইয়ে সফল হয়েছে।`,
+      bookingId: b.id,
+    }),
+    ...(proUserId
+      ? [
+          db.insert(schema.notifications).values({
+            userId: proUserId,
+            targetRole: null,
+            type: "payment_verified",
+            title: "বুকিংয়ের পেমেন্ট যাচাই হয়েছে",
+            body: `কোড: ${b.code} — সেটলমেন্টে হেল্ড থেকে ৳${bd.proPayoutFromHeld} পাবেন।`,
+            bookingId: b.id,
+          }),
+        ]
+      : []),
+    db.insert(schema.adminLogs).values({
+      adminId: null,
+      action: "payment_verified_gateway",
+      detail: `${b.code}: sslcommerz payment #${p.id} (${ref}) ৳${p.amount}, held=৳${bd.heldAmount}, commission=৳${bd.proCommission} — Order Validation API দ্বারা যাচাইকৃত`,
+    }),
+  ];
+  const [first, ...rest] = statements;
+  if (first) await db.batch([first, ...rest]);
+  ctx.invalidateQueries();
+  return { ...found, ok: true, outcome: "settled" };
 }
 
 // ------------------------------------------------- booking stages (Phase 7)
@@ -4561,6 +4923,293 @@ export const Actions = {
     },
   }),
 
+  initiateSslcommerzPayment: defineAction({
+    description:
+      "Customer starts an SSLCOMMERZ SANDBOX gateway payment for their own price-confirmed booking: the server creates the payment row with the exact expected online amount (same snapshot rules as Manual TrxID) and returns the sandbox gateway URL to redirect to. Disabled with an honest error until the owner configures the sandbox credentials in the server environment — Manual TrxID remains the default path. Nothing is marked paid here; settlement happens only through the validated callback.",
+    request: z.object({
+      token: z.string(),
+      bookingCode: z.string().min(4).max(40),
+      paymentModel: z.enum(["full_online", "split_50_50"]),
+      idempotencyKey: z.string().min(8).max(120),
+      baseUrl: z.string().url().max(300),
+    }),
+    response: z.object({
+      payment: paymentOut,
+      breakdown: breakdownOut,
+      gatewayUrl: z.string(),
+    }),
+    privileged: [Privileged.readSslcommerzConfig],
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই পেমেন্ট করতে পারবেন।");
+      }
+      const config = await loadSslcommerzConfig(ctx);
+      if (!config) {
+        throw new Error(
+          "অনলাইন গেটওয়ে (SSLCOMMERZ) এখনো চালু করা হয়নি — আপাতত TrxID পদ্ধতিতে পেমেন্ট করুন।",
+        );
+      }
+      const baseUrl = args.baseUrl.replace(/\/+$/, "");
+      if (!baseUrl.startsWith("https://")) {
+        throw new Error("পেমেন্টের ঠিকানা সঠিক নয়।");
+      }
+      const db = dbOf(ctx);
+      const stRows = await db.select().from(schema.settings).limit(1);
+      const st = stRows[0];
+      const supportEmail = st?.supportEmail ?? null;
+
+      // Idempotent retry: the same key re-opening the same gateway
+      // payment returns a fresh sandbox session for the SAME tran_id
+      // instead of creating a duplicate payment row.
+      const byKey = await db
+        .select()
+        .from(schema.payments)
+        .where(eq(schema.payments.idempotencyKey, args.idempotencyKey))
+        .limit(1);
+      const replay = byKey[0];
+      if (replay) {
+        if (
+          replay.submittedBy === user.id &&
+          replay.method === "sslcommerz" &&
+          replay.paymentModel === args.paymentModel
+        ) {
+          if (replay.status === "verified") {
+            throw new Error("এই বুকিংয়ের পেমেন্ট ইতিমধ্যে সম্পন্ন হয়েছে।");
+          }
+          if (replay.status !== "initiated" && replay.status !== "pending") {
+            throw new Error(
+              "এই পেমেন্ট অনুরোধটি আগেই বন্ধ হয়ে গেছে — নতুন করে চেষ্টা করুন।",
+            );
+          }
+          if (!supportEmail) {
+            throw new Error(
+              "গেটওয়ে পেমেন্টের জন্য অ্যাডমিনকে প্রথমে সাপোর্ট ইমেইল সেট করতে হবে — আপাতত TrxID পদ্ধতিতে পেমেন্ট করুন।",
+            );
+          }
+          const brows = await db
+            .select()
+            .from(schema.bookings)
+            .where(eq(schema.bookings.id, replay.bookingId))
+            .limit(1);
+          const bb = brows[0];
+          const bd = bb ? breakdownFromBooking(bb) : null;
+          if (!bb || !bd) throw new Error("বুকিং পাওয়া যায়নি।");
+          const session = await initiateSslcommerzSession(
+            fetchSslcommerzTransport,
+            config,
+            await buildSslcommerzInitInput(
+              ctx,
+              bb,
+              replay.providerTrxId,
+              bd.customerPaysOnline,
+              baseUrl,
+              supportEmail,
+            ),
+          );
+          return {
+            payment: toPaymentOut(replay, bb.code),
+            breakdown: bd,
+            gatewayUrl: session.gatewayPageUrl,
+          };
+        }
+        throw new Error("এই পেমেন্ট অনুরোধটি আগেই জমা হয়েছে।");
+      }
+
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.code, args.bookingCode.trim()))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) {
+        throw new Error("বুকিং পাওয়া যায়নি।");
+      }
+      if (b.status === "cancelled" || b.status === "rejected") {
+        throw new Error("বাতিল / প্রত্যাখ্যাত বুকিংয়ে পেমেন্ট দেওয়া যাবে না।");
+      }
+      if (b.status === "disputed") {
+        throw new Error(
+          "এই বুকিংয়ে বিরোধ চলমান — বিরোধ নিষ্পত্তি না হওয়া পর্যন্ত নতুন পেমেন্ট জমা দেওয়া যাবে না।",
+        );
+      }
+      if (b.finalPrice == null || b.finalPrice <= 0) {
+        throw new Error(
+          "এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি — কোটেশন অনুমোদিত হলেই পেমেন্ট করা যাবে।",
+        );
+      }
+      if (b.paymentModel && b.paymentModel !== args.paymentModel) {
+        throw new Error(
+          "এই বুকিংয়ের জন্য ইতিমধ্যে অন্য পেমেন্ট পদ্ধতি নির্ধারিত আছে।",
+        );
+      }
+      const live = await db
+        .select()
+        .from(schema.payments)
+        .where(
+          and(
+            eq(schema.payments.bookingId, b.id),
+            inArray(schema.payments.status, ["initiated", "pending", "verified"]),
+          ),
+        );
+      if (live.length) {
+        throw new Error(
+          "এই বুকিংয়ের জন্য ইতিমধ্যে একটি পেমেন্ট প্রক্রিয়াধীন বা যাচাইকৃত আছে।",
+        );
+      }
+      if (!supportEmail) {
+        throw new Error(
+          "গেটওয়ে পেমেন্টের জন্য অ্যাডমিনকে প্রথমে সাপোর্ট ইমেইল সেট করতে হবে — আপাতত TrxID পদ্ধতিতে পেমেন্ট করুন।",
+        );
+      }
+
+      // Server-side math only — identical snapshot rules to
+      // submitManualPayment, so both paths price a booking the same.
+      let bd: PaymentBreakdown;
+      const snap =
+        b.paymentModel === args.paymentModel ? breakdownFromBooking(b) : null;
+      if (snap) {
+        bd = snap;
+      } else {
+        bd = computeBreakdown({
+          bill: b.finalPrice,
+          paymentModel: args.paymentModel,
+          calcBase: b.calcBase ?? b.finalPrice,
+          rates: dualRatesFromSettings(st),
+        });
+      }
+
+      const tranId = `GS${randomHex(10).toUpperCase()}`;
+      const now = new Date();
+      try {
+        const statements: BatchItem<"sqlite">[] = [
+          db.insert(schema.payments).values({
+            bookingId: b.id,
+            paymentModel: args.paymentModel,
+            method: "sslcommerz",
+            provider: "sslcommerz",
+            providerTrxId: tranId,
+            senderNumber: null,
+            amount: bd.customerPaysOnline,
+            currency: "BDT",
+            status: "initiated",
+            idempotencyKey: args.idempotencyKey,
+            submittedBy: user.id,
+          }),
+          db
+            .update(schema.bookings)
+            .set({
+              paymentModel: bd.paymentModel,
+              customerFeePercent: bd.customerFeePercent,
+              proCommissionPercent: bd.proCommissionPercent,
+              calcBase: bd.calcBase,
+              onlineAmount: bd.customerPaysOnline,
+              cashAmount: bd.cashAmount,
+              customerFee: bd.customerFee,
+              proCommission: bd.proCommission,
+              extendedPaymentStatus: "payment_initiated",
+              updatedAt: now,
+            })
+            .where(eq(schema.bookings.id, b.id)),
+          db.insert(schema.notifications).values({
+            userId: null,
+            targetRole: "admin",
+            type: "gateway_payment_initiated",
+            title: "গেটওয়ে পেমেন্ট শুরু হয়েছে",
+            body: `কোড: ${b.code} — ৳${bd.customerPaysOnline} (SSLCOMMERZ sandbox, tran: ${tranId})`,
+            bookingId: b.id,
+          }),
+        ];
+        const [first, ...rest] = statements;
+        if (first) await db.batch([first, ...rest]);
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new Error("এই পেমেন্ট অনুরোধ আগেই জমা হয়েছে।");
+        }
+        throw err;
+      }
+      const savedRows = await db
+        .select()
+        .from(schema.payments)
+        .where(eq(schema.payments.idempotencyKey, args.idempotencyKey))
+        .limit(1);
+      const payment = savedRows[0];
+      if (!payment) throw new Error("পেমেন্ট শুরু করা যায়নি।");
+
+      let session: Awaited<ReturnType<typeof initiateSslcommerzSession>>;
+      try {
+        session = await initiateSslcommerzSession(
+          fetchSslcommerzTransport,
+          config,
+          await buildSslcommerzInitInput(
+            ctx,
+            b,
+            tranId,
+            bd.customerPaysOnline,
+            baseUrl,
+            supportEmail,
+          ),
+        );
+      } catch (e) {
+        // The gateway refused the session: close the payment so the
+        // booking is free for Manual TrxID instead of being stuck
+        // behind a dead initiated payment.
+        const failedAt = new Date();
+        await db
+          .update(schema.payments)
+          .set({
+            status: "failed",
+            rejectionReason: "গেটওয়ে সেশন শুরু করা যায়নি",
+            updatedAt: failedAt,
+          })
+          .where(eq(schema.payments.id, payment.id));
+        await db
+          .update(schema.bookings)
+          .set({ extendedPaymentStatus: "failed", updatedAt: failedAt })
+          .where(eq(schema.bookings.id, b.id));
+        throw e;
+      }
+      ctx.invalidateQueries();
+      return {
+        payment: toPaymentOut(payment, b.code),
+        breakdown: bd,
+        gatewayUrl: session.gatewayPageUrl,
+      };
+    },
+  }),
+
+  sslcommerzIpn: defineAction({
+    description:
+      "SSLCOMMERZ server-to-server IPN handler (no user session — the gateway calls this). Verifies the callback signature AND the Order Validation API before settling; duplicate deliveries are no-ops. Never trusts the payload alone.",
+    request: z.object({ payload: z.record(z.string(), z.string()) }),
+    response: z.object({
+      ok: z.boolean(),
+      outcome: z.string(),
+      bookingCode: z.string().nullable(),
+    }),
+    privileged: [Privileged.readSslcommerzConfig],
+    async handler(ctx, args) {
+      const r = await processSslcommerzCallback(ctx, args.payload);
+      return { ok: r.ok, outcome: r.outcome, bookingCode: r.bookingCode };
+    },
+  }),
+
+  sslcommerzReturn: defineAction({
+    description:
+      "Handles the customer's browser return from the SSLCOMMERZ sandbox (success / fail / cancel POSTs carry the same fields as the IPN). Runs the identical signature + Order Validation settlement path — the redirect itself never marks a payment successful; the booking page shows success only once the server has settled the payment.",
+    request: z.object({ payload: z.record(z.string(), z.string()) }),
+    response: z.object({
+      ok: z.boolean(),
+      outcome: z.string(),
+      bookingCode: z.string().nullable(),
+    }),
+    privileged: [Privileged.readSslcommerzConfig],
+    async handler(ctx, args) {
+      const r = await processSslcommerzCallback(ctx, args.payload);
+      return { ok: r.ok, outcome: r.outcome, bookingCode: r.bookingCode };
+    },
+  }),
+
   adminListPayments: defineAction({
     description: "Admin: lists payment submissions, newest first, optionally filtered by status.",
     request: z.object({ token: z.string(), status: z.string().optional() }),
@@ -4827,7 +5476,12 @@ export const Actions = {
       payments: z.array(paymentOut),
       paymentReceiveNumber: z.string().nullable(),
       paymentReceiveProvider: z.string().nullable(),
+      // Phase 8: true only when the owner has configured the
+      // SSLCOMMERZ sandbox credentials server-side. The checkout shows
+      // the gateway option only then; Manual TrxID is always offered.
+      sslcommerzEnabled: z.boolean(),
     }),
+    privileged: [Privileged.readSslcommerzConfig],
     async handler(ctx, args) {
       const user = await requireUser(ctx, args.token);
       if (user.role !== "customer") {
@@ -4887,6 +5541,7 @@ export const Actions = {
         payments: pays.map((p) => toPaymentOut(p, b.code)),
         paymentReceiveNumber: st?.paymentReceiveNumber ?? null,
         paymentReceiveProvider: st?.paymentReceiveProvider ?? null,
+        sslcommerzEnabled: (await loadSslcommerzConfig(ctx)) !== null,
       };
     },
   }),

@@ -1484,7 +1484,10 @@ const WITHDRAWAL_METHOD_BN: Record<string, string> = {
   bkash: "বিকাশ",
   nagad: "নগদ",
   bank: "ব্যাংক অ্যাকাউন্ট",
-  pathao_pay: "পাঠাও পে",
+  // Pathao Pay has no public merchant API (researched 2026-11-17), so
+  // it stays a clearly labelled placeholder: choosing it only records
+  // the preference; any payout is arranged manually by an admin.
+  pathao_pay: "পাঠাও পে (শীঘ্রই আসছে)",
 };
 
 const WITHDRAWAL_STATUS_BN: Record<string, { label: string; cls: string }> = {
@@ -1636,8 +1639,13 @@ function ProEarningsTab({ token }: { token: string }) {
               <option value="bkash">বিকাশ</option>
               <option value="nagad">নগদ</option>
               <option value="bank">ব্যাংক অ্যাকাউন্ট</option>
-              <option value="pathao_pay">পাঠাও পে</option>
+              <option value="pathao_pay">পাঠাও পে (শীঘ্রই আসছে)</option>
             </select>
+            {method === "pathao_pay" && (
+              <p className="mt-1.5 text-[13px] text-[#737B73]">
+                পাঠাও পে এখনো চালু হয়নি — এর কোনো পাবলিক মার্চেন্ট API নেই। এই মাধ্যম বেছে নিলে পেআউট অ্যাডমিন ম্যানুয়ালি সমন্বয় করবেন।
+              </p>
+            )}
           </div>
           <div>
             <label className={labelCls} htmlFor="wd-number">{method === "bank" ? "ব্যাংক অ্যাকাউন্ট নম্বর" : "মোবাইল নম্বর"}</label>

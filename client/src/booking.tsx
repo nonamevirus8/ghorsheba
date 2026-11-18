@@ -1,6 +1,6 @@
 // Booking form and booking detail (status tracking, actions, review).
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiResponse } from "./api";
 import {
@@ -299,9 +299,15 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
 // The customer-facing half of the Dual Payment system (Master Phase 3).
 // Every taka figure below comes from the server (`getPaymentQuote` /
 // the submit response) — the client never computes a breakdown itself.
-// Manual TrxID only: the customer sends money to GhorSheba's MFS number
+// Manual TrxID: the customer sends money to GhorSheba's MFS number
 // (set by an admin in Platform Settings) and submits the TrxID; an admin
 // verifies it before anything counts as paid.
+// Master Phase 8 adds the SSLCOMMERZ sandbox gateway as an ADDITIONAL
+// option, shown only when the server says it is configured
+// (`sslcommerzEnabled`). The browser is redirected to the sandbox
+// gateway page; "payment successful" appears here only after the
+// server has settled the payment through its Order Validation check —
+// never from the redirect alone.
 
 export type PaymentBreakdownView = ApiResponse<typeof api, "getPaymentQuote">["options"][number];
 export type PaymentView = ApiResponse<typeof api, "getMyPayments">["payments"][number];
@@ -310,7 +316,8 @@ export const PROVIDER_BN: Record<string, string> = {
   bkash: "বিকাশ",
   nagad: "নগদ",
   rocket: "রকেট",
-  pathao_pay: "Pathao Pay",
+  pathao_pay: "Pathao Pay (শীঘ্রই আসছে)",
+  sslcommerz: "SSLCOMMERZ গেটওয়ে",
 };
 
 export const PAYMENT_MODEL_BN: Record<string, string> = {
@@ -404,6 +411,52 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
   const [idemKey, setIdemKey] = useState(newIdempotencyKey);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  // SSLCOMMERZ gateway (Phase 8): its own idempotency key + messages.
+  const [gwIdemKey, setGwIdemKey] = useState(newIdempotencyKey);
+  const [gwError, setGwError] = useState("");
+  const gwReturnHandled = useRef(false);
+
+  // When the deployment's gateway-return endpoint bounces the browser
+  // back here, it stashes the gateway's POST fields in sessionStorage.
+  // We hand them to the server ONCE; the server re-verifies everything
+  // (signature + Order Validation API) before settling — this page
+  // never treats the redirect itself as proof of payment.
+  useEffect(() => {
+    if (gwReturnHandled.current) return;
+    const key = `sslcommerz-return-${code}`;
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return;
+    gwReturnHandled.current = true;
+    sessionStorage.removeItem(key);
+    const payload: Record<string, string> = {};
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed === "object" && parsed !== null) {
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof v === "string") payload[k] = v;
+        }
+      }
+    } catch {
+      // A malformed stash is ignored; the quote re-read shows the truth.
+    }
+    if (Object.keys(payload).length === 0) return;
+    api
+      .sslcommerzReturn({ payload })
+      .then((r) => {
+        if (r.outcome === "settled" || r.outcome === "duplicate") {
+          qc.invalidateQueries({ queryKey: ["payment-quote", code] });
+          qc.invalidateQueries({ queryKey: ["booking", code] });
+          qc.invalidateQueries({ queryKey: ["my-payments"] });
+          qc.invalidateQueries({ queryKey: ["my-bookings"] });
+        } else if (r.outcome === "failed" || r.outcome === "cancelled") {
+          setGwError("গেটওয়ে পেমেন্ট সম্পন্ন হয়নি — আবার চেষ্টা করুন, অথবা TrxID পদ্ধতিতে পেমেন্ট করুন।");
+          qc.invalidateQueries({ queryKey: ["payment-quote", code] });
+        }
+      })
+      .catch(() => {
+        // Settlement state is re-read from the server quote regardless.
+      });
+  }, [code, qc]);
 
   const submit = useMutation({
     mutationFn: (amount: number) =>
@@ -427,6 +480,26 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
       qc.invalidateQueries({ queryKey: ["my-bookings"] });
     },
     onError: (e) => setError(errMsg(e)),
+  });
+
+  const gateway = useMutation({
+    mutationFn: (m: "full_online" | "split_50_50") =>
+      api.initiateSslcommerzPayment({
+        token,
+        bookingCode: code,
+        paymentModel: m,
+        idempotencyKey: gwIdemKey,
+        baseUrl: window.location.origin,
+      }),
+    onSuccess: (r) => {
+      // Off to the sandbox gateway page. Whether the payment counts
+      // is decided later, server-side — see the return effect above.
+      window.location.assign(r.gatewayUrl);
+    },
+    onError: (e) => {
+      setGwError(errMsg(e));
+      setGwIdemKey(newIdempotencyKey());
+    },
   });
 
   if (quote.isPending) return <Spinner label="পেমেন্টের হিসাব লোড হচ্ছে…" />;
@@ -457,7 +530,8 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
             {Icon.checkCircle("w-5 h-5")} আপনার অনলাইন পেমেন্ট যাচাই সম্পন্ন হয়েছে
           </p>
           <p className="mt-1.5 text-sm text-[#4c584c]">
-            {bdt(verified.amount)} • {PROVIDER_BN[verified.provider] ?? verified.provider} • TrxID:{" "}
+            {bdt(verified.amount)} • {PROVIDER_BN[verified.provider] ?? verified.provider} •{" "}
+            {verified.method === "sslcommerz" ? "Tran ID" : "TrxID"}:{" "}
             <span className="font-en">{verified.providerTrxId}</span> • {PAYMENT_MODEL_BN[verified.paymentModel]}
           </p>
           <a href="#/dashboard?tab=payments" className="mt-2 inline-block text-sm font-semibold text-[#087A35] hover:underline">
@@ -467,10 +541,14 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
       ) : live ? (
         <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="font-semibold text-amber-900 flex items-center gap-2">
-            {Icon.clock("w-5 h-5")} পেমেন্ট জমা হয়েছে — অ্যাডমিন যাচাইয়ের অপেক্ষায়
+            {Icon.clock("w-5 h-5")}{" "}
+            {live.method === "sslcommerz"
+              ? "গেটওয়ে পেমেন্ট প্রক্রিয়াধীন — সার্ভার যাচাইয়ের অপেক্ষায়"
+              : "পেমেন্ট জমা হয়েছে — অ্যাডমিন যাচাইয়ের অপেক্ষায়"}
           </p>
           <p className="mt-1.5 text-sm text-amber-900/80">
-            {bdt(live.amount)} • {PROVIDER_BN[live.provider] ?? live.provider} • TrxID:{" "}
+            {bdt(live.amount)} • {PROVIDER_BN[live.provider] ?? live.provider} •{" "}
+            {live.method === "sslcommerz" ? "Tran ID" : "TrxID"}:{" "}
             <span className="font-en">{live.providerTrxId}</span> • {PAYMENT_MODEL_BN[live.paymentModel]}।
             যাচাই সম্পন্ন হলে নোটিফিকেশন পাবেন — তখনই পেমেন্টটি চূড়ান্ত বলে গণ্য হবে।
           </p>
@@ -508,6 +586,40 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
               );
             })}
           </div>
+
+          {q.sslcommerzEnabled && (
+            <div className="mt-4 rounded-2xl border border-[#cfe3d3] bg-white p-4">
+              <p className="font-semibold text-[#064B27]">কার্ড / মোবাইল ব্যাংকিং — SSLCOMMERZ গেটওয়ে</p>
+              <p className="mt-1 text-sm text-[#4c584c]">
+                <span className="font-en font-semibold">Sandbox (পরীক্ষামূলক)</span> গেটওয়ে — এখানে কোনো আসল টাকা কাটা হবে না।
+                গেটওয়ের পেজে পেমেন্ট শেষ করে ফিরে এলে সার্ভার যাচাই (Order Validation) সম্পন্ন হলেই পেমেন্ট সফল বলে গণ্য হবে —
+                শুধু ফিরে আসা মানেই পেমেন্ট সফল নয়।
+              </p>
+              {gwError && (
+                <div className="mt-3">
+                  <ErrorBox message={gwError} />
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={gateway.isPending}
+                onClick={() => {
+                  setGwError("");
+                  gateway.mutate(activeModel);
+                }}
+                className="mt-3 w-full sm:w-auto bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-6 py-3 rounded-xl"
+              >
+                {gateway.isPending
+                  ? "গেটওয়েতে নেওয়া হচ্ছে…"
+                  : `SSLCOMMERZ দিয়ে পেমেন্ট করুন — ${bdt(selected.customerPaysOnline)}`}
+              </button>
+              <p className="mt-2 text-[13px] text-[#737B73]">
+                Pathao Pay: শীঘ্রই আসছে — এর কোনো পাবলিক মার্চেন্ট API নেই, তাই এখন এটি দিয়ে পেমেন্ট নেওয়া হয় না।
+              </p>
+            </div>
+          )}
+
+          <h3 className="mt-6 font-bold text-[#064B27]">অথবা ম্যানুয়াল TrxID দিয়ে পেমেন্ট করুন</h3>
 
           {q.paymentReceiveNumber ? (
             <div className="mt-4 rounded-2xl bg-[#F0FAF2] border border-[#cfe3d3] p-4 text-[15px]">

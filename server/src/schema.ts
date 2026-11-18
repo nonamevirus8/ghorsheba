@@ -391,13 +391,17 @@ export const payments = sqliteTable(
   paymentModel: text("payment_model", {
     enum: ["full_online", "split_50_50"],
   }).notNull(),
-  // Phase 1 supports the manual TrxID route only. Gateway methods
-  // (SSLCOMMERZ) and the Pathao Pay placeholder arrive in later phases.
-  method: text("method", { enum: ["manual_trxid"] })
+  // Phase 1 supported the manual TrxID route only. Master Phase 8 adds
+  // the SSLCOMMERZ sandbox gateway ("sslcommerz" as both method and
+  // provider; for those rows providerTrxId is the gateway tran_id).
+  // These enums are type-level only — neither database has a CHECK
+  // constraint on these columns — so widening them needs no migration.
+  // Pathao Pay stays a placeholder value (no public merchant API).
+  method: text("method", { enum: ["manual_trxid", "sslcommerz"] })
     .notNull()
     .default("manual_trxid"),
   provider: text("provider", {
-    enum: ["bkash", "nagad", "rocket", "pathao_pay"],
+    enum: ["bkash", "nagad", "rocket", "pathao_pay", "sslcommerz"],
   }).notNull(),
   // Audit fix D-1 (Master Phase 3): a TrxID is unique PER PROVIDER, not
   // globally — the same TrxID string on a different provider is a
