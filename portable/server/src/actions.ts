@@ -406,6 +406,78 @@ function breakdownFromBooking(b: BookingRowFull): PaymentBreakdown | null {
   });
 }
 
+
+// ------------------------------------------------- cancellation cleanup
+//
+// P-1 (Master Phase 5): when a booking that still has a pending /
+// initiated online payment is cancelled — by the customer or by an
+// admin — the pending payment must not stay verifiable forever. It is
+// marked failed here, with an append-only `adjustment` ledger entry
+// recording why (ledger rows are never deleted), the booking's extended
+// payment status moves to "cancelled", and the customer is notified.
+// A VERIFIED payment is never touched by cancellation: money already
+// collected is a refund question (Master Phase 9), not a silent fail.
+
+async function failPendingPaymentsForCancelledBooking(
+  ctx: Ctx,
+  booking: BookingRowFull,
+  actor: { role: "customer" | "admin"; adminId: number | null },
+): Promise<void> {
+  const db = dbOf(ctx);
+  const pending = await db
+    .select()
+    .from(schema.payments)
+    .where(
+      and(
+        eq(schema.payments.bookingId, booking.id),
+        inArray(schema.payments.status, ["pending", "initiated"]),
+      ),
+    );
+  if (pending.length === 0) return;
+  const now = new Date();
+  for (const p of pending) {
+    await db
+      .update(schema.payments)
+      .set({
+        status: "failed",
+        verifiedBy: actor.adminId,
+        verifiedAt: now,
+        rejectionReason: "বুকিং বাতিল করা হয়েছে",
+        updatedAt: now,
+      })
+      .where(eq(schema.payments.id, p.id));
+    await db.insert(schema.paymentLedger).values({
+      bookingId: booking.id,
+      paymentId: p.id,
+      entryType: "adjustment",
+      amount: p.amount,
+      actorRole: actor.role,
+      adminId: actor.adminId,
+      reference: `${p.provider}:${p.providerTrxId}`,
+      note: "বুকিং বাতিল হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্ট বাতিল করা হলো",
+    });
+  }
+  await db
+    .update(schema.bookings)
+    .set({ extendedPaymentStatus: "cancelled", updatedAt: now })
+    .where(eq(schema.bookings.id, booking.id));
+  await notify(ctx, {
+    userId: booking.customerId,
+    type: "payment_cancelled",
+    title: "বুকিং বাতিল হওয়ায় পেমেন্ট বাতিল হয়েছে",
+    body: `কোড: ${booking.code} — বুকিং বাতিল হওয়ায় অপেক্ষমাণ অনলাইন পেমেন্টটি বাতিল করা হয়েছে।`,
+    bookingId: booking.id,
+  });
+  if (actor.adminId != null) {
+    await logAdmin(
+      ctx,
+      actor.adminId,
+      "payment_auto_failed_on_cancel",
+      `${booking.code}: ${pending.length}টি অপেক্ষমাণ পেমেন্ট বাতিলে ব্যর্থ করা হয়েছে`,
+    );
+  }
+}
+
 /** True when an error is a database unique-constraint violation. */
 function isUniqueViolation(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
@@ -1789,6 +1861,12 @@ export const Actions = {
         .set({ status: "cancelled", updatedAt: new Date() })
         .where(eq(schema.bookings.id, b.id));
       await addEvent(ctx, b.id, "cancelled", "customer", "গ্রাহক বুকিং বাতিল করেছেন");
+      // P-1: a still-pending online payment on a cancelled booking
+      // is failed automatically, so it can never be verified later.
+      await failPendingPaymentsForCancelledBooking(ctx, b, {
+        role: "customer",
+        adminId: null,
+      });
       await notify(ctx, {
         targetRole: "admin",
         type: "booking_cancelled",
@@ -2492,7 +2570,8 @@ export const Actions = {
 
   // -------------------------------------------------------------- admin side
   getAdminOverview: defineAction({
-    description: "Admin dashboard totals computed from real records.",
+    description:
+      "Admin dashboard totals computed from real records. Money figures come from the payments table and the immutable payment ledger (verified online collections, held balances, payouts, commission earned vs collected) plus booking snapshots — never from client math or the legacy single commission rate.",
     request: z.object({ token: z.string() }),
     response: z.object({
       totalCustomers: z.number(),
@@ -2504,9 +2583,27 @@ export const Actions = {
       cancelledBookings: z.number(),
       openComplaints: z.number(),
       pendingReviews: z.number(),
-      recordedRevenue: z.number(),
-      commissionPercent: z.number(),
-      estimatedCommission: z.number(),
+      // Payment Management figures (Master Phase 5, audit fix P-2).
+      onlineCollected: z.number(),
+      customerFeesCollected: z.number(),
+      commissionEarned: z.number(),
+      commissionCollected: z.number(),
+      heldBalanceTotal: z.number(),
+      paidOutTotal: z.number(),
+      refundedTotal: z.number(),
+      cashCollected: z.number(),
+      pendingPayments: z.number(),
+      pendingPaymentAmount: z.number(),
+      failedPayments: z.number(),
+      disputedPayments: z.number(),
+      pendingPayoutCount: z.number(),
+      pendingPayoutAmount: z.number(),
+      // Current per-model rates from settings, shown next to the money
+      // figures; confirmed bookings keep their own snapshotted rates.
+      fullOnlineCustomerFeePercent: z.number(),
+      fullOnlineProCommissionPercent: z.number(),
+      splitCustomerFeePercent: z.number(),
+      splitProCommissionPercent: z.number(),
     }),
     async handler(ctx, args) {
       await requireAdmin(ctx, args.token);
@@ -2517,10 +2614,43 @@ export const Actions = {
       const complaints = await db.select().from(schema.complaints).where(eq(schema.complaints.status, "open"));
       const pendingRevs = await db.select().from(schema.reviews).where(eq(schema.reviews.status, "pending"));
       const st = await db.select().from(schema.settings).limit(1);
-      const commissionPercent = st[0]?.commissionPercent ?? 10;
-      const revenue = bookings
-        .filter((b) => b.status === "completed" && b.paymentStatus === "cash_paid" && b.finalPrice != null)
-        .reduce((a, b) => a + (b.finalPrice ?? 0), 0);
+      const rates = dualRatesFromSettings(st[0]);
+
+      // ---- money: ledger + payments + booking snapshots only ----
+      const ledger = await db.select().from(schema.paymentLedger);
+      const sumType = (t: string) =>
+        ledger.filter((e) => e.entryType === t).reduce((a, e) => a + e.amount, 0);
+      const onlineCollected = sumType("online_collection");
+      const customerFeesCollected = sumType("customer_fee");
+      const commissionEarned = sumType("commission_due");
+      const commissionCollected = sumType("commission_collected");
+      const paidOutTotal = sumType("payout");
+      const refundedTotal = sumType("refund");
+      // Money still held for settlement: everything that entered the
+      // held balance minus what has since been paid out or refunded.
+      const heldBalanceTotal = sumType("held_balance") - paidOutTotal - refundedTotal;
+
+      const paymentRows = await db.select().from(schema.payments);
+      const pendingPays = paymentRows.filter((p) => p.status === "pending" || p.status === "initiated");
+      const verifiedBookingIds = new Set(
+        paymentRows.filter((p) => p.status === "verified").map((p) => p.bookingId),
+      );
+      // Cash collected: the cash part of dual-payment bookings (booking
+      // snapshot, counted once the online part is verified) plus legacy
+      // cash-paid completed bookings that have no verified online
+      // payment — each booking counted exactly once.
+      let cashCollected = 0;
+      for (const b of bookings) {
+        if (verifiedBookingIds.has(b.id)) {
+          cashCollected += b.cashAmount ?? 0;
+        } else if (b.status === "completed" && b.paymentStatus === "cash_paid" && b.finalPrice != null) {
+          cashCollected += b.finalPrice;
+        }
+      }
+      const withdrawals = await db.select().from(schema.withdrawalRequests);
+      const openWithdrawals = withdrawals.filter(
+        (w) => w.status === "requested" || w.status === "approved",
+      );
       return {
         totalCustomers: customers.length,
         totalProfessionals: pros.length,
@@ -2531,9 +2661,24 @@ export const Actions = {
         cancelledBookings: bookings.filter((b) => b.status === "cancelled").length,
         openComplaints: complaints.length,
         pendingReviews: pendingRevs.length,
-        recordedRevenue: revenue,
-        commissionPercent,
-        estimatedCommission: Math.round((revenue * commissionPercent) / 100),
+        onlineCollected,
+        customerFeesCollected,
+        commissionEarned,
+        commissionCollected,
+        heldBalanceTotal,
+        paidOutTotal,
+        refundedTotal,
+        cashCollected,
+        pendingPayments: pendingPays.length,
+        pendingPaymentAmount: pendingPays.reduce((a, p) => a + p.amount, 0),
+        failedPayments: paymentRows.filter((p) => p.status === "failed").length,
+        disputedPayments: bookings.filter((b) => b.extendedPaymentStatus === "disputed").length,
+        pendingPayoutCount: openWithdrawals.length,
+        pendingPayoutAmount: openWithdrawals.reduce((a, w) => a + w.amount, 0),
+        fullOnlineCustomerFeePercent: rates.fullOnline.customerFeePercent,
+        fullOnlineProCommissionPercent: rates.fullOnline.proCommissionPercent,
+        splitCustomerFeePercent: rates.split5050.customerFeePercent,
+        splitProCommissionPercent: rates.split5050.proCommissionPercent,
       };
     },
   }),
@@ -2586,6 +2731,32 @@ export const Actions = {
         .limit(1);
       const b = rows[0];
       if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      // Price re-snapshot freeze (Master Phase 5): once any online
+      // payment for this booking is verified, the confirmed price
+      // and the payment snapshot are immutable — the verified money
+      // was collected against exactly these figures, so neither the
+      // price, the model nor the commission base may change after.
+      const priceChangeRequested =
+        (args.finalPrice !== undefined && args.finalPrice !== b.finalPrice) ||
+        (args.paymentModel !== undefined && args.paymentModel !== b.paymentModel) ||
+        (args.calcBase !== undefined && args.calcBase !== b.calcBase);
+      if (priceChangeRequested) {
+        const verifiedPays = await db
+          .select()
+          .from(schema.payments)
+          .where(
+            and(
+              eq(schema.payments.bookingId, b.id),
+              eq(schema.payments.status, "verified"),
+            ),
+          )
+          .limit(1);
+        if (verifiedPays.length > 0) {
+          throw new Error(
+            "এই বুকিংয়ের অনলাইন পেমেন্ট ইতিমধ্যে যাচাই হয়েছে — যাচাইকৃত পেমেন্টের মূল্য ও পেমেন্ট স্ন্যাপশট আর বদলানো যাবে না।",
+          );
+        }
+      }
       const patch: Partial<BookingRow> = { updatedAt: new Date() };
       let assignedProUserId: number | null = null;
       if (args.professionalId !== undefined) {
@@ -2666,6 +2837,14 @@ export const Actions = {
       if (args.adminNote !== undefined) patch.adminNote = args.adminNote;
       await db.update(schema.bookings).set(patch).where(eq(schema.bookings.id, b.id));
       const newStatus = patch.status ?? b.status;
+      // P-1: cancelling a booking auto-fails any still-pending
+      // online payment on it (adjustment ledger entry, no delete).
+      if (newStatus === "cancelled" && b.status !== "cancelled") {
+        await failPendingPaymentsForCancelledBooking(ctx, b, {
+          role: "admin",
+          adminId: admin.id,
+        });
+      }
       if (patch.status && patch.status !== b.status) {
         await addEvent(ctx, b.id, patch.status, "admin", args.adminNote ?? null);
       } else if (assignedProUserId) {
@@ -3221,10 +3400,14 @@ export const Actions = {
   }),
 
   adminSaveSettings: defineAction({
-    description: "Admin: saves platform settings (commission %, support contacts, announcement).",
+    description: "Admin: saves platform settings — per-model Dual Payment rates, the manual-payment receiving number, support contacts and announcement. Rate changes apply to future bookings only; confirmed bookings keep their snapshotted rates.",
     request: z.object({
       token: z.string(),
-      commissionPercent: z.number().int().min(0).max(100),
+      // Legacy single commission rate: kept only so older clients
+      // do not break. It is NOT a live rate — the per-model rates
+      // below are what new bookings snapshot — and the admin UI no
+      // longer sends it. Omitted = keep the stored value.
+      commissionPercent: z.number().int().min(0).max(100).optional(),
       // Dual Payment per-model rates; omitted fields keep their
       // current values. Changes apply to future bookings only —
       // confirmed bookings keep their snapshotted rates.
@@ -3254,7 +3437,7 @@ export const Actions = {
       await db
         .update(schema.settings)
         .set({
-          commissionPercent: args.commissionPercent,
+          commissionPercent: args.commissionPercent ?? cur?.commissionPercent ?? 10,
           fullOnlineCustomerFeePercent:
             args.fullOnlineCustomerFeePercent ?? rates.fullOnline.customerFeePercent,
           fullOnlineProCommissionPercent:
@@ -3263,10 +3446,17 @@ export const Actions = {
             args.splitCustomerFeePercent ?? rates.split5050.customerFeePercent,
           splitProCommissionPercent:
             args.splitProCommissionPercent ?? rates.split5050.proCommissionPercent,
-          supportPhone: args.supportPhone ?? null,
-          supportWhatsapp: args.supportWhatsapp ?? null,
-          supportEmail: args.supportEmail ?? null,
-          announcement: args.announcement ?? null,
+          // Omitted contact/announcement fields keep their stored
+          // values (explicit null clears them) — the commission-rates
+          // form saves rates without resending the contact fields.
+          supportPhone:
+            args.supportPhone !== undefined ? args.supportPhone : (cur?.supportPhone ?? null),
+          supportWhatsapp:
+            args.supportWhatsapp !== undefined ? args.supportWhatsapp : (cur?.supportWhatsapp ?? null),
+          supportEmail:
+            args.supportEmail !== undefined ? args.supportEmail : (cur?.supportEmail ?? null),
+          announcement:
+            args.announcement !== undefined ? args.announcement : (cur?.announcement ?? null),
           paymentReceiveNumber:
             args.paymentReceiveNumber !== undefined
               ? args.paymentReceiveNumber
@@ -3278,19 +3468,34 @@ export const Actions = {
           updatedAt: new Date(),
         })
         .where(eq(schema.settings.id, 1));
-      await logAdmin(ctx, admin.id, "settings_update", `commission=${args.commissionPercent}%`);
+      await logAdmin(
+        ctx,
+        admin.id,
+        "settings_update",
+        `rates: full fee=${args.fullOnlineCustomerFeePercent ?? rates.fullOnline.customerFeePercent}%/comm=${args.fullOnlineProCommissionPercent ?? rates.fullOnline.proCommissionPercent}%, split fee=${args.splitCustomerFeePercent ?? rates.split5050.customerFeePercent}%/comm=${args.splitProCommissionPercent ?? rates.split5050.proCommissionPercent}%`,
+      );
       ctx.invalidateQueries();
       return { ok: true };
     },
   }),
 
   adminListLogs: defineAction({
-    description: "Admin: returns the recent admin activity log.",
-    request: z.object({ token: z.string(), limit: z.number().int().min(1).max(100).default(50) }),
+    description:
+      "Super Admin only: returns the admin activity log, newest first, with optional filters by action type, acting admin and date range. Other admin levels cannot read the log at all.",
+    request: z.object({
+      token: z.string(),
+      limit: z.number().int().min(1).max(200).default(50),
+      action: z.string().max(60).optional(),
+      adminId: z.number().int().optional(),
+      from: z.string().max(30).optional(),
+      to: z.string().max(30).optional(),
+    }),
     response: z.object({
       logs: z.array(
         z.object({
           id: z.number(),
+          adminId: z.number().nullable(),
+          adminName: z.string().nullable(),
           action: z.string(),
           detail: z.string().nullable(),
           createdAt: z.string(),
@@ -3304,10 +3509,27 @@ export const Actions = {
         .select()
         .from(schema.adminLogs)
         .orderBy(desc(schema.adminLogs.id))
-        .limit(args.limit);
+        .limit(500);
+      const admins = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.role, "admin"));
+      const nameById = new Map(admins.map((u) => [u.id, u.name]));
+      const fromMs = args.from ? new Date(args.from).getTime() : null;
+      const toMs = args.to ? new Date(args.to).getTime() : null;
+      const filtered = rows.filter((l) => {
+        if (args.action && l.action !== args.action) return false;
+        if (args.adminId != null && l.adminId !== args.adminId) return false;
+        const t = l.createdAt.getTime();
+        if (fromMs != null && !Number.isNaN(fromMs) && t < fromMs) return false;
+        if (toMs != null && !Number.isNaN(toMs) && t > toMs) return false;
+        return true;
+      });
       return {
-        logs: rows.map((l) => ({
+        logs: filtered.slice(0, args.limit).map((l) => ({
           id: l.id,
+          adminId: l.adminId,
+          adminName: l.adminId != null ? (nameById.get(l.adminId) ?? null) : null,
           action: l.action,
           detail: l.detail,
           createdAt: l.createdAt.toISOString(),
@@ -3692,6 +3914,14 @@ export const Actions = {
         return { payment: toPaymentOut(updated, b.code) };
       }
 
+      // P-1 guard (Master Phase 5): a cancelled booking's payment
+      // can never be verified — cancellation already auto-fails any
+      // still-pending payment, and verifying money for a cancelled
+      // booking would strand a held balance nobody can settle.
+      if (b.status === "cancelled") {
+        throw new Error("বাতিল করা বুকিংয়ের পেমেন্ট যাচাই করা যাবে না।");
+      }
+
       // Verify: figures come from the booking's own snapshot, never
       // from current settings or from the client's claim.
       const bd = breakdownFromBooking(b);
@@ -3828,6 +4058,204 @@ export const Actions = {
         payments: rows
           .filter((p) => !args.status || p.status === args.status)
           .map((p) => toPaymentOut(p, codeMap.get(p.bookingId) ?? "")),
+      };
+    },
+  }),
+
+  adminGetBookingPaymentDetail: defineAction({
+    description:
+      "Admin (operations/finance): full payment detail for one booking — the frozen price snapshot and its server-computed breakdown, every TrxID submission with verification status, and the booking's immutable ledger entries.",
+    request: z.object({ token: z.string(), bookingId: z.number().int() }),
+    response: z.object({
+      booking: bookingOut,
+      snapshot: z.object({
+        paymentModel: z.string().nullable(),
+        customerFeePercent: z.number().nullable(),
+        proCommissionPercent: z.number().nullable(),
+        calcBase: z.number().nullable(),
+        finalPrice: z.number().nullable(),
+        onlineAmount: z.number().nullable(),
+        cashAmount: z.number().nullable(),
+        customerFee: z.number().nullable(),
+        proCommission: z.number().nullable(),
+        heldBalance: z.number().nullable(),
+        extendedPaymentStatus: z.string(),
+      }),
+      breakdown: breakdownOut.nullable(),
+      payments: z.array(paymentOut),
+      ledger: z.array(
+        z.object({
+          id: z.number(),
+          entryType: z.string(),
+          amount: z.number(),
+          actorRole: z.string(),
+          reference: z.string().nullable(),
+          note: z.string().nullable(),
+          createdAt: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["operations", "finance"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = rows[0];
+      if (!b) throw new Error("বুকিং পাওয়া যায়নি।");
+      const names = await serviceNameMap(ctx);
+      const proNames = await proNameMap(ctx);
+      const booking = await toBookingOut(ctx, b, names, proNames);
+      const bd = breakdownFromBooking(b);
+      const pays = await db
+        .select()
+        .from(schema.payments)
+        .where(eq(schema.payments.bookingId, b.id))
+        .orderBy(desc(schema.payments.id));
+      const ledgerRows = await db
+        .select()
+        .from(schema.paymentLedger)
+        .where(eq(schema.paymentLedger.bookingId, b.id))
+        .orderBy(asc(schema.paymentLedger.id));
+      return {
+        booking,
+        snapshot: {
+          paymentModel: b.paymentModel,
+          customerFeePercent: b.customerFeePercent,
+          proCommissionPercent: b.proCommissionPercent,
+          calcBase: b.calcBase,
+          finalPrice: b.finalPrice,
+          onlineAmount: b.onlineAmount,
+          cashAmount: b.cashAmount,
+          customerFee: b.customerFee,
+          proCommission: b.proCommission,
+          heldBalance: b.heldBalance,
+          extendedPaymentStatus: b.extendedPaymentStatus,
+        },
+        breakdown: bd,
+        payments: pays.map((p) => toPaymentOut(p, b.code)),
+        ledger: ledgerRows.map((e) => ({
+          id: e.id,
+          entryType: e.entryType,
+          amount: e.amount,
+          actorRole: e.actorRole,
+          reference: e.reference,
+          note: e.note,
+          createdAt: e.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  adminListSettlementQueue: defineAction({
+    description:
+      "Admin (finance): read-only settlement queue — bookings whose held balance is still awaiting release, and professionals' open withdrawal requests. Deciding or paying a settlement is a later phase; this action changes nothing.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      heldBookings: z.array(
+        z.object({
+          bookingId: z.number(),
+          code: z.string(),
+          serviceName: z.string(),
+          professionalName: z.string().nullable(),
+          heldTotal: z.number(),
+          commissionDue: z.number(),
+          paidOut: z.number(),
+          remainingHeld: z.number(),
+          extendedPaymentStatus: z.string(),
+        }),
+      ),
+      withdrawalRequests: z.array(
+        z.object({
+          id: z.number(),
+          professionalId: z.number(),
+          professionalName: z.string(),
+          bookingCode: z.string().nullable(),
+          amount: z.number(),
+          method: z.string(),
+          number: z.string(),
+          status: z.string(),
+          requestedAt: z.string(),
+        }),
+      ),
+      totals: z.object({
+        heldAwaitingRelease: z.number(),
+        openWithdrawalCount: z.number(),
+        openWithdrawalAmount: z.number(),
+      }),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const names = await serviceNameMap(ctx);
+      const proNames = await proNameMap(ctx);
+      const ledger = await db.select().from(schema.paymentLedger);
+      const byBooking = new Map<number, { held: number; commission: number; paidOut: number }>();
+      for (const e of ledger) {
+        const s = byBooking.get(e.bookingId) ?? { held: 0, commission: 0, paidOut: 0 };
+        if (e.entryType === "held_balance") s.held += e.amount;
+        else if (e.entryType === "commission_due") s.commission += e.amount;
+        else if (e.entryType === "payout") s.paidOut += e.amount;
+        byBooking.set(e.bookingId, s);
+      }
+      const bookingRows = await db.select().from(schema.bookings);
+      const bookingById = new Map(bookingRows.map((b) => [b.id, b]));
+      const heldBookings: {
+        bookingId: number;
+        code: string;
+        serviceName: string;
+        professionalName: string | null;
+        heldTotal: number;
+        commissionDue: number;
+        paidOut: number;
+        remainingHeld: number;
+        extendedPaymentStatus: string;
+      }[] = [];
+      for (const [bookingId, s] of byBooking) {
+        const remainingHeld = s.held - s.commission - s.paidOut;
+        if (s.held <= 0 || remainingHeld <= 0) continue;
+        const b = bookingById.get(bookingId);
+        if (!b) continue;
+        heldBookings.push({
+          bookingId,
+          code: b.code,
+          serviceName: names.get(b.serviceSlug) ?? b.serviceSlug,
+          professionalName:
+            b.professionalId != null ? (proNames.get(b.professionalId) ?? null) : null,
+          heldTotal: s.held,
+          commissionDue: s.commission,
+          paidOut: s.paidOut,
+          remainingHeld,
+          extendedPaymentStatus: b.extendedPaymentStatus,
+        });
+      }
+      heldBookings.sort((x, y) => y.bookingId - x.bookingId);
+      const wr = await db
+        .select()
+        .from(schema.withdrawalRequests)
+        .where(inArray(schema.withdrawalRequests.status, ["requested", "approved"]))
+        .orderBy(desc(schema.withdrawalRequests.id));
+      const withdrawalRequests = wr.map((w) => ({
+        id: w.id,
+        professionalId: w.professionalId,
+        professionalName: proNames.get(w.professionalId) ?? "",
+        bookingCode: w.bookingId != null ? (bookingById.get(w.bookingId)?.code ?? null) : null,
+        amount: w.amount,
+        method: w.withdrawalMethod,
+        number: w.withdrawalNumber,
+        status: w.status,
+        requestedAt: w.requestedAt.toISOString(),
+      }));
+      return {
+        heldBookings,
+        withdrawalRequests,
+        totals: {
+          heldAwaitingRelease: heldBookings.reduce((a, h) => a + h.remainingHeld, 0),
+          openWithdrawalCount: withdrawalRequests.length,
+          openWithdrawalAmount: withdrawalRequests.reduce((a, w) => a + w.amount, 0),
+        },
       };
     },
   }),

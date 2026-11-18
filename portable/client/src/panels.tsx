@@ -1847,7 +1847,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
   const tabRaw = params.get("tab") ?? "overview";
-  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "settings", "staff", "logs"].includes(tabRaw)
+  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "payments", "settings", "staff", "logs"].includes(tabRaw)
     ? tabRaw
     : "overview";
   const overview = useQuery({
@@ -1889,6 +1889,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
       : []),
     ...(canOps || canSupport ? [{ key: "reviews", label: "রিভিউ", badge: ov?.pendingReviews }] : []),
     ...(canSupport ? [{ key: "complaints", label: "অভিযোগ", badge: ov?.openComplaints }] : []),
+    ...(canFinance ? [{ key: "payments", label: "পেমেন্ট", badge: ov?.pendingPayments }] : []),
     ...(canFinance ? [{ key: "settings", label: "সেটিংস" }] : []),
     ...(level === "super"
       ? [
@@ -1918,6 +1919,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
         {shownTab === "locations" && <AdminLocations token={token} />}
         {shownTab === "reviews" && <AdminReviews token={token} />}
         {shownTab === "complaints" && <AdminComplaints token={token} />}
+        {shownTab === "payments" && <AdminPayments token={token} />}
         {shownTab === "settings" && <AdminSettings token={token} />}
         {shownTab === "staff" && <AdminStaff token={token} />}
         {shownTab === "logs" && <AdminLogs token={token} />}
@@ -2005,15 +2007,24 @@ function AdminOverview({ token }: { token: string }) {
         <StatCard label="বাতিল বুকিং" value={d.cancelledBookings} icon={Icon.x("w-5 h-5")} />
         <StatCard label="খোলা অভিযোগ" value={d.openComplaints} icon={Icon.message("w-5 h-5")} />
       </div>
-      <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5 flex flex-wrap gap-x-10 gap-y-3">
-        <div>
-          <p className="text-[22px] font-bold text-[#064B27]">৳{d.recordedRevenue.toLocaleString("bn-BD")}</p>
-          <p className="text-[13px] text-[#737B73]">রেকর্ডকৃত আয় (সম্পন্ন ও ক্যাশে পরিশোধিত বুকিং থেকে)</p>
+      <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
+        <h2 className="font-bold text-[#064B27] mb-3">টাকার হিসাব (যাচাইকৃত পেমেন্ট ও লেজার থেকে)</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+          <MoneyStat label="অনলাইনে সংগৃহীত" value={d.onlineCollected} />
+          <MoneyStat label="হেল্ড ব্যালেন্স (সেটলমেন্ট বাকি)" value={d.heldBalanceTotal} />
+          <MoneyStat label="কমিশন অর্জিত" value={d.commissionEarned} />
+          <MoneyStat label="কমিশন সংগৃহীত" value={d.commissionCollected} />
+          <MoneyStat label="ক্যাশে সংগৃহীত" value={d.cashCollected} />
+          <MoneyStat label="পেআউট হয়েছে" value={d.paidOutTotal} />
+          <MoneyStat label="যাচাইয়ের অপেক্ষায়" value={d.pendingPaymentAmount} sub={`${d.pendingPayments}টি পেমেন্ট`} />
+          <MoneyStat label="পেআউটের অপেক্ষায়" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
         </div>
-        <div>
-          <p className="text-[22px] font-bold text-[#064B27]">৳{d.estimatedCommission.toLocaleString("bn-BD")}</p>
-          <p className="text-[13px] text-[#737B73]">আনুমানিক কমিশন ({d.commissionPercent}%)</p>
-        </div>
+        {(d.failedPayments > 0 || d.disputedPayments > 0) && (
+          <p className="mt-3 text-[13.5px] text-red-700">
+            ব্যর্থ পেমেন্ট: {d.failedPayments}টি
+            {d.disputedPayments > 0 ? ` • বিরোধপূর্ণ বুকিং: ${d.disputedPayments}টি` : ""}
+          </p>
+        )}
       </div>
       <h2 className="font-bold text-[#064B27] mt-7 mb-3">নতুন অপেক্ষমাণ বুকিং</h2>
       {recent.isPending ? (
@@ -2083,6 +2094,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
   const [price, setPrice] = useState(b.finalPrice != null ? String(b.finalPrice) : "");
   const [payment, setPayment] = useState(b.paymentStatus);
   const [note, setNote] = useState("");
+  const [payOpen, setPayOpen] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const pros = useQuery({
@@ -2148,7 +2160,20 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
         <a href={`#/booking/${b.code}`} className="border border-[#E5EAE5] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F8FAF8]">
           বিস্তারিত দেখুন
         </a>
+        <button
+          type="button"
+          onClick={() => setPayOpen((v) => !v)}
+          aria-expanded={payOpen}
+          className="bg-[#FFF4E5] text-[#8a5200] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#FFE9C7]"
+        >
+          {payOpen ? "পেমেন্ট বিবরণ বন্ধ করুন" : "পেমেন্ট বিবরণ"}
+        </button>
       </div>
+      {payOpen && (
+        <div className="mt-4 border-t border-[#F0F3F0] pt-4">
+          <BookingPaymentDetail token={token} bookingId={b.id} />
+        </div>
+      )}
       {open && (
         <form
           className="mt-4 border-t border-[#F0F3F0] pt-4 grid sm:grid-cols-2 gap-3.5"
@@ -2802,10 +2827,487 @@ function AdminComplaints({ token }: { token: string }) {
   );
 }
 
+
+// ------------------------------------------------- payments (Phase 5)
+//
+// Payment Management: money figures come from the server (verified
+// payments + immutable ledger), TrxID verification wires the existing
+// adminVerifyPayment action, the settlement queue is read-only
+// (decide/pay is Phase 9), and commission rates are edited per payment
+// model — a rate change never touches a confirmed booking's snapshot.
+
+const LEDGER_TYPE_BN: Record<string, string> = {
+  online_collection: "অনলাইন সংগ্রহ",
+  customer_fee: "গ্রাহক ফি",
+  commission_due: "কমিশন পাওনা",
+  commission_collected: "কমিশন সংগৃহীত",
+  held_balance: "হেল্ড ব্যালেন্স",
+  payout: "পেআউট",
+  refund: "রিফান্ড",
+  adjustment: "সমন্বয়",
+};
+
+const EXTENDED_STATUS_BN: Record<string, string> = {
+  unpaid: "পরিশোধ হয়নি",
+  payment_initiated: "পেমেন্ট শুরু হয়েছে",
+  payment_pending: "পেমেন্ট যাচাইয়ের অপেক্ষায়",
+  payment_verified: "পেমেন্ট যাচাইকৃত",
+  held_settlement_pending: "হেল্ড — সেটলমেন্ট বাকি",
+  payout_requested: "পেআউট অনুরোধ হয়েছে",
+  admin_verification: "অ্যাডমিন যাচাইয়ে",
+  paid: "পরিশোধিত",
+  failed: "ব্যর্থ",
+  cancelled: "বাতিল",
+  disputed: "বিরোধপূর্ণ",
+  refund_pending: "রিফান্ড অপেক্ষমাণ",
+  refunded: "রিফান্ড হয়েছে",
+  rejected: "প্রত্যাখ্যাত",
+};
+
+const WITHDRAW_METHOD_BN: Record<string, string> = {
+  ...PROVIDER_BN,
+  bank: "ব্যাংক",
+};
+
+function MoneyStat({ label, value, sub }: { label: string; value: number; sub?: string }) {
+  return (
+    <div>
+      <p className="text-[20px] font-bold text-[#064B27]">{bdt(value)}</p>
+      <p className="text-[13px] text-[#737B73]">
+        {label}
+        {sub ? ` (${sub})` : ""}
+      </p>
+    </div>
+  );
+}
+
+function PaymentVerifyBox({ token, p }: { token: string; p: PaymentView }) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const verify = useMutation({
+    mutationFn: (v: { decision: "verify" | "reject"; reason?: string }) =>
+      api.adminVerifyPayment({ token, paymentId: p.id, decision: v.decision, reason: v.reason }),
+    onSuccess: (_res, v) => {
+      setDone(v.decision === "verify" ? "পেমেন্ট যাচাই সম্পন্ন হয়েছে।" : "পেমেন্ট বাতিল করা হয়েছে।");
+      qc.invalidateQueries({ queryKey: ["admin-payments"] });
+      qc.invalidateQueries({ queryKey: ["admin-booking-payment"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-settlement"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const pending = p.status === "pending" || p.status === "initiated";
+  return (
+    <div className="rounded-xl border border-[#E5EAE5] bg-white p-3.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">{PROVIDER_BN[p.provider] ?? p.provider}</span>
+        <span className="font-en text-sm">{p.providerTrxId}</span>
+        <span className="font-en font-bold">{bdt(p.amount)}</span>
+        <PaymentStatusChip status={p.status} />
+        <span className="text-[12.5px] text-[#737B73]">{fmtDateTime(p.createdAt)}</span>
+      </div>
+      <p className="mt-1 text-[13px] text-[#737B73]">
+        মডেল: {PAYMENT_MODEL_BN[p.paymentModel] ?? p.paymentModel}
+        {p.senderNumber ? (
+          <>
+            {" "}• প্রেরকের নম্বর: <span className="font-en">{p.senderNumber}</span>
+          </>
+        ) : null}
+      </p>
+      {p.status === "failed" && p.rejectionReason && (
+        <p className="mt-1 text-[13px] text-red-700">বাতিলের কারণ: {p.rejectionReason}</p>
+      )}
+      {pending && !done && (
+        <div className="mt-3 space-y-2">
+          <div>
+            <label className={labelCls} htmlFor={`rej-${p.id}`}>বাতিলের কারণ (শুধু বাতিল করলেই লাগবে)</label>
+            <input
+              id={`rej-${p.id}`}
+              className={inputCls}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="যেমন: TrxID মেলেনি / টাকা পৌঁছায়নি"
+            />
+          </div>
+          {error && <ErrorBox message={error} />}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={verify.isPending}
+              onClick={() => {
+                setError("");
+                verify.mutate({ decision: "verify" });
+              }}
+              className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
+            >
+              যাচাই করে অনুমোদন করুন
+            </button>
+            <button
+              type="button"
+              disabled={verify.isPending}
+              onClick={() => {
+                setError("");
+                if (!reason.trim()) {
+                  setError("পেমেন্ট বাতিল করতে হলে কারণ লিখুন।");
+                  return;
+                }
+                verify.mutate({ decision: "reject", reason: reason.trim() });
+              }}
+              className="border border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60"
+            >
+              বাতিল করুন
+            </button>
+          </div>
+        </div>
+      )}
+      {done && <p className="mt-2 rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-3 py-2">{done}</p>}
+    </div>
+  );
+}
+
+function BookingPaymentDetail({ token, bookingId }: { token: string; bookingId: number }) {
+  const detail = useQuery({
+    queryKey: ["admin-booking-payment", bookingId],
+    queryFn: () => api.adminGetBookingPaymentDetail({ token, bookingId }),
+  });
+  if (detail.isPending) return <Spinner />;
+  if (detail.isError) return <ErrorBox message={errMsg(detail.error)} />;
+  const d = detail.data!;
+  const s = d.snapshot;
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="font-bold text-[#064B27] mb-2">মূল্য ও পেমেন্ট স্ন্যাপশট</h3>
+        {d.breakdown ? (
+          <>
+            <p className="text-[13px] text-[#737B73] mb-2">
+              মডেল: {PAYMENT_MODEL_BN[s.paymentModel ?? ""] ?? s.paymentModel} • অনলাইন পেমেন্টের অবস্থা:{" "}
+              {EXTENDED_STATUS_BN[s.extendedPaymentStatus] ?? s.extendedPaymentStatus}
+              {s.heldBalance != null && s.heldBalance > 0 ? ` • বর্তমান হেল্ড: ${bdt(s.heldBalance)}` : ""}
+            </p>
+            <BreakdownRows bd={d.breakdown} />
+            <p className="mt-2 text-[12.5px] text-[#737B73]">
+              এই হিসাব মূল্য নিশ্চিত করার সময়ের হার (গ্রাহক ফি {s.customerFeePercent}% • প্রফেশনাল কমিশন{" "}
+              {s.proCommissionPercent}%) দিয়ে জমা করা স্ন্যাপশট — পরে হার বদলালেও এই বুকিংয়ের হিসাব বদলায় না।
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-[#737B73]">এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি, তাই কোনো পেমেন্ট স্ন্যাপশট নেই।</p>
+        )}
+      </div>
+      <div>
+        <h3 className="font-bold text-[#064B27] mb-2">TrxID জমা ও যাচাই</h3>
+        {d.payments.length === 0 ? (
+          <p className="text-sm text-[#737B73]">এই বুকিংয়ে কোনো অনলাইন পেমেন্ট জমা হয়নি।</p>
+        ) : (
+          <div className="space-y-2.5">
+            {d.payments.map((p) => (
+              <PaymentVerifyBox key={p.id} token={token} p={p} />
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <h3 className="font-bold text-[#064B27] mb-2">লেজার এন্ট্রি</h3>
+        {d.ledger.length === 0 ? (
+          <p className="text-sm text-[#737B73]">এখনো কোনো লেজার এন্ট্রি নেই — পেমেন্ট যাচাই হলেই এন্ট্রি তৈরি হয়।</p>
+        ) : (
+          <ul className="divide-y divide-[#F0F3F0] border border-[#E5EAE5] rounded-xl overflow-hidden">
+            {d.ledger.map((e) => (
+              <li key={e.id} className="px-3.5 py-2.5 flex flex-wrap items-baseline gap-x-3 bg-white">
+                <span className="text-[13px] font-semibold bg-[#F0FAF2] text-[#064B27] px-2 py-0.5 rounded">
+                  {LEDGER_TYPE_BN[e.entryType] ?? e.entryType}
+                </span>
+                <span className="font-en font-semibold">{bdt(e.amount)}</span>
+                {e.note && <span className="text-[13px] text-[#4c584c]">{e.note}</span>}
+                <span className="ml-auto text-[12.5px] text-[#737B73]">{fmtDateTime(e.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommissionRatesCard({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const data = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.adminGetSettings({ token }) });
+  const [fullFee, setFullFee] = useState("");
+  const [fullComm, setFullComm] = useState("");
+  const [splitFee, setSplitFee] = useState("");
+  const [splitComm, setSplitComm] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [error, setError] = useState("");
+  if (data.data && !loaded) {
+    setLoaded(true);
+    setFullFee(String(data.data.fullOnlineCustomerFeePercent));
+    setFullComm(String(data.data.fullOnlineProCommissionPercent));
+    setSplitFee(String(data.data.splitCustomerFeePercent));
+    setSplitComm(String(data.data.splitProCommissionPercent));
+  }
+  const save = useMutation({
+    mutationFn: () =>
+      api.adminSaveSettings({
+        token,
+        fullOnlineCustomerFeePercent: Number(fullFee) || 0,
+        fullOnlineProCommissionPercent: Number(fullComm) || 0,
+        splitCustomerFeePercent: Number(splitFee) || 0,
+        splitProCommissionPercent: Number(splitComm) || 0,
+      }),
+    onSuccess: () => {
+      setOk(true);
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+  if (data.isPending) return <Spinner />;
+  if (data.isError) return <ErrorBox message={errMsg(data.error)} />;
+  const rateField = (id: string, label: string, value: string, set: (v: string) => void) => (
+    <div>
+      <label className={labelCls} htmlFor={id}>
+        {label}
+      </label>
+      <input id={id} type="number" min={0} max={100} className={inputCls} value={value} onChange={(e) => set(e.target.value)} required />
+    </div>
+  );
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-[#064B27]">কমিশন ও ফি-এর হার</h2>
+      <p className="mt-1 text-sm text-[#737B73]">
+        প্রতিটি পেমেন্ট মডেলের আলাদা হার। হার বদলালে তা শুধু এরপর মূল্য-নিশ্চিত হওয়া নতুন বুকিংয়ে প্রযোজ্য হবে —
+        ইতিমধ্যে নিশ্চিত বা যাচাইকৃত বুকিংয়ের স্ন্যাপশট কখনো বদলায় না।
+      </p>
+      <form
+        className="mt-4 max-w-xl rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError("");
+          setOk(false);
+          save.mutate();
+        }}
+      >
+        <fieldset>
+          <legend className="font-semibold text-[#064B27] mb-2">সম্পূর্ণ অনলাইন পেমেন্ট</legend>
+          <div className="grid grid-cols-2 gap-3">
+            {rateField("cr-full-fee", "গ্রাহক ফি (%)", fullFee, setFullFee)}
+            {rateField("cr-full-comm", "প্রফেশনাল কমিশন (%)", fullComm, setFullComm)}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="font-semibold text-[#064B27] mb-2">৫০% অনলাইন + ৫০% ক্যাশ</legend>
+          <div className="grid grid-cols-2 gap-3">
+            {rateField("cr-split-fee", "গ্রাহক ফি (%)", splitFee, setSplitFee)}
+            {rateField("cr-split-comm", "প্রফেশনাল কমিশন (%)", splitComm, setSplitComm)}
+          </div>
+        </fieldset>
+        {error && <ErrorBox message={error} />}
+        {ok && (
+          <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+            হার সংরক্ষিত হয়েছে — এখন থেকে মূল্য-নিশ্চিত হওয়া বুকিংয়ে প্রযোজ্য।
+          </p>
+        )}
+        <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+          {save.isPending ? "সংরক্ষণ হচ্ছে…" : "হার সংরক্ষণ করুন"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function SettlementQueue({ token }: { token: string }) {
+  const q = useQuery({ queryKey: ["admin-settlement"], queryFn: () => api.adminListSettlementQueue({ token }) });
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-[#064B27]">সেটলমেন্ট কিউ</h2>
+      <p className="mt-1 text-sm text-[#737B73]">
+        যেসব টাকা পেআউটের অপেক্ষায় আছে তার তালিকা। পেআউট অনুমোদন ও পরিশোধের সিদ্ধান্ত পরের ধাপে চালু হবে — এই
+        তালিকা শুধু দেখার জন্য, এখান থেকে কোনো টাকা ছাড়া হয় না।
+      </p>
+      {q.isPending ? (
+        <Spinner />
+      ) : q.isError ? (
+        <ErrorBox message={errMsg(q.error)} />
+      ) : (
+        <div className="mt-4 space-y-5">
+          <div>
+            <h3 className="font-semibold text-[#064B27] mb-2">
+              হেল্ড ব্যালেন্স — ছাড়ের অপেক্ষায় (মোট {bdt(q.data!.totals.heldAwaitingRelease)})
+            </h3>
+            {q.data!.heldBookings.length === 0 ? (
+              <EmptyState title="কোনো হেল্ড ব্যালেন্স বাকি নেই" />
+            ) : (
+              <div className="space-y-2.5">
+                {q.data!.heldBookings.map((h) => (
+                  <div key={h.bookingId} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                    <p className="font-bold">
+                      {h.serviceName} — <span className="font-en">{h.code}</span>
+                    </p>
+                    <p className="text-[13.5px] text-[#737B73]">
+                      প্রফেশনাল: {h.professionalName ?? "—"} • হেল্ড {bdt(h.heldTotal)} • কমিশন {bdt(h.commissionDue)} •
+                      পেআউট হয়েছে {bdt(h.paidOut)}
+                    </p>
+                    <p className="text-[14px] font-semibold text-[#064B27]">ছাড়যোগ্য: {bdt(h.remainingHeld)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h3 className="font-semibold text-[#064B27] mb-2">
+              উইথড্র অনুরোধ — সিদ্ধান্তের অপেক্ষায় ({q.data!.totals.openWithdrawalCount}টি, মোট{" "}
+              {bdt(q.data!.totals.openWithdrawalAmount)})
+            </h3>
+            {q.data!.withdrawalRequests.length === 0 ? (
+              <EmptyState title="কোনো খোলা উইথড্র অনুরোধ নেই" />
+            ) : (
+              <div className="space-y-2.5">
+                {q.data!.withdrawalRequests.map((w) => (
+                  <div key={w.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                    <p className="font-bold">
+                      {w.professionalName} — {bdt(w.amount)}
+                    </p>
+                    <p className="text-[13.5px] text-[#737B73]">
+                      {WITHDRAW_METHOD_BN[w.method] ?? w.method} • <span className="font-en">{w.number}</span> •{" "}
+                      {fmtDateTime(w.requestedAt)}
+                      {w.bookingCode ? (
+                        <>
+                          {" "}• বুকিং <span className="font-en">{w.bookingCode}</span>
+                        </>
+                      ) : null}
+                    </p>
+                    <p className="text-[13px] text-amber-700 font-semibold">
+                      {w.status === "approved" ? "অনুমোদিত — পরিশোধ বাকি" : "সিদ্ধান্তের অপেক্ষায়"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AdminPayments({ token }: { token: string }) {
+  const [status, setStatus] = useState("");
+  const [openBooking, setOpenBooking] = useState<number | null>(null);
+  const ov = useQuery({ queryKey: ["admin-overview"], queryFn: () => api.getAdminOverview({ token }) });
+  const list = useQuery({
+    queryKey: ["admin-payments", status],
+    queryFn: () => api.adminListPayments({ token, status: status || undefined }),
+  });
+  const d = ov.data;
+  return (
+    <div className="space-y-10">
+      <section>
+        <h2 className="text-lg font-bold text-[#064B27]">পেমেন্ট ম্যানেজমেন্ট</h2>
+        <p className="mt-1 text-sm text-[#737B73]">
+          প্রতিটি সংখ্যা সার্ভারের যাচাইকৃত পেমেন্ট ও লেজার এন্ট্রি থেকে হিসাব করা — ক্লায়েন্টে কোনো হিসাব হয় না।
+        </p>
+        {ov.isPending ? (
+          <Spinner />
+        ) : ov.isError ? (
+          <ErrorBox message={errMsg(ov.error)} />
+        ) : d ? (
+          <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+              <MoneyStat label="অনলাইনে সংগৃহীত" value={d.onlineCollected} />
+              <MoneyStat label="গ্রাহক ফি সংগৃহীত" value={d.customerFeesCollected} />
+              <MoneyStat label="হেল্ড ব্যালেন্স (সেটলমেন্ট বাকি)" value={d.heldBalanceTotal} />
+              <MoneyStat label="ক্যাশে সংগৃহীত" value={d.cashCollected} />
+              <MoneyStat label="কমিশন অর্জিত (পাওনা)" value={d.commissionEarned} />
+              <MoneyStat label="কমিশন সংগৃহীত" value={d.commissionCollected} />
+              <MoneyStat label="পেআউট হয়েছে" value={d.paidOutTotal} />
+              <MoneyStat label="রিফান্ড হয়েছে" value={d.refundedTotal} />
+              <MoneyStat label="যাচাইয়ের অপেক্ষায়" value={d.pendingPaymentAmount} sub={`${d.pendingPayments}টি পেমেন্ট`} />
+              <MoneyStat label="পেআউটের অপেক্ষায়" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
+            </div>
+            {(d.failedPayments > 0 || d.disputedPayments > 0) && (
+              <p className="mt-3 text-[13.5px] text-red-700">
+                ব্যর্থ পেমেন্ট: {d.failedPayments}টি
+                {d.disputedPayments > 0 ? ` • বিরোধপূর্ণ বুকিং: ${d.disputedPayments}টি` : ""}
+              </p>
+            )}
+            <p className="mt-3 text-[12.5px] text-[#737B73]">
+              বর্তমান হার — সম্পূর্ণ অনলাইন: ফি {d.fullOnlineCustomerFeePercent}% / কমিশন {d.fullOnlineProCommissionPercent}% •
+              ৫০-৫০: ফি {d.splitCustomerFeePercent}% / কমিশন {d.splitProCommissionPercent}%
+            </p>
+          </div>
+        ) : null}
+      </section>
+      <CommissionRatesCard token={token} />
+      <section>
+        <h2 className="text-lg font-bold text-[#064B27]">TrxID যাচাই</h2>
+        <div className="flex flex-wrap gap-2 mt-3 mb-4" role="group" aria-label="পেমেন্ট স্ট্যাটাস ফিল্টার">
+          {(
+            [
+              ["", "সব"],
+              ["pending", "যাচাইয়ের অপেক্ষায়"],
+              ["verified", "যাচাইকৃত"],
+              ["failed", "ব্যর্থ"],
+            ] as [string, string][]
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setStatus(k)}
+              aria-pressed={status === k}
+              className={`px-3.5 py-2 rounded-full text-sm font-semibold ${status === k ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {list.isPending ? (
+          <Spinner />
+        ) : list.isError ? (
+          <ErrorBox message={errMsg(list.error)} />
+        ) : (list.data?.payments.length ?? 0) === 0 ? (
+          <EmptyState title="এই ফিল্টারে কোনো পেমেন্ট নেই" />
+        ) : (
+          <div className="space-y-4">
+            {list.data?.payments.map((p) => (
+              <div key={p.id}>
+                <p className="text-[13px] text-[#737B73] mb-1.5">
+                  বুকিং{" "}
+                  <a className="font-en font-semibold text-[#087A35] underline" href={`#/booking/${p.bookingCode}`}>
+                    {p.bookingCode}
+                  </a>
+                </p>
+                <PaymentVerifyBox token={token} p={p} />
+                <button
+                  type="button"
+                  onClick={() => setOpenBooking(openBooking === p.bookingId ? null : p.bookingId)}
+                  aria-expanded={openBooking === p.bookingId}
+                  className="mt-2 bg-[#F0FAF2] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E2F4E7]"
+                >
+                  {openBooking === p.bookingId ? "পেমেন্ট বিবরণ বন্ধ করুন" : "বুকিংয়ের পেমেন্ট বিবরণ"}
+                </button>
+                {openBooking === p.bookingId && (
+                  <div className="mt-3 rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                    <BookingPaymentDetail token={token} bookingId={p.bookingId} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <SettlementQueue token={token} />
+    </div>
+  );
+}
+
+
 function AdminSettings({ token }: { token: string }) {
   const qc = useQueryClient();
   const data = useQuery({ queryKey: ["admin-settings"], queryFn: () => api.adminGetSettings({ token }) });
-  const [commission, setCommission] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
@@ -2817,7 +3319,6 @@ function AdminSettings({ token }: { token: string }) {
   const [error, setError] = useState("");
   if (data.data && !loaded) {
     setLoaded(true);
-    setCommission(String(data.data.commissionPercent));
     setPhone(data.data.supportPhone ?? "");
     setWhatsapp(data.data.supportWhatsapp ?? "");
     setEmail(data.data.supportEmail ?? "");
@@ -2829,7 +3330,6 @@ function AdminSettings({ token }: { token: string }) {
     mutationFn: () =>
       api.adminSaveSettings({
         token,
-        commissionPercent: Number(commission) || 0,
         supportPhone: phone || null,
         supportWhatsapp: whatsapp || null,
         supportEmail: email || null,
@@ -2855,11 +3355,10 @@ function AdminSettings({ token }: { token: string }) {
         save.mutate();
       }}
     >
-      <div>
-        <label className={labelCls} htmlFor="st-commission">কমিশন (%)</label>
-        <input id="st-commission" type="number" min={0} max={100} className={inputCls} value={commission} onChange={(e) => setCommission(e.target.value)} required />
-        <p className="mt-1 text-[13px] text-[#737B73]">সম্পন্ন ও পরিশোধিত বুকিংয়ের চূড়ান্ত মূল্য থেকে এই হারে কমিশন হিসাব করা হয়।</p>
-      </div>
+      <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+        কমিশন ও গ্রাহক ফি-এর হার <strong>পেমেন্ট</strong> ট্যাব থেকে বদলানো যায় — প্রতিটি পেমেন্ট মডেলের (সম্পূর্ণ
+        অনলাইন / ৫০-৫০) আলাদা হার সেখানে দেখানো ও সম্পাদনা করা যায়।
+      </p>
       <div>
         <label className={labelCls} htmlFor="st-phone">সাপোর্ট ফোন নম্বর</label>
         <input id="st-phone" className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="খালি রাখলে সাইটে দেখানো হবে না" />
@@ -3020,19 +3519,78 @@ function AdminStaff({ token }: { token: string }) {
 }
 
 function AdminLogs({ token }: { token: string }) {
-  const logs = useQuery({ queryKey: ["admin-logs"], queryFn: () => api.adminListLogs({ token, limit: 50 }) });
-  if (logs.isPending) return <Spinner />;
+  const [action, setAction] = useState("");
+  const [adminId, setAdminId] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const staff = useQuery({ queryKey: ["admin-staff"], queryFn: () => api.adminListStaff({ token }) });
+  const all = useQuery({ queryKey: ["admin-logs", "all"], queryFn: () => api.adminListLogs({ token, limit: 200 }) });
+  const logs = useQuery({
+    queryKey: ["admin-logs", action, adminId, from, to],
+    queryFn: () =>
+      api.adminListLogs({
+        token,
+        limit: 100,
+        action: action || undefined,
+        adminId: adminId ? Number(adminId) : undefined,
+        from: from ? new Date(`${from}T00:00:00`).toISOString() : undefined,
+        to: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
+      }),
+  });
+  const actionOptions = Array.from(new Set((all.data?.logs ?? []).map((l) => l.action))).sort();
   const rows = logs.data?.logs ?? [];
-  if (rows.length === 0) return <EmptyState title="এখনো কোনো কার্যকলাপ লগ নেই" />;
   return (
-    <ul className="divide-y divide-[#F0F3F0] border border-[#E5EAE5] rounded-2xl bg-white overflow-hidden">
-      {rows.map((l) => (
-        <li key={l.id} className="px-4 py-3 flex flex-wrap items-baseline gap-x-3">
-          <span className="font-en text-[13px] font-semibold bg-[#F0FAF2] text-[#064B27] px-2 py-0.5 rounded">{l.action}</span>
-          <span className="text-sm text-[#4c584c]">{l.detail}</span>
-          <span className="ml-auto text-[12.5px] text-[#737B73]">{fmtDateTime(l.createdAt)}</span>
-        </li>
-      ))}
-    </ul>
+    <div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label className={labelCls} htmlFor="log-action">কাজের ধরন</label>
+          <select id="log-action" className={inputCls} value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">সব ধরন</option>
+            {actionOptions.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="log-admin">অ্যাডমিন</label>
+          <select id="log-admin" className={inputCls} value={adminId} onChange={(e) => setAdminId(e.target.value)}>
+            <option value="">সব অ্যাডমিন</option>
+            {(staff.data?.staff ?? []).map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({ADMIN_LEVEL_BN[s.adminLevel] ?? s.adminLevel})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="log-from">শুরুর তারিখ</label>
+          <input id="log-from" type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="log-to">শেষের তারিখ</label>
+          <input id="log-to" type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      </div>
+      {logs.isPending ? (
+        <Spinner />
+      ) : logs.isError ? (
+        <ErrorBox message={errMsg(logs.error)} />
+      ) : rows.length === 0 ? (
+        <EmptyState title="এই ফিল্টারে কোনো লগ নেই" />
+      ) : (
+        <ul className="divide-y divide-[#F0F3F0] border border-[#E5EAE5] rounded-2xl bg-white overflow-hidden">
+          {rows.map((l) => (
+            <li key={l.id} className="px-4 py-3 flex flex-wrap items-baseline gap-x-3">
+              <span className="font-en text-[13px] font-semibold bg-[#F0FAF2] text-[#064B27] px-2 py-0.5 rounded">{l.action}</span>
+              {l.adminName && <span className="text-[13px] font-semibold text-[#4c584c]">{l.adminName}</span>}
+              <span className="text-sm text-[#4c584c]">{l.detail}</span>
+              <span className="ml-auto text-[12.5px] text-[#737B73]">{fmtDateTime(l.createdAt)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
