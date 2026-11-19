@@ -28,7 +28,7 @@ import * as schema from "./schema";
 type BackupDb = SpaceDb<typeof schema>;
 
 export const fullBackupResponse = z.object({
-  filename: z.string(), // ghorsheba-backup-YYYY-MM-DD.json.gz
+  filename: z.string(), // mistridako-backup-YYYY-MM-DD.json.gz
   exportedAt: z.string(), // ISO 8601
   gzipBase64: z.string(), // base64 of the gzipped backup JSON
   tableCounts: z.record(z.string(), z.number()),
@@ -116,7 +116,7 @@ export async function buildFullBackup(
   const payload = { exportedAt, mode: "full-backup", tableCounts, tables };
   const gzipBase64 = await gzipToBase64(JSON.stringify(payload));
   return {
-    filename: `ghorsheba-backup-${exportedAt.slice(0, 10)}.json.gz`,
+    filename: `mistridako-backup-${exportedAt.slice(0, 10)}.json.gz`,
     exportedAt,
     gzipBase64,
     tableCounts,

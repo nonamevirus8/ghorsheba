@@ -1,6 +1,6 @@
-# GhorSheba — portable (Vercel) edition
+# MistriDako — portable (Vercel) edition
 
-This folder is a complete, self-contained copy of the GhorSheba app that
+This folder is a complete, self-contained copy of the MistriDako app that
 runs anywhere — no Muse/Hatch platform packages. It is the same app with
 the same features and workflows as the platform build at the repository
 root; only the plumbing differs:
@@ -14,11 +14,11 @@ root; only the plumbing differs:
 | Photo storage    | platform blob store            | `blobs` table in the same Postgres |
 | Schema + seed    | `../drizzle/0002_…sql` (SQLite)| `drizzle/0001_…sql` (Postgres)   |
 
-**Live site: https://ghorsheba-bd.vercel.app** — this is the production
+**Live site: https://mistridako.vercel.app** — this is the production
 deployment of this portable edition (the older address
 https://ghorsheba-ashen.vercel.app still works too). The site is an
 installable PWA: users can install it as an app from the
-[#/download-app](https://ghorsheba-bd.vercel.app/#/download-app) page —
+[#/download-app](https://mistridako.vercel.app/#/download-app) page —
 see "Mobile app (PWA) + download page" below.
 
 ## Deploy on Vercel
@@ -88,10 +88,10 @@ The fix, now in place:
 
 ## Mobile app (PWA) + download page
 
-GhorSheba is an installable Progressive Web App — no Play Store / App
+MistriDako is an installable Progressive Web App — no Play Store / App
 Store account needed:
 
-- `public/manifest.webmanifest` — name GhorSheba, `display: standalone`,
+- `public/manifest.webmanifest` — name MistriDako, `display: standalone`,
   theme/background `#087A35`, start URL `/`.
 - Icons: `public/icon.svg` is the brand mark; the PNG icons (192, 512,
   maskable 512, apple-touch 180) are **generated from code at build
@@ -103,7 +103,7 @@ Store account needed:
   banner, the mobile menu and the footer as "অ্যাপ ডাউনলোড করুন") with a
   working Android install button (`beforeinstallprompt`), manual
   Android steps, and iPhone/iPad Safari "Add to Home Screen" steps.
-  On the live site: https://ghorsheba-bd.vercel.app/#/download-app
+  On the live site: https://mistridako.vercel.app/#/download-app
 
 ## Data export (owner only)
 

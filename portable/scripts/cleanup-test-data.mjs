@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// GhorSheba — production test-data cleanup (Master Phase 12, PREPARED ONLY).
+// MistriDako — production test-data cleanup (Master Phase 12, PREPARED ONLY).
 //
 // Identifies the known TEST accounts created during the phased build &
 // live verification and reports — or, only with explicit flags, deletes —

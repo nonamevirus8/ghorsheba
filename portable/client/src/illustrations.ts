@@ -55,8 +55,8 @@ const heroBody =
   `</linearGradient></defs>` +
   `<rect width='800' height='600' fill='url(#sky)'/>` +
   // sun + clouds
-  `<circle cx='668' cy='102' r='64' fill='#FF8A00' opacity='0.22'/>` +
-  `<circle cx='668' cy='102' r='42' fill='#FF8A00'/>` +
+  `<circle cx='668' cy='102' r='64' fill='#FF8500' opacity='0.22'/>` +
+  `<circle cx='668' cy='102' r='42' fill='#FF8500'/>` +
   `<g fill='#FFFFFF' opacity='0.9'>` +
   `<ellipse cx='138' cy='92' rx='58' ry='20'/><ellipse cx='182' cy='78' rx='40' ry='16'/>` +
   `<ellipse cx='452' cy='64' rx='46' ry='15'/><ellipse cx='486' cy='54' rx='30' ry='12'/>` +
@@ -68,12 +68,12 @@ const heroBody =
   // house
   `<rect x='268' y='292' width='264' height='188' fill='#FFFDF7' stroke='#E3DCC8' stroke-width='2'/>` +
   `<rect x='472' y='212' width='28' height='50' fill='#C96F3F'/>` +
-  `<path d='M244 298 L400 190 L556 298 Z' fill='#064B27'/>` +
-  `<path d='M244 298 L400 190 L556 298' fill='none' stroke='#FF8A00' stroke-width='7' stroke-linejoin='round'/>` +
+  `<path d='M244 298 L400 190 L556 298 Z' fill='#054A2B'/>` +
+  `<path d='M244 298 L400 190 L556 298' fill='none' stroke='#FF8500' stroke-width='7' stroke-linejoin='round'/>` +
   `<rect x='292' y='336' width='54' height='54' rx='4' fill='#BFE3F2' stroke='#FFFFFF' stroke-width='4'/>` +
   `<rect x='454' y='336' width='54' height='54' rx='4' fill='#BFE3F2' stroke='#FFFFFF' stroke-width='4'/>` +
-  `<rect x='378' y='392' width='46' height='88' rx='5' fill='#FF8A00'/>` +
-  `<circle cx='414' cy='438' r='4' fill='#064B27'/>` +
+  `<rect x='378' y='392' width='46' height='88' rx='5' fill='#FF8500'/>` +
+  `<circle cx='414' cy='438' r='4' fill='#054A2B'/>` +
   `<rect x='366' y='480' width='70' height='10' rx='3' fill='#D8CBAF'/>` +
   // scaffolding (left of the house)
   `<rect x='106' y='238' width='9' height='242' fill='#7A8B7A'/>` +
@@ -84,27 +84,27 @@ const heroBody =
   `<rect x='90' y='408' width='132' height='11' rx='3' fill='#C98F4E'/>` +
   // brick stack + bushes
   `<g fill='#C96F3F'><rect x='586' y='452' width='52' height='16' rx='2'/><rect x='586' y='434' width='52' height='16' rx='2'/><rect x='592' y='416' width='40' height='16' rx='2'/></g>` +
-  `<circle cx='252' cy='466' r='20' fill='#087A35' opacity='0.85'/><circle cx='548' cy='466' r='24' fill='#087A35' opacity='0.85'/>` +
+  `<circle cx='252' cy='466' r='20' fill='#075B35' opacity='0.85'/><circle cx='548' cy='466' r='24' fill='#075B35' opacity='0.85'/>` +
   // workers: one on the scaffold with a roller, two on the ground
   worker(
-    156, 329, "#087A35", "#FF8A00", "#A06A3B",
-    `<line x1='19' y1='-72' x2='34' y2='-104' stroke='#087A35' stroke-width='10' stroke-linecap='round'/>` +
+    156, 329, "#075B35", "#FF8500", "#A06A3B",
+    `<line x1='19' y1='-72' x2='34' y2='-104' stroke='#075B35' stroke-width='10' stroke-linecap='round'/>` +
     `<rect x='28' y='-126' width='13' height='24' rx='3' fill='#FFFFFF' stroke='#C9D4C9' stroke-width='2'/>`,
     0.92,
   ) +
   worker(
-    96, 480, "#FF8A00", "#FFFFFF", "#8D5A33",
-    `<line x1='19' y1='-72' x2='30' y2='-44' stroke='#FF8A00' stroke-width='10' stroke-linecap='round'/>` +
+    96, 480, "#FF8500", "#FFFFFF", "#8D5A33",
+    `<line x1='19' y1='-72' x2='30' y2='-44' stroke='#FF8500' stroke-width='10' stroke-linecap='round'/>` +
     `<rect x='-34' y='-96' width='86' height='10' rx='4' transform='rotate(-16)' fill='#C98F4E'/>`,
   ) +
   worker(
-    618, 480, "#064B27", "#FF8A00", "#6E4525",
-    `<line x1='19' y1='-72' x2='31' y2='-42' stroke='#064B27' stroke-width='10' stroke-linecap='round'/>` +
-    `<rect x='24' y='-40' width='34' height='24' rx='4' fill='#E67A00'/>` +
+    618, 480, "#054A2B", "#FF8500", "#6E4525",
+    `<line x1='19' y1='-72' x2='31' y2='-42' stroke='#054A2B' stroke-width='10' stroke-linecap='round'/>` +
+    `<rect x='24' y='-40' width='34' height='24' rx='4' fill='#E67600'/>` +
     `<path d='M32 -40 v-8 h18 v8' fill='none' stroke='#B35C00' stroke-width='4'/>`,
   ) +
   // grass tufts
-  `<g stroke='#087A35' stroke-width='4' stroke-linecap='round'>` +
+  `<g stroke='#075B35' stroke-width='4' stroke-linecap='round'>` +
   `<path d='M60 560 l-6 -16 M60 560 l2 -18 M60 560 l9 -14'/>` +
   `<path d='M716 548 l-6 -16 M716 548 l2 -18 M716 548 l9 -14'/>` +
   `<path d='M330 566 l-6 -16 M330 566 l2 -18 M330 566 l9 -14'/>` +
@@ -114,9 +114,9 @@ export const heroImg = uri("0 0 800 600", heroBody);
 
 // ------------------------------------------------------- mistri portrait
 const mistriBody =
-  `<rect width='640' height='480' fill='#064B27'/>` +
+  `<rect width='640' height='480' fill='#054A2B'/>` +
   `<circle cx='320' cy='215' r='168' fill='#0B6B38'/>` +
-  `<circle cx='320' cy='215' r='128' fill='#087A35'/>` +
+  `<circle cx='320' cy='215' r='128' fill='#075B35'/>` +
   `<g transform='translate(320 428)'>` +
   // legs + boots
   `<rect x='-52' y='-58' width='38' height='58' rx='8' fill='#33526B'/>` +
@@ -124,10 +124,10 @@ const mistriBody =
   `<rect x='-58' y='-8' width='48' height='10' rx='4' fill='#1D2A30'/>` +
   `<rect x='10' y='-8' width='48' height='10' rx='4' fill='#1D2A30'/>` +
   // arms
-  `<line x1='-72' y1='-196' x2='-104' y2='-96' stroke='#FF8A00' stroke-width='30' stroke-linecap='round'/>` +
-  `<line x1='72' y1='-196' x2='112' y2='-128' stroke='#FF8A00' stroke-width='30' stroke-linecap='round'/>` +
+  `<line x1='-72' y1='-196' x2='-104' y2='-96' stroke='#FF8500' stroke-width='30' stroke-linecap='round'/>` +
+  `<line x1='72' y1='-196' x2='112' y2='-128' stroke='#FF8500' stroke-width='30' stroke-linecap='round'/>` +
   // torso + reflective stripes
-  `<rect x='-78' y='-232' width='156' height='178' rx='26' fill='#FF8A00'/>` +
+  `<rect x='-78' y='-232' width='156' height='178' rx='26' fill='#FF8500'/>` +
   `<rect x='-78' y='-168' width='156' height='18' fill='#FFE1B3' opacity='0.85'/>` +
   `<rect x='-78' y='-104' width='156' height='18' fill='#FFE1B3' opacity='0.85'/>` +
   // head + smile + hard hat
@@ -140,7 +140,7 @@ const mistriBody =
   // toolbox in the left hand
   `<g transform='translate(-146 -96)'>` +
   `<path d='M14 0 v-16 a10 10 0 0 1 10 -10 h44 a10 10 0 0 1 10 10 v16' fill='none' stroke='#B35C00' stroke-width='7'/>` +
-  `<rect x='0' y='0' width='92' height='58' rx='9' fill='#E67A00'/>` +
+  `<rect x='0' y='0' width='92' height='58' rx='9' fill='#E67600'/>` +
   `<rect x='36' y='18' width='20' height='14' rx='3' fill='#B35C00'/>` +
   `</g>` +
   // wrench in the right hand
@@ -156,18 +156,18 @@ export const mistriImg = uri("0 0 640 480", mistriBody);
 function scene(body: string): string {
   return uri(
     "0 0 800 400",
-    `<rect width='800' height='400' fill='#F0FAF2'/>` +
-      `<circle cx='400' cy='205' r='128' fill='#E2F4E7'/>` +
+    `<rect width='800' height='400' fill='#F3F8F4'/>` +
+      `<circle cx='400' cy='205' r='128' fill='#E4F1E8'/>` +
       `<ellipse cx='400' cy='336' rx='190' ry='18' fill='#D8EDDC'/>` +
       body,
   );
 }
 
 export const svcElectrician = scene(
-  `<path d='M428 62 L318 224 L392 224 L350 338 L494 172 L412 172 Z' fill='#FF8A00' stroke='#E67A00' stroke-width='6' stroke-linejoin='round'/>` +
-    `<path d='M196 320 C250 268 300 300 336 262' fill='none' stroke='#064B27' stroke-width='7' stroke-linecap='round'/>` +
-    `<g transform='translate(168 322)'><rect x='-16' y='-12' width='32' height='30' rx='6' fill='#064B27'/><line x1='-8' y1='-12' x2='-8' y2='-26' stroke='#064B27' stroke-width='6' stroke-linecap='round'/><line x1='8' y1='-12' x2='8' y2='-26' stroke='#064B27' stroke-width='6' stroke-linecap='round'/></g>` +
-    `<g fill='#087A35'><path d='M150 96 l6 14 14 6 -14 6 -6 14 -6 -14 -14 -6 14 -6 z'/><path d='M612 84 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 z'/><path d='M648 268 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 z'/></g>`,
+  `<path d='M428 62 L318 224 L392 224 L350 338 L494 172 L412 172 Z' fill='#FF8500' stroke='#E67600' stroke-width='6' stroke-linejoin='round'/>` +
+    `<path d='M196 320 C250 268 300 300 336 262' fill='none' stroke='#054A2B' stroke-width='7' stroke-linecap='round'/>` +
+    `<g transform='translate(168 322)'><rect x='-16' y='-12' width='32' height='30' rx='6' fill='#054A2B'/><line x1='-8' y1='-12' x2='-8' y2='-26' stroke='#054A2B' stroke-width='6' stroke-linecap='round'/><line x1='8' y1='-12' x2='8' y2='-26' stroke='#054A2B' stroke-width='6' stroke-linecap='round'/></g>` +
+    `<g fill='#075B35'><path d='M150 96 l6 14 14 6 -14 6 -6 14 -6 -14 -14 -6 14 -6 z'/><path d='M612 84 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 z'/><path d='M648 268 l5 11 11 5 -11 5 -5 11 -5 -11 -11 -5 11 -5 z'/></g>`,
 );
 
 export const svcPlumber = scene(
@@ -176,8 +176,8 @@ export const svcPlumber = scene(
     `<rect x='556' y='200' width='48' height='104' rx='10' fill='#8FA9BC'/>` +
     `<rect x='540' y='196' width='80' height='20' rx='8' fill='#6E8CA3'/>` +
     `<g transform='translate(392 168) rotate(32)'>` +
-    `<rect x='-13' y='-6' width='26' height='128' rx='11' fill='#064B27'/>` +
-    `<path d='M0 -58 a36 36 0 1 0 36 36 l-19 -8 6 -22 z' fill='#064B27'/>` +
+    `<rect x='-13' y='-6' width='26' height='128' rx='11' fill='#054A2B'/>` +
+    `<path d='M0 -58 a36 36 0 1 0 36 36 l-19 -8 6 -22 z' fill='#054A2B'/>` +
     `</g>` +
     `<g fill='#4D96FF'><path d='M238 96 C252 118 262 132 262 146 a24 24 0 1 1 -48 0 C214 132 224 118 238 96 Z'/><path d='M606 262 C616 278 622 288 622 298 a16 16 0 1 1 -32 0 C590 288 596 278 606 262 Z'/></g>`,
 );
@@ -198,20 +198,20 @@ export const svcMason = scene(
     `<path d='M0 0 L64 14 L0 30 Z' fill='#B9C6CC' stroke='#7E939E' stroke-width='3'/>` +
     `<rect x='-52' y='8' width='40' height='13' rx='6' fill='#8A5A2B'/>` +
     `</g>` +
-    `<line x1='212' y1='92' x2='212' y2='196' stroke='#064B27' stroke-width='4'/>` +
-    `<path d='M212 196 l-9 20 h18 z' fill='#FF8A00'/>`,
+    `<line x1='212' y1='92' x2='212' y2='196' stroke='#054A2B' stroke-width='4'/>` +
+    `<path d='M212 196 l-9 20 h18 z' fill='#FF8500'/>`,
 );
 
 export const svcPainter = scene(
-  `<rect x='148' y='86' width='504' height='128' rx='18' fill='#087A35'/>` +
-    `<path d='M220 214 v26 a10 10 0 0 0 20 0 v-26 z' fill='#087A35'/>` +
-    `<path d='M560 214 v18 a9 9 0 0 0 18 0 v-18 z' fill='#087A35'/>` +
+  `<rect x='148' y='86' width='504' height='128' rx='18' fill='#075B35'/>` +
+    `<path d='M220 214 v26 a10 10 0 0 0 20 0 v-26 z' fill='#075B35'/>` +
+    `<path d='M560 214 v18 a9 9 0 0 0 18 0 v-18 z' fill='#075B35'/>` +
     `<rect x='322' y='104' width='196' height='46' rx='11' fill='#FFFFFF' stroke='#C9D4C9' stroke-width='3'/>` +
     `<path d='M518 127 h34 v44 h-58' fill='none' stroke='#5B6B5B' stroke-width='8' stroke-linejoin='round'/>` +
-    `<rect x='480' y='168' width='17' height='76' rx='8' fill='#FF8A00'/>` +
+    `<rect x='480' y='168' width='17' height='76' rx='8' fill='#FF8500'/>` +
     `<g transform='translate(196 268)'>` +
     `<path d='M-52 0 h104 l-12 62 a8 8 0 0 1 -8 7 h-64 a8 8 0 0 1 -8 -7 z' fill='#E8E8E8' stroke='#B9C6CC' stroke-width='3'/>` +
-    `<ellipse cx='0' cy='0' rx='52' ry='10' fill='#FF8A00'/>` +
+    `<ellipse cx='0' cy='0' rx='52' ry='10' fill='#FF8500'/>` +
     `<path d='M-40 -2 a40 26 0 0 1 80 0' fill='none' stroke='#8A9A8A' stroke-width='5'/>` +
     `</g>`,
 );

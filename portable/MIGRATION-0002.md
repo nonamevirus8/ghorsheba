@@ -1,6 +1,6 @@
 # Migration 0002 — Dual Payment Phase 1 (Postgres / Supabase)
 
-Adds the Dual Payment data model to the **existing** GhorSheba Postgres
+Adds the Dual Payment data model to the **existing** MistriDako Postgres
 database. Nothing else changes: no table is dropped, no existing column
 is altered, no existing row is rewritten, and the `bookings.status`
 workflow is untouched.
@@ -124,7 +124,7 @@ DELETE FROM _ghorsheba_migrations WHERE name = '0002_dual_payment.sql';
 
 ## Notes
 
-- The Muse-platform (SQLite) edition of GhorSheba carries the same
+- The Muse-platform (SQLite) edition of MistriDako carries the same
   change as `drizzle/0003_dual_payment.sql`; its rollback is the same
   list of `DROP TABLE` / `ALTER TABLE … DROP COLUMN` statements in
   SQLite syntax, applied in reverse dependency order

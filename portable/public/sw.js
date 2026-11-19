@@ -1,13 +1,12 @@
-// GhorSheba service worker: caches the app shell (HTML, manifest, icons
+// MistriDako service worker: caches the app shell (HTML, manifest, icons
 // and, at runtime, the hashed JS/CSS bundles) so the installed app opens
 // fast and keeps working on a flaky connection. API calls are never
 // cached — bookings and account data always come from the network.
-const CACHE = "ghorsheba-shell-v1";
+const CACHE = "mistridako-shell-v2";
 const SHELL = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
-  "/icon.svg",
   "/icon-192.png",
   "/icon-512.png",
 ];

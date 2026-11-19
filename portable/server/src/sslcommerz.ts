@@ -1,4 +1,4 @@
-// GhorSheba — SSLCOMMERZ gateway layer (Master Phase 8), SANDBOX ONLY.
+// MistriDako — SSLCOMMERZ gateway layer (Master Phase 8), SANDBOX ONLY.
 //
 // This module is the ONLY place that talks to SSLCOMMERZ, and it knows
 // ONLY the sandbox endpoints. There is deliberately no live-mode code

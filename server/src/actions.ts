@@ -1,4 +1,4 @@
-// GhorSheba server actions. Role checks are enforced here, server-side:
+// MistriDako server actions. Role checks are enforced here, server-side:
 // every privileged action resolves the session token to a user and checks
 // role/ownership before touching data.
 
@@ -767,7 +767,7 @@ async function buildSslcommerzInitInput(
     failUrl: `${baseUrl}/api/sslcommerz/return`,
     cancelUrl: `${baseUrl}/api/sslcommerz/return`,
     ipnUrl: `${baseUrl}/api/sslcommerz/ipn`,
-    productName: names.get(b.serviceSlug) ?? "GhorSheba service",
+    productName: names.get(b.serviceSlug) ?? "MistriDako service",
     customerName: b.customerName,
     // The gateway requires a contact email; the platform's own
     // admin-configured support email is used (payment receipts are a

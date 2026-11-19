@@ -25,29 +25,29 @@
   --font-sans: "Hind Siliguri", "Inter", system-ui, sans-serif;
   --font-en: "Inter", "Hind Siliguri", system-ui, sans-serif;
 
-  --color-brand: #087a35;
-  --color-brand-dark: #064b27;
-  --color-brand-deep: #043a1e;
-  --color-accent: #ff8a00;
-  --color-accent-dark: #e67a00;
-  --color-mist: #f0faf2;
-  --color-mist-2: #e2f4e7;
-  --color-ink: #202820;
-  --color-dim: #737b73;
-  --color-line: #e5eae5;
+  --color-brand: #075B35;
+  --color-brand-dark: #054A2B;
+  --color-brand-deep: #03301D;
+  --color-accent: #FF8500;
+  --color-accent-dark: #E67600;
+  --color-mist: #F3F8F4;
+  --color-mist-2: #E4F1E8;
+  --color-ink: #172B3A;
+  --color-dim: #5C6B76;
+  --color-line: #E1E9E4;
 }
 
 :root {
   color-scheme: light;
   --bg: #ffffff;
   --surface: #ffffff;
-  --text: #202820;
-  --dim: #737b73;
-  --border: #e5eae5;
-  --accent: #087a35;
+  --text: #172B3A;
+  --dim: #5C6B76;
+  --border: #E1E9E4;
+  --accent: #075B35;
   --radius: 14px;
   --space-surface: var(--surface);
-  --space-surface-alt: #f0faf2;
+  --space-surface-alt: #F3F8F4;
   --space-muted: var(--dim);
   --space-border: var(--border);
   --space-accent: var(--accent);
@@ -78,7 +78,7 @@ body {
      manipulation removes the delay and the gesture ambiguity. */
   a, button, [role="button"], input, select, textarea, label, summary {
     touch-action: manipulation;
-    -webkit-tap-highlight-color: rgba(8, 122, 53, 0.12);
+    -webkit-tap-highlight-color: rgba(7, 91, 53, 0.12);
   }
 }
 

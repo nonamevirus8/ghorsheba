@@ -1,23 +1,32 @@
 // Generates the PWA PNG icons (192, 512, maskable 512, apple-touch 180)
-// from code at build time — no binary icon files are kept in the repo.
+// at build time — no binary icon files are kept in the repo.
 //
-// The artwork is the GhorSheba brand mark (house outline + leaf, as drawn
-// by the Logo component in client/src/lib.tsx) rasterised analytically:
-// a #087A35 rounded square, a white house outline and an orange/white
-// leaf. Shapes are evaluated per pixel on a 4x supersampled grid and
-// box-downsampled for smooth edges, then encoded as PNG with node:zlib.
+// The artwork is NOT redrawn: it is the house+wrench icon cropped from
+// the owner's official MistriDako logo file, embedded as a base64 data
+// URI in client/src/logo.ts (LOGO_ICON_DATA_URI) because this repo is
+// published through a text-only channel. This script decodes that PNG,
+// box-downsamples it to each icon size (the maskable variant centres it
+// at 80% on the icon's own white background, inside the safe zone), and
+// re-encodes with the small PNG encoder below (node:zlib only).
 //
 // Output goes to dist/ (Vite has already written the site there).
 
-import { deflateSync } from "node:zlib";
-import { writeFileSync } from "node:fs";
+import { deflateSync, inflateSync } from "node:zlib";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const GREEN = [8, 122, 53];
-const WHITE = [255, 255, 255];
-const ORANGE = [255, 138, 0];
+// ------------------------------------------------------- source artwork
 
-// ---------------------------------------------------------------- PNG codec
+function loadIconPixels() {
+  const src = readFileSync(join(process.cwd(), "client/src/logo.ts"), "utf8");
+  const m = src.match(/LOGO_ICON_DATA_URI\s*=\s*([\s\S]*?);\n/);
+  if (!m) throw new Error("LOGO_ICON_DATA_URI not found in client/src/logo.ts");
+  const b64 = [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]).join("");
+  const dataUri = b64.replace(/^data:image\/png;base64,/, "");
+  return decodePng(Buffer.from(dataUri, "base64"));
+}
+
+// ------------------------------------------------------------- PNG codec
 
 const crcTable = (() => {
   const table = new Int32Array(256);
@@ -66,119 +75,128 @@ function encodePng(rgba, size) {
   ]);
 }
 
-// ------------------------------------------------------------- shape helpers
-// All geometry is in the brand mark's 48x48 viewBox space.
-
-function distToSegment(px, py, x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const l2 = dx * dx + dy * dy;
-  let t = l2 === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / l2;
-  t = Math.max(0, Math.min(1, t));
-  const cx = x1 + t * dx;
-  const cy = y1 + t * dy;
-  return Math.hypot(px - cx, py - cy);
-}
-
-// Is (x, y) inside a rotated ellipse?
-function inEllipse(x, y, cx, cy, rx, ry, angleDeg) {
-  const a = (angleDeg * Math.PI) / 180;
-  const dx = x - cx;
-  const dy = y - cy;
-  const lx = dx * Math.cos(a) + dy * Math.sin(a);
-  const ly = -dx * Math.sin(a) + dy * Math.cos(a);
-  return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) <= 1;
-}
-
-// Colour of the brand mark at viewBox point (x, y), or null for empty.
-function markColor(x, y) {
-  // Leaf (drawn over the house): two rotated ellipses meeting at (24, 33).
-  if (inEllipse(x, y, 21.2, 28.6, 4.6, 2.6, -52)) return ORANGE;
-  if (inEllipse(x, y, 26.9, 28.4, 4.4, 2.5, -128)) return WHITE;
-  // House outline, stroke width ~3.4 (the SVG uses 4 at a larger visual
-  // weight; 3.4 reads better at small icon sizes).
-  const half = 1.7;
-  // Roof: (6,22) -> (24,7) -> (42,22)
-  if (distToSegment(x, y, 6, 22, 24, 7) <= half) return WHITE;
-  if (distToSegment(x, y, 24, 7, 42, 22) <= half) return WHITE;
-  // Walls: left (11,20)-(11,36), right (37,20)-(37,36), floor (11,37)-(37,37)
-  if (distToSegment(x, y, 11, 20.5, 11, 36) <= half) return WHITE;
-  if (distToSegment(x, y, 37, 20.5, 37, 36) <= half) return WHITE;
-  if (distToSegment(x, y, 11.5, 37, 36.5, 37) <= half) return WHITE;
-  return null;
-}
-
-// --------------------------------------------------------------- rasteriser
-
-function renderIcon(size, { maskable = false } = {}) {
-  const SS = 4; // supersampling factor
-  const big = size * SS;
-  const px = new Float32Array(big * big * 4);
-
-  // Mark placement in the 512-space canvas: regular icons use the SVG's
-  // own layout (mark inset ~13%); maskable icons shrink the mark into
-  // the safe zone and bleed the background to the edges.
-  const inset = maskable ? 0.21 : 0.13; // fraction of canvas on each side
-  const markPx = big * (1 - inset * 2);
-  const offset = big * inset;
-  const radius = maskable ? 0 : big * 0.1875; // matches icon.svg rx=96/512
-
-  for (let by = 0; by < big; by++) {
-    for (let bx = 0; bx < big; bx++) {
-      const i = (by * big + bx) * 4;
-      // Background: rounded-rect clip in canvas space.
-      const cx = Math.max(radius - bx, 0, bx - (big - 1 - radius));
-      const cy = Math.max(radius - by, 0, by - (big - 1 - radius));
-      if (cx * cx + cy * cy > radius * radius) continue; // transparent
-      let r = GREEN[0];
-      let g = GREEN[1];
-      let b = GREEN[2];
-      // Brand mark in viewBox space.
-      const vx = ((bx - offset) / markPx) * 48;
-      const vy = ((by - offset) / markPx) * 48;
-      if (vx >= 0 && vx <= 48 && vy >= 0 && vy <= 48) {
-        const c = markColor(vx, vy);
-        if (c) {
-          r = c[0];
-          g = c[1];
-          b = c[2];
+// Minimal decoder for the embedded icon: 8-bit, non-interlaced,
+// colour type 2 (RGB) or 6 (RGBA) — the shapes gm/PNG writers emit.
+function decodePng(buf) {
+  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error("not a PNG");
+  let off = 8;
+  let width = 0;
+  let height = 0;
+  let colorType = 6;
+  let bitDepth = 8;
+  let interlace = 0;
+  const idat = [];
+  while (off < buf.length) {
+    const len = buf.readUInt32BE(off);
+    const type = buf.toString("ascii", off + 4, off + 8);
+    const data = buf.subarray(off + 8, off + 8 + len);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      interlace = data[12];
+    } else if (type === "IDAT") {
+      idat.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+    off += 12 + len;
+  }
+  if (bitDepth !== 8 || interlace !== 0 || (colorType !== 2 && colorType !== 6)) {
+    throw new Error(`unsupported PNG: depth ${bitDepth}, type ${colorType}, interlace ${interlace}`);
+  }
+  const bpp = colorType === 6 ? 4 : 3;
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * bpp;
+  const px = Buffer.alloc(height * stride);
+  let p = 0;
+  for (let y = 0; y < height; y++) {
+    const filter = raw[p++];
+    const row = px.subarray(y * stride, (y + 1) * stride);
+    const prev = y > 0 ? px.subarray((y - 1) * stride, y * stride) : null;
+    for (let x = 0; x < stride; x++) {
+      const v = raw[p++];
+      const a = x >= bpp ? row[x - bpp] : 0;
+      const b = prev ? prev[x] : 0;
+      const c = prev && x >= bpp ? prev[x - bpp] : 0;
+      let out;
+      switch (filter) {
+        case 0: out = v; break;
+        case 1: out = (v + a) & 0xff; break;
+        case 2: out = (v + b) & 0xff; break;
+        case 3: out = (v + ((a + b) >> 1)) & 0xff; break;
+        case 4: {
+          const pa = Math.abs(b - c);
+          const pb = Math.abs(a - c);
+          const pc = Math.abs(a + b - 2 * c);
+          const pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+          out = (v + pred) & 0xff;
+          break;
         }
+        default: throw new Error(`bad PNG filter ${filter}`);
       }
-      px[i] = r;
-      px[i + 1] = g;
-      px[i + 2] = b;
-      px[i + 3] = 255;
+      row[x] = out;
     }
   }
-
-  // Box downsample SS x SS -> size x size RGBA buffer.
-  const out = Buffer.alloc(size * size * 4);
-  const area = SS * SS;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let a = 0;
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const j = ((y * SS + sy) * big + (x * SS + sx)) * 4;
-          r += px[j];
-          g += px[j + 1];
-          b += px[j + 2];
-          a += px[j + 3];
-        }
-      }
-      const o = (y * size + x) * 4;
-      out[o] = Math.round(r / area);
-      out[o + 1] = Math.round(g / area);
-      out[o + 2] = Math.round(b / area);
-      out[o + 3] = Math.round(a / area);
-    }
+  // Normalise to RGBA.
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    rgba[i * 4] = px[i * bpp];
+    rgba[i * 4 + 1] = px[i * bpp + 1];
+    rgba[i * 4 + 2] = px[i * bpp + 2];
+    rgba[i * 4 + 3] = bpp === 4 ? px[i * bpp + 3] : 255;
   }
-  return encodePng(out, size);
+  return { rgba, size: width };
 }
 
+// ------------------------------------------------------------ rasterising
+
+// Box-average resize of a square RGBA image (downscale or same size).
+function resizeSquare(src, srcSize, dstSize) {
+  if (srcSize === dstSize) return Buffer.from(src);
+  const out = Buffer.alloc(dstSize * dstSize * 4);
+  const scale = srcSize / dstSize;
+  for (let y = 0; y < dstSize; y++) {
+    for (let x = 0; x < dstSize; x++) {
+      const x0 = Math.floor(x * scale);
+      const x1 = Math.max(x0 + 1, Math.floor((x + 1) * scale));
+      const y0 = Math.floor(y * scale);
+      const y1 = Math.max(y0 + 1, Math.floor((y + 1) * scale));
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      for (let sy = y0; sy < y1 && sy < srcSize; sy++) {
+        for (let sx = x0; sx < x1 && sx < srcSize; sx++) {
+          const j = (sy * srcSize + sx) * 4;
+          r += src[j]; g += src[j + 1]; b += src[j + 2]; a += src[j + 3]; n++;
+        }
+      }
+      const o = (y * dstSize + x) * 4;
+      out[o] = Math.round(r / n);
+      out[o + 1] = Math.round(g / n);
+      out[o + 2] = Math.round(b / n);
+      out[o + 3] = Math.round(a / n);
+    }
+  }
+  return out;
+}
+
+function renderIcon(icon, size, { maskable = false } = {}) {
+  if (!maskable) return encodePng(resizeSquare(icon.rgba, icon.size, size), size);
+  // Maskable: white canvas, artwork centred at 80% (safe zone).
+  const inner = Math.round(size * 0.8);
+  const small = resizeSquare(icon.rgba, icon.size, inner);
+  const canvas = Buffer.alloc(size * size * 4);
+  for (let i = 0; i < size * size; i++) {
+    canvas[i * 4] = 255; canvas[i * 4 + 1] = 255; canvas[i * 4 + 2] = 255; canvas[i * 4 + 3] = 255;
+  }
+  const off = Math.round((size - inner) / 2);
+  for (let y = 0; y < inner; y++) {
+    small.copy(canvas, ((y + off) * size + off) * 4, y * inner * 4, (y + 1) * inner * 4);
+  }
+  return encodePng(canvas, size);
+}
+
+const icon = loadIconPixels();
 const dist = join(process.cwd(), "dist");
 const jobs = [
   ["icon-192.png", 192, {}],
@@ -187,6 +205,6 @@ const jobs = [
   ["icon-180.png", 180, {}],
 ];
 for (const [name, size, opts] of jobs) {
-  writeFileSync(join(dist, name), renderIcon(size, opts));
+  writeFileSync(join(dist, name), renderIcon(icon, size, opts));
   console.log(`generated dist/${name} (${size}x${size})`);
 }

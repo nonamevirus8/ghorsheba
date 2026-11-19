@@ -1,8 +1,8 @@
-# GhorSheba (ঘরসেবা)
+# MistriDako (মিস্ত্রি ডাকো)
 
 **Your Home. Our Responsibility.**
 
-GhorSheba is a home-service marketplace for Tangail, Bangladesh. It connects
+MistriDako is a home-service marketplace for Tangail, Bangladesh. It connects
 customers with verified local professionals — electricians, plumbers, masons,
 painters, carpenters, AC technicians, tile workers, cleaners and renovation
 contractors — through an admin-coordinated booking workflow.
@@ -12,15 +12,15 @@ and all prices are in Bangladeshi Taka (৳).
 
 ## Live site
 
-**https://ghorsheba-bd.vercel.app** — the production site (the portable
+**https://mistridako.vercel.app** — the production site (the portable
 edition in `portable/`, deployed on Vercel). The older deployment address
 https://ghorsheba-ashen.vercel.app still works too.
 
 The live site is also an **installable app (PWA)** — no Play Store / App
 Store needed. Open the **"অ্যাপ ডাউনলোড করুন"** page at
-https://ghorsheba-bd.vercel.app/#/download-app: on Android, tap the
+https://mistridako.vercel.app/#/download-app: on Android, tap the
 install button in Chrome; on iPhone/iPad, use Safari's Share →
-**Add to Home Screen**. Once installed, GhorSheba opens full-screen from
+**Add to Home Screen**. Once installed, MistriDako opens full-screen from
 the phone's home screen like a regular app.
 
 ## How it works

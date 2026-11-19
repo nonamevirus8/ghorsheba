@@ -1,7 +1,7 @@
 {
   "entry": "client/dist/index.html",
   "managedCronJobs": [],
-  "name": "GhorSheba",
+  "name": "MistriDako",
   "platformVersion": 29,
   "runtime": "typescript",
   "slug": "ghorsheba"

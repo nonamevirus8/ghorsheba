@@ -1,4 +1,4 @@
-// GhorSheba data model — mirrors the prompt's logical collections
+// MistriDako data model — mirrors the prompt's logical collections
 // (users, professionals, services, bookings, reviews, notifications,
 // complaints, locations, platformSettings, adminLogs) plus sessions
 // and booking status-history events.
@@ -360,7 +360,7 @@ export const settings = sqliteTable("settings", {
   // or hours, it simply omits the lines while these are empty.
   businessAddress: text("business_address"),
   officeHours: text("office_hours"),
-  // Manual-payment receiving number (Master Phase 3): the GhorSheba
+  // Manual-payment receiving number (Master Phase 3): the MistriDako
   // MFS number customers send their online payment to before submitting
   // the TrxID at checkout. Set by a finance/super admin in Platform
   // Settings; null until the owner configures a real number — the

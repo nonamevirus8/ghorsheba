@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiResponse } from "./api";
+import logoUrl from "./assets/logo.png";
 
 export type Catalog = ApiResponse<typeof api, "getCatalog">;
 export type Service = Catalog["services"][number];
@@ -106,8 +107,8 @@ export function SocialLinksRow({ dark = false }: { dark?: boolean }) {
           title={socialLabel(l)}
           className={
             dark
-              ? "grid place-items-center w-10 h-10 rounded-full bg-white/10 text-white hover:bg-[#FF8A00] transition-colors"
-              : "grid place-items-center w-10 h-10 rounded-full bg-[#F0FAF2] text-[#087A35] hover:bg-[#087A35] hover:text-white transition-colors"
+              ? "grid place-items-center w-10 h-10 rounded-full bg-white/10 text-white hover:bg-[#FF8500] transition-colors"
+              : "grid place-items-center w-10 h-10 rounded-full bg-[#F3F8F4] text-[#075B35] hover:bg-[#075B35] hover:text-white transition-colors"
           }
         >
           {socialIcon(l.platform, "w-5 h-5")}
@@ -145,11 +146,11 @@ export function ticketStatusColor(status: string): string {
     case "waiting_customer":
       return "bg-orange-100 text-orange-800";
     case "resolved":
-      return "bg-[#087A35] text-white";
+      return "bg-[#075B35] text-white";
     case "closed":
-      return "bg-[#E5EAE5] text-[#737B73]";
+      return "bg-[#E1E9E4] text-[#5C6B76]";
     default:
-      return "bg-[#E5EAE5] text-[#737B73]";
+      return "bg-[#E1E9E4] text-[#5C6B76]";
   }
 }
 
@@ -270,7 +271,7 @@ export function statusColor(status: string): string {
     case "completed":
     case "customer_confirmed":
     case "admin_reviewed":
-      return "bg-[#087a35] text-white";
+      return "bg-[#075B35] text-white";
     case "cancelled":
     case "rejected":
       return "bg-red-100 text-red-700";
@@ -489,8 +490,8 @@ export const Icon = {
     <svg
       className={c ?? "w-4 h-4"}
       viewBox="0 0 24 24"
-      fill={filled ? "#FF8A00" : "none"}
-      stroke="#FF8A00"
+      fill={filled ? "#FF8500" : "none"}
+      stroke="#FF8500"
       strokeWidth="1.8"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -699,26 +700,22 @@ export function ServiceIcon({ icon, className }: { icon: string; className?: str
 
 // ------------------------------------------------------------- components
 
+// The official MistriDako logo: the owner's supplied lockup file
+// (house + wrench icon, MistriDako wordmark, Bengali tagline) used
+// as-is — never redrawn, never stretched; aspect ratio preserved.
+// The artwork sits on white, so on dark surfaces (footer) it is
+// presented on a white plate, exactly as the file was delivered.
 export function Logo({ light = false, compact = false }: { light?: boolean; compact?: boolean }) {
   return (
-    <a href="#/" className="flex items-center gap-2 shrink-0" aria-label="GhorSheba হোম">
-      <span className="relative grid place-items-center w-10 h-10">
-        <svg viewBox="0 0 48 48" className="w-10 h-10" aria-hidden="true">
-          <path d="M6 22 24 7l18 15" fill="none" stroke="#087A35" strokeWidth="4" strokeLinecap="round" />
-          <path d="M11 20v16a2 2 0 0 0 2 2h22a2 2 0 0 0 2-2V20" fill="none" stroke="#087A35" strokeWidth="4" strokeLinecap="round" />
-          <path d="M24 33c-4.5-1.2-6.5-4.3-6.5-8.5 4.2 0 7.3 2 8.6 6.3" fill="#FF8A00" />
-          <path d="M24 33c.4-3.9 2.3-6.6 6-8-.3 4-2 7-6 8z" fill="#087A35" />
-        </svg>
-      </span>
-      <span className="leading-none">
-        <span className={`block text-[22px] font-bold font-en tracking-tight ${light ? "text-white" : "text-[#064B27]"}`}>
-          Ghor<span className="text-[#FF8A00]">Sheba</span>
-        </span>
-        {!compact && (
-          <span className={`block text-[10.5px] font-en mt-0.5 ${light ? "text-white/70" : "text-[#737B73]"}`}>
-            Your Home. Our Responsibility.
-          </span>
-        )}
+    <a href="#/" className="shrink-0 inline-block" aria-label="MistriDako হোম">
+      <span className={light ? "inline-block bg-white rounded-xl px-2.5 py-1.5 shadow-sm" : "inline-block"}>
+        <img
+          src={logoUrl}
+          alt="MistriDako — এক ডাকেই, ঘরের সমাধান।"
+          className={`${compact ? "h-9" : "h-11"} w-auto block`}
+          width={1200}
+          height={400}
+        />
       </span>
     </a>
   );
@@ -738,11 +735,11 @@ export function SectionTitle({ children, sub }: { children: ReactNode; sub?: str
   return (
     <div className="text-center mb-7">
       <div className="flex items-center justify-center gap-3">
-        <span className="h-[2.5px] w-10 sm:w-16 bg-[#087A35] rounded-full" />
-        <h2 className="text-[24px] sm:text-[30px] font-bold text-[#064B27] leading-snug">{children}</h2>
-        <span className="h-[2.5px] w-10 sm:w-16 bg-[#087A35] rounded-full" />
+        <span className="h-[2.5px] w-10 sm:w-16 bg-[#075B35] rounded-full" />
+        <h2 className="text-[24px] sm:text-[30px] font-bold text-[#054A2B] leading-snug">{children}</h2>
+        <span className="h-[2.5px] w-10 sm:w-16 bg-[#075B35] rounded-full" />
       </div>
-      {sub && <p className="mt-2 text-[15px] text-[#737B73] max-w-xl mx-auto">{sub}</p>}
+      {sub && <p className="mt-2 text-[15px] text-[#5C6B76] max-w-xl mx-auto">{sub}</p>}
     </div>
   );
 }
@@ -757,12 +754,12 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-[#cfe3d3] bg-[#F0FAF2] px-5 py-8 text-center">
-      <div className="mx-auto w-11 h-11 rounded-full bg-white grid place-items-center text-[#087A35] shadow-sm mb-3">
+    <div className="rounded-2xl border border-dashed border-[#C9DFD2] bg-[#F3F8F4] px-5 py-8 text-center">
+      <div className="mx-auto w-11 h-11 rounded-full bg-white grid place-items-center text-[#075B35] shadow-sm mb-3">
         {Icon.search("w-5 h-5")}
       </div>
-      <p className="font-semibold text-[#064B27]">{title}</p>
-      {body && <p className="mt-1 text-sm text-[#737B73] max-w-md mx-auto">{body}</p>}
+      <p className="font-semibold text-[#054A2B]">{title}</p>
+      {body && <p className="mt-1 text-sm text-[#5C6B76] max-w-md mx-auto">{body}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -770,8 +767,8 @@ export function EmptyState({
 
 export function Spinner({ label }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-3 py-10 text-[#737B73]" role="status">
-      <span className="w-5 h-5 rounded-full border-2 border-[#cfe3d3] border-t-[#087A35] animate-spin" />
+    <div className="flex items-center justify-center gap-3 py-10 text-[#5C6B76]" role="status">
+      <span className="w-5 h-5 rounded-full border-2 border-[#C9DFD2] border-t-[#075B35] animate-spin" />
       <span className="text-sm">{label ?? "লোড হচ্ছে…"}</span>
     </div>
   );
@@ -807,7 +804,7 @@ export function Avatar({
   const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? "").join("");
   return (
     <span
-      className={`${size} ${textSize} rounded-full bg-[#E2F4E7] text-[#064B27] font-bold grid place-items-center shrink-0`}
+      className={`${size} ${textSize} rounded-full bg-[#E4F1E8] text-[#054A2B] font-bold grid place-items-center shrink-0`}
       aria-hidden="true"
     >
       {initials || "?"}
@@ -825,22 +822,22 @@ export function PriceBlock({ service }: { service: Service }) {
   if (service.inspectionFee != null)
     rows.push({ label: "পরিদর্শন ফি", value: service.inspectionFee === 0 ? "ফ্রি" : bdt(service.inspectionFee) });
   return (
-    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-      <h3 className="font-bold text-[#064B27] mb-3">মূল্য তথ্য</h3>
+    <div className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+      <h3 className="font-bold text-[#054A2B] mb-3">মূল্য তথ্য</h3>
       {rows.length > 0 ? (
-        <dl className="divide-y divide-[#F0F3F0]">
+        <dl className="divide-y divide-[#EEF3F0]">
           {rows.map((r) => (
             <div key={r.label} className="flex items-center justify-between py-2 text-[15px]">
-              <dt className="text-[#737B73]">{r.label}</dt>
-              <dd className="font-semibold text-[#202820]">{r.value}</dd>
+              <dt className="text-[#5C6B76]">{r.label}</dt>
+              <dd className="font-semibold text-[#172B3A]">{r.value}</dd>
             </div>
           ))}
         </dl>
       ) : (
-        <p className="text-[15px] text-[#202820]">কাজের ধরন ও পরিমাণ অনুযায়ী মূল্য নির্ধারণ করা হবে।</p>
+        <p className="text-[15px] text-[#172B3A]">কাজের ধরন ও পরিমাণ অনুযায়ী মূল্য নির্ধারণ করা হবে।</p>
       )}
-      {service.priceNote && <p className="mt-3 text-sm text-[#737B73]">{service.priceNote}</p>}
-      <p className="mt-3 text-sm text-[#737B73]">
+      {service.priceNote && <p className="mt-3 text-sm text-[#5C6B76]">{service.priceNote}</p>}
+      <p className="mt-3 text-sm text-[#5C6B76]">
         বুকিং পাঠালে অ্যাডমিন কাজ দেখে চূড়ান্ত কোটেশন জানিয়ে দেবেন — কাজ শুরুর আগে আপনার সম্মতি ছাড়া কোনো মূল্য চূড়ান্ত হবে না।
       </p>
     </div>

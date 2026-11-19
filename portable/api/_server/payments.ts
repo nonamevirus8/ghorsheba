@@ -1,4 +1,4 @@
-// GhorSheba dual-payment money math — server-side only.
+// MistriDako dual-payment money math — server-side only.
 //
 // Pure functions: no database, no I/O. Every taka figure the platform
 // shows or stores for a dual-payment booking is computed here, on the
@@ -15,7 +15,7 @@
 //
 // Full Online (fee 0%, commission 10%):
 //   customer pays online ৳2,000 · customer fee ৳0 · commission ৳200
-//   held ৳2,000 · payout from held ৳1,800 · GhorSheba revenue ৳200
+//   held ৳2,000 · payout from held ৳1,800 · MistriDako revenue ৳200
 //
 // 50% Online + 50% Cash (fee 3%, commission 6%):
 //   online base ৳1,000 · customer fee ৳60 · customer pays online ৳1,060
@@ -65,7 +65,7 @@ export interface PaymentBreakdown {
   cashAmount: number;
   /** Professional commission (on calcBase). */
   proCommission: number;
-  /** Amount GhorSheba holds from the online collection for settlement. */
+  /** Amount MistriDako holds from the online collection for settlement. */
   heldAmount: number;
   /** Professional payout released from the held amount (held − commission). */
   proPayoutFromHeld: number;
@@ -73,7 +73,7 @@ export interface PaymentBreakdown {
   proCashReceived: number;
   /** Everything the professional receives: payout from held + cash. */
   proTotal: number;
-  /** GhorSheba revenue: customer fee + professional commission. */
+  /** MistriDako revenue: customer fee + professional commission. */
   ghorshebaRevenue: number;
 }
 
@@ -116,7 +116,7 @@ export function computeBreakdown(input: {
   const cashAmount = bill - onlineBase;
   const customerPaysOnline = onlineBase + customerFee;
 
-  // GhorSheba holds the online base (the customer fee is revenue, not
+  // MistriDako holds the online base (the customer fee is revenue, not
   // held). The professional's commission is deducted from the held
   // amount at settlement time.
   const heldAmount = onlineBase;

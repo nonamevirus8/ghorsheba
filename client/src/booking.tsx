@@ -109,10 +109,10 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
           body="বুকিং পাঠাতে একটি ফ্রি অ্যাকাউন্ট দরকার — যাতে আপনি বুকিংয়ের অবস্থা দেখতে ও আপডেট পেতে পারেন।"
           action={
             <span className="inline-flex gap-2">
-              <a href={`#/login?next=${encodeURIComponent(`/book?service=${serviceSlug}`)}`} className="bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">
+              <a href={`#/login?next=${encodeURIComponent(`/book?service=${serviceSlug}`)}`} className="bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">
                 লগইন
               </a>
-              <a href={`#/register?next=${encodeURIComponent(`/book?service=${serviceSlug}`)}`} className="border-[1.5px] border-[#087A35] text-[#087A35] font-semibold px-5 py-2.5 rounded-xl">
+              <a href={`#/register?next=${encodeURIComponent(`/book?service=${serviceSlug}`)}`} className="border-[1.5px] border-[#075B35] text-[#075B35] font-semibold px-5 py-2.5 rounded-xl">
                 নিবন্ধন
               </a>
             </span>
@@ -125,21 +125,21 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
   if (done) {
     return (
       <div className="max-w-xl mx-auto px-4 py-14">
-        <div className="rounded-3xl border border-[#cfe3d3] bg-[#F0FAF2] p-7 text-center gs-fade-up">
-          <span className="mx-auto grid place-items-center w-14 h-14 rounded-full bg-[#087A35] text-white">
+        <div className="rounded-3xl border border-[#C9DFD2] bg-[#F3F8F4] p-7 text-center gs-fade-up">
+          <span className="mx-auto grid place-items-center w-14 h-14 rounded-full bg-[#075B35] text-white">
             {Icon.check("w-7 h-7")}
           </span>
-          <h1 className="mt-4 text-[24px] font-bold text-[#064B27]">বুকিং রিকোয়েস্ট পাঠানো হয়েছে!</h1>
-          <p className="mt-2 text-[15px] text-[#4c584c] leading-relaxed">
-            আপনার বুকিং কোড: <b className="font-en text-[#064B27]">{done.code}</b>
+          <h1 className="mt-4 text-[24px] font-bold text-[#054A2B]">বুকিং রিকোয়েস্ট পাঠানো হয়েছে!</h1>
+          <p className="mt-2 text-[15px] text-[#43534B] leading-relaxed">
+            আপনার বুকিং কোড: <b className="font-en text-[#054A2B]">{done.code}</b>
             <br />
             বুকিংটি এখন <b>অপেক্ষমাণ</b> অবস্থায় আছে। অ্যাডমিন যাচাই করে উপযুক্ত প্রফেশনাল অ্যাসাইন করবেন এবং নিশ্চিত হলে আপনি নোটিফিকেশন পাবেন।
           </p>
           <div className="mt-6 flex flex-col sm:flex-row gap-2.5 justify-center">
-            <a href={`#/booking/${done.code}`} className="bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-3 rounded-xl">
+            <a href={`#/booking/${done.code}`} className="bg-[#075B35] hover:bg-[#054A2B] text-white font-bold px-5 py-3 rounded-xl">
               বুকিংটি দেখুন
             </a>
-            <a href="#/dashboard" className="border-[1.5px] border-[#087A35] text-[#087A35] font-semibold px-5 py-3 rounded-xl">
+            <a href="#/dashboard" className="border-[1.5px] border-[#075B35] text-[#075B35] font-semibold px-5 py-3 rounded-xl">
               আমার সব বুকিং
             </a>
           </div>
@@ -149,14 +149,14 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
   }
 
   return (
-    <div className="bg-[#FBFDFB] min-h-[70vh]">
+    <div className="bg-[#FAFCFB] min-h-[70vh]">
       <div className="max-w-2xl mx-auto px-4 py-8 lg:py-12">
-        <h1 className="text-[26px] sm:text-[30px] font-bold text-[#064B27]">বুকিং করুন</h1>
-        <p className="mt-1.5 text-[15px] text-[#737B73]">
+        <h1 className="text-[26px] sm:text-[30px] font-bold text-[#054A2B]">বুকিং করুন</h1>
+        <p className="mt-1.5 text-[15px] text-[#5C6B76]">
           কাজের বিবরণ দিন — অ্যাডমিন যাচাই করে প্রফেশনাল অ্যাসাইন করে বুকিং নিশ্চিত করবেন।
         </p>
         <form
-          className="mt-6 bg-white rounded-3xl border border-[#E5EAE5] p-5 sm:p-7 grid sm:grid-cols-2 gap-4"
+          className="mt-6 bg-white rounded-3xl border border-[#E1E9E4] p-5 sm:p-7 grid sm:grid-cols-2 gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             setError("");
@@ -180,10 +180,10 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
               ))}
             </select>
             {proId && chosen && (
-              <p className="mt-1.5 text-[13.5px] text-[#087A35]">আপনি একজন নির্দিষ্ট প্রফেশনালকে বেছে নিয়েছেন — অ্যাডমিন তাকেই অ্যাসাইন করার চেষ্টা করবেন।</p>
+              <p className="mt-1.5 text-[13.5px] text-[#075B35]">আপনি একজন নির্দিষ্ট প্রফেশনালকে বেছে নিয়েছেন — অ্যাডমিন তাকেই অ্যাসাইন করার চেষ্টা করবেন।</p>
             )}
             {chosen && !proId && (
-              <p className="mt-1.5 text-[13.5px] text-[#737B73]">মূল্য: কাজের ধরন ও পরিমাণ অনুযায়ী নির্ধারণ করা হবে।</p>
+              <p className="mt-1.5 text-[13.5px] text-[#5C6B76]">মূল্য: কাজের ধরন ও পরিমাণ অনুযায়ী নির্ধারণ করা হবে।</p>
             )}
           </div>
           <div>
@@ -228,9 +228,9 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
           </div>
           <div>
             <span className={labelCls}>কাজের ছবি (ঐচ্ছিক, সর্বোচ্চ ৩টি)</span>
-            <label className="flex items-center gap-3 border border-dashed border-[#cfe3d3] rounded-xl px-3.5 py-3 cursor-pointer hover:bg-[#F0FAF2]">
-              <span className="text-[#087A35]">{Icon.camera("w-5 h-5")}</span>
-              <span className="text-sm text-[#4c584c] truncate">
+            <label className="flex items-center gap-3 border border-dashed border-[#C9DFD2] rounded-xl px-3.5 py-3 cursor-pointer hover:bg-[#F3F8F4]">
+              <span className="text-[#075B35]">{Icon.camera("w-5 h-5")}</span>
+              <span className="text-sm text-[#43534B] truncate">
                 {photoNames.length ? photoNames.join(", ") : "সমস্যার ছবি যোগ করুন"}
               </span>
               <input
@@ -287,7 +287,7 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
           <button
             type="submit"
             disabled={create.isPending}
-            className="sm:col-span-2 w-full bg-[#FF8A00] hover:bg-[#E67A00] disabled:opacity-60 text-white font-bold text-[17px] py-3.5 rounded-xl"
+            className="sm:col-span-2 w-full bg-[#FF8500] hover:bg-[#E67600] disabled:opacity-60 text-white font-bold text-[17px] py-3.5 rounded-xl"
           >
             {create.isPending ? "পাঠানো হচ্ছে…" : "বুকিং রিকোয়েস্ট পাঠান"}
           </button>
@@ -302,7 +302,7 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
 // The customer-facing half of the Dual Payment system (Master Phase 3).
 // Every taka figure below comes from the server (`getPaymentQuote` /
 // the submit response) — the client never computes a breakdown itself.
-// Manual TrxID: the customer sends money to GhorSheba's MFS number
+// Manual TrxID: the customer sends money to MistriDako's MFS number
 // (set by an admin in Platform Settings) and submits the TrxID; an admin
 // verifies it before anything counts as paid.
 // Master Phase 8 adds the SSLCOMMERZ sandbox gateway as an ADDITIONAL
@@ -340,7 +340,7 @@ export const PAYMENT_STATUS_BN: Record<string, string> = {
 export function PaymentStatusChip({ status }: { status: string }) {
   const cls =
     status === "verified"
-      ? "bg-[#087A35] text-white"
+      ? "bg-[#075B35] text-white"
       : status === "pending" || status === "initiated"
         ? "bg-amber-100 text-amber-800"
         : status === "refunded"
@@ -380,13 +380,13 @@ export function BreakdownRows({ bd }: { bd: PaymentBreakdownView }) {
     value: bdt(bd.proCommission),
   });
   rows.push({ label: "প্রফেশনাল মোট পাবেন", value: bdt(bd.proTotal) });
-  rows.push({ label: "ঘরসেবার আয় (ফি + কমিশন)", value: bdt(bd.ghorshebaRevenue) });
+  rows.push({ label: "মিস্ত্রি ডাকোর আয় (ফি + কমিশন)", value: bdt(bd.ghorshebaRevenue) });
   return (
     <dl className="space-y-1.5 text-[14px]">
       {rows.map((r) => (
         <div key={r.label} className="flex items-baseline justify-between gap-4">
-          <dt className="text-[#737B73]">{r.label}</dt>
-          <dd className={`font-en whitespace-nowrap ${r.strong ? "font-bold text-[#064B27] text-[15px]" : "font-medium"}`}>
+          <dt className="text-[#5C6B76]">{r.label}</dt>
+          <dd className={`font-en whitespace-nowrap ${r.strong ? "font-bold text-[#054A2B] text-[15px]" : "font-medium"}`}>
             {r.value}
           </dd>
         </div>
@@ -508,8 +508,8 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
   if (quote.isPending) return <Spinner label="পেমেন্টের হিসাব লোড হচ্ছে…" />;
   if (quote.isError) {
     return (
-      <div className="mt-8 border-t border-[#F0F3F0] pt-6">
-        <h2 className="font-bold text-[#064B27]">অনলাইন পেমেন্ট</h2>
+      <div className="mt-8 border-t border-[#EEF3F0] pt-6">
+        <h2 className="font-bold text-[#054A2B]">অনলাইন পেমেন্ট</h2>
         <div className="mt-3">
           <ErrorBox message={errMsg(quote.error)} />
         </div>
@@ -524,20 +524,20 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
   const selected = q.options.find((o) => o.paymentModel === activeModel) ?? q.options[0]!;
 
   return (
-    <section className="mt-8 border-t border-[#F0F3F0] pt-6" aria-label="অনলাইন পেমেন্ট">
-      <h2 className="font-bold text-[#064B27]">অনলাইন পেমেন্ট</h2>
+    <section className="mt-8 border-t border-[#EEF3F0] pt-6" aria-label="অনলাইন পেমেন্ট">
+      <h2 className="font-bold text-[#054A2B]">অনলাইন পেমেন্ট</h2>
 
       {verified ? (
-        <div className="mt-3 rounded-2xl border border-[#cfe3d3] bg-[#F0FAF2] p-4">
-          <p className="font-semibold text-[#064B27] flex items-center gap-2">
+        <div className="mt-3 rounded-2xl border border-[#C9DFD2] bg-[#F3F8F4] p-4">
+          <p className="font-semibold text-[#054A2B] flex items-center gap-2">
             {Icon.checkCircle("w-5 h-5")} আপনার অনলাইন পেমেন্ট যাচাই সম্পন্ন হয়েছে
           </p>
-          <p className="mt-1.5 text-sm text-[#4c584c]">
+          <p className="mt-1.5 text-sm text-[#43534B]">
             {bdt(verified.amount)} • {PROVIDER_BN[verified.provider] ?? providerEn(verified.provider)} •{" "}
             {verified.method === "sslcommerz" ? "Tran ID" : "TrxID"}:{" "}
             <span className="font-en">{verified.providerTrxId}</span> • {PAYMENT_MODEL_BN[verified.paymentModel]}
           </p>
-          <a href="#/dashboard?tab=payments" className="mt-2 inline-block text-sm font-semibold text-[#087A35] hover:underline">
+          <a href="#/dashboard?tab=payments" className="mt-2 inline-block text-sm font-semibold text-[#075B35] hover:underline">
             পেমেন্ট হিস্ট্রিতে রসিদ দেখুন
           </a>
         </div>
@@ -558,11 +558,11 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
         </div>
       ) : (
         <>
-          <p className="mt-1.5 text-sm text-[#737B73]">
+          <p className="mt-1.5 text-sm text-[#5C6B76]">
             তিনটি সহজ ধাপে পেমেন্ট সম্পন্ন করুন। সব হিসাব সার্ভার থেকে এসেছে — মূল্য নিশ্চিত হওয়ার সময়ের হারেই হিসাব হয়েছে।
           </p>
-          <h3 className="mt-5 font-bold text-[#064B27] flex items-center gap-2">
-            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#087A35] text-white text-[13px] font-bold">১</span>
+          <h3 className="mt-5 font-bold text-[#054A2B] flex items-center gap-2">
+            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#075B35] text-white text-[13px] font-bold">১</span>
             পেমেন্ট পদ্ধতি বেছে নিন
           </h3>
           <div className="mt-3 grid md:grid-cols-2 gap-3.5" role="radiogroup" aria-label="পেমেন্ট পদ্ধতি">
@@ -579,12 +579,12 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
                     setModelTouched(true);
                   }}
                   className={`text-left rounded-2xl border-2 p-4 transition-colors ${
-                    isActive ? "border-[#087A35] bg-[#F0FAF2]" : "border-[#E5EAE5] bg-white hover:border-[#cfe3d3]"
+                    isActive ? "border-[#075B35] bg-[#F3F8F4]" : "border-[#E1E9E4] bg-white hover:border-[#C9DFD2]"
                   }`}
                 >
                   <span className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-[#064B27]">{PAYMENT_MODEL_BN[o.paymentModel]}</span>
-                    {isActive && <span className="text-[#087A35]">{Icon.checkCircle("w-5 h-5")}</span>}
+                    <span className="font-bold text-[#054A2B]">{PAYMENT_MODEL_BN[o.paymentModel]}</span>
+                    {isActive && <span className="text-[#075B35]">{Icon.checkCircle("w-5 h-5")}</span>}
                   </span>
                   <span className="mt-3 block">
                     <BreakdownRows bd={o} />
@@ -595,9 +595,9 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
           </div>
 
           {q.sslcommerzEnabled && (
-            <div className="mt-4 rounded-2xl border border-[#cfe3d3] bg-white p-4">
-              <p className="font-semibold text-[#064B27]">কার্ড / মোবাইল ব্যাংকিং — SSLCOMMERZ গেটওয়ে</p>
-              <p className="mt-1 text-sm text-[#4c584c]">
+            <div className="mt-4 rounded-2xl border border-[#C9DFD2] bg-white p-4">
+              <p className="font-semibold text-[#054A2B]">কার্ড / মোবাইল ব্যাংকিং — SSLCOMMERZ গেটওয়ে</p>
+              <p className="mt-1 text-sm text-[#43534B]">
                 <span className="font-en font-semibold">Sandbox (পরীক্ষামূলক)</span> গেটওয়ে — এখানে কোনো আসল টাকা কাটা হবে না।
                 গেটওয়ের পেজে পেমেন্ট শেষ করে ফিরে এলে সার্ভার যাচাই (Order Validation) সম্পন্ন হলেই পেমেন্ট সফল বলে গণ্য হবে —
                 শুধু ফিরে আসা মানেই পেমেন্ট সফল নয়।
@@ -614,32 +614,32 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
                   setGwError("");
                   gateway.mutate(activeModel);
                 }}
-                className="mt-3 w-full sm:w-auto bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-6 py-3 rounded-xl"
+                className="mt-3 w-full sm:w-auto bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-6 py-3 rounded-xl"
               >
                 {gateway.isPending
                   ? "গেটওয়েতে নেওয়া হচ্ছে…"
                   : `SSLCOMMERZ দিয়ে পেমেন্ট করুন — ${bdt(selected.customerPaysOnline)}`}
               </button>
-              <p className="mt-2 text-[13px] text-[#737B73]">
+              <p className="mt-2 text-[13px] text-[#5C6B76]">
                 Pathao Pay: শীঘ্রই আসছে — এর কোনো পাবলিক মার্চেন্ট API নেই, তাই এখন এটি দিয়ে পেমেন্ট নেওয়া হয় না।
               </p>
             </div>
           )}
 
-          <h3 className="mt-6 font-bold text-[#064B27] flex items-center gap-2">
-            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#087A35] text-white text-[13px] font-bold">২</span>
+          <h3 className="mt-6 font-bold text-[#054A2B] flex items-center gap-2">
+            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#075B35] text-white text-[13px] font-bold">২</span>
             টাকা পাঠান
           </h3>
-          <p className="mt-1.5 text-sm text-[#737B73]">নিচের নম্বরে টাকা পাঠিয়ে TrxIDটি সংরক্ষণ করুন।</p>
+          <p className="mt-1.5 text-sm text-[#5C6B76]">নিচের নম্বরে টাকা পাঠিয়ে TrxIDটি সংরক্ষণ করুন।</p>
 
           {q.paymentReceiveNumber ? (
-            <div className="mt-4 rounded-2xl bg-[#F0FAF2] border border-[#cfe3d3] p-4 text-[15px]">
-              <p className="font-semibold text-[#064B27]">টাকা পাঠানোর নম্বর</p>
+            <div className="mt-4 rounded-2xl bg-[#F3F8F4] border border-[#C9DFD2] p-4 text-[15px]">
+              <p className="font-semibold text-[#054A2B]">টাকা পাঠানোর নম্বর</p>
               <p className="mt-1">
                 {q.paymentReceiveProvider ? `${PROVIDER_BN[q.paymentReceiveProvider] ?? providerEn(q.paymentReceiveProvider)} — ` : ""}
-                <b className="font-en text-[17px]">{q.paymentReceiveNumber}</b> (ঘরসেবার অফিসিয়াল নম্বর)
+                <b className="font-en text-[17px]">{q.paymentReceiveNumber}</b> (মিস্ত্রি ডাকোর অফিসিয়াল নম্বর)
               </p>
-              <p className="mt-1 text-sm text-[#4c584c]">
+              <p className="mt-1 text-sm text-[#43534B]">
                 এই নম্বরে <b className="font-en">{bdt(selected.customerPaysOnline)}</b> পাঠিয়ে নিচে TrxID জমা দিন।
                 অ্যাডমিন যাচাই করার পরই পেমেন্ট সফল বলে গণ্য হবে।
               </p>
@@ -650,8 +650,8 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
             </div>
           )}
 
-          <h3 className="mt-6 font-bold text-[#064B27] flex items-center gap-2">
-            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#087A35] text-white text-[13px] font-bold">৩</span>
+          <h3 className="mt-6 font-bold text-[#054A2B] flex items-center gap-2">
+            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#075B35] text-white text-[13px] font-bold">৩</span>
             TrxID জমা দিন
           </h3>
           <form
@@ -678,7 +678,7 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
             </div>
             <div>
               <label className={labelCls} htmlFor="co-amount">পাঠানো টাকার পরিমাণ</label>
-              <input id="co-amount" className={`${inputCls} font-en bg-[#F7FAF7]`} value={bdt(selected.customerPaysOnline)} readOnly aria-readonly="true" />
+              <input id="co-amount" className={`${inputCls} font-en bg-[#F5F9F6]`} value={bdt(selected.customerPaysOnline)} readOnly aria-readonly="true" />
             </div>
             <div>
               <label className={labelCls} htmlFor="co-trx">TrxID / Transaction ID *</label>
@@ -711,14 +711,14 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
               </div>
             )}
             {done && (
-              <p className="sm:col-span-2 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+              <p className="sm:col-span-2 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">
                 পেমেন্ট জমা হয়েছে — অ্যাডমিন যাচাই করলে নোটিফিকেশন পাবেন।
               </p>
             )}
             <button
               type="submit"
               disabled={submit.isPending || !q.paymentReceiveNumber}
-              className="sm:col-span-2 bg-[#FF8A00] hover:bg-[#E67A00] disabled:opacity-60 text-white font-bold py-3 rounded-xl"
+              className="sm:col-span-2 bg-[#FF8500] hover:bg-[#E67600] disabled:opacity-60 text-white font-bold py-3 rounded-xl"
             >
               {submit.isPending ? "জমা হচ্ছে…" : `TrxID জমা দিন — ${bdt(selected.customerPaysOnline)}`}
             </button>
@@ -733,9 +733,9 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
 
 const QUOTATION_STATUS_BN: Record<string, { label: string; cls: string }> = {
   pending_approval: { label: "অনুমোদনের অপেক্ষায়", cls: "bg-amber-100 text-amber-800" },
-  approved: { label: "অনুমোদিত", cls: "bg-[#087a35] text-white" },
+  approved: { label: "অনুমোদিত", cls: "bg-[#075B35] text-white" },
   rejected: { label: "গৃহীত হয়নি", cls: "bg-red-100 text-red-700" },
-  superseded: { label: "নতুন কোটেশন এসেছে", cls: "bg-[#F0F3F0] text-[#737B73]" },
+  superseded: { label: "নতুন কোটেশন এসেছে", cls: "bg-[#EEF3F0] text-[#5C6B76]" },
 };
 
 /**
@@ -838,9 +838,9 @@ export function QuotationPanel({
     Number(labour || 0) + Number(materials || 0) + Number(transport || 0) + Number(additional || 0);
   const quotations = list.data?.quotations ?? [];
   return (
-    <section aria-label="কোটেশন" className="mt-8 border-t border-[#F0F3F0] pt-6">
-      <h2 className="font-bold text-[#064B27]">কোটেশন ও মূল্য</h2>
-      <p className="mt-1 text-sm text-[#737B73]">
+    <section aria-label="কোটেশন" className="mt-8 border-t border-[#EEF3F0] pt-6">
+      <h2 className="font-bold text-[#054A2B]">কোটেশন ও মূল্য</h2>
+      <p className="mt-1 text-sm text-[#5C6B76]">
         {booking.finalPrice != null
           ? booking.priceFinalizedVia === "quotation"
             ? "মূল্য গ্রাহক-অনুমোদিত কোটেশনে চূড়ান্ত হয়েছে। অতিরিক্ত কাজ লাগলে নতুন কোটেশন ও আবার অনুমোদন লাগবে।"
@@ -848,11 +848,11 @@ export function QuotationPanel({
           : "আইটেমভিত্তিক কোটেশন তৈরি হলে গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে — তার আগে পেমেন্ট করা যাবে না।"}
       </p>
       {booking.couponCode && booking.couponDiscount != null && (
-        <p className="mt-2 inline-block rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-[13px] font-semibold px-3 py-1.5">
+        <p className="mt-2 inline-block rounded-lg bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-[13px] font-semibold px-3 py-1.5">
           কুপন <span className="font-en">{booking.couponCode}</span> প্রয়োগ হয়েছে — যোগ্য চার্জে {bdt(booking.couponDiscount)} ছাড় পেয়েছেন।
         </p>
       )}
-      {msg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{msg}</p>}
+      {msg && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-2.5">{msg}</p>}
       {error && (
         <div className="mt-3">
           <ErrorBox message={error} />
@@ -861,34 +861,34 @@ export function QuotationPanel({
       {list.isPending ? (
         <Spinner label="কোটেশন লোড হচ্ছে…" />
       ) : quotations.length === 0 ? (
-        <p className="mt-3 text-sm text-[#737B73]">এখনো কোনো কোটেশন তৈরি হয়নি।</p>
+        <p className="mt-3 text-sm text-[#5C6B76]">এখনো কোনো কোটেশন তৈরি হয়নি।</p>
       ) : (
         <div className="mt-4 space-y-3">
           {quotations.map((q) => {
-            const st = QUOTATION_STATUS_BN[q.status] ?? { label: q.status, cls: "bg-[#F0F3F0] text-[#4c584c]" };
+            const st = QUOTATION_STATUS_BN[q.status] ?? { label: q.status, cls: "bg-[#EEF3F0] text-[#43534B]" };
             return (
-              <div key={q.id} className="rounded-2xl border border-[#E5EAE5] p-4">
+              <div key={q.id} className="rounded-2xl border border-[#E1E9E4] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-bold text-[15px]">
                     {q.kind === "additional" ? "অতিরিক্ত কাজের কোটেশন" : "কোটেশন"} — {bdt(q.totalAmount)}
                   </p>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
                 </div>
-                <p className="mt-0.5 text-[13px] text-[#737B73]">
+                <p className="mt-0.5 text-[13px] text-[#5C6B76]">
                   {q.createdByRole === "admin" ? "অ্যাডমিন" : "প্রফেশনাল"}: {q.createdByName} • {fmtDateTime(q.createdAt)}
                   {q.decidedAt ? ` • সিদ্ধান্ত: ${fmtDateTime(q.decidedAt)}` : ""}
                 </p>
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">শ্রম / সার্ভিস চার্জ</dt><dd className="font-semibold">{bdt(q.labourCharge)}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">মালামাল</dt><dd className="font-semibold">{bdt(q.materialsCharge)}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">যাতায়াত</dt><dd className="font-semibold">{bdt(q.transportCharge)}</dd></div>
-                  <div className="flex justify-between gap-2"><dt className="text-[#737B73]">অতিরিক্ত চার্জ</dt><dd className="font-semibold">{bdt(q.additionalCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#5C6B76]">শ্রম / সার্ভিস চার্জ</dt><dd className="font-semibold">{bdt(q.labourCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#5C6B76]">মালামাল</dt><dd className="font-semibold">{bdt(q.materialsCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#5C6B76]">যাতায়াত</dt><dd className="font-semibold">{bdt(q.transportCharge)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt className="text-[#5C6B76]">অতিরিক্ত চার্জ</dt><dd className="font-semibold">{bdt(q.additionalCharge)}</dd></div>
                 </dl>
-                {q.note && <p className="mt-2 text-sm text-[#4c584c]">{q.note}</p>}
+                {q.note && <p className="mt-2 text-sm text-[#43534B]">{q.note}</p>}
                 {isOwnerCustomer && q.status === "pending_approval" && (
                   <div className="mt-3">
                     {q.kind === "initial" && (
-                      <div className="mb-3 rounded-xl bg-[#F8FAF8] border border-[#E5EAE5] p-3">
+                      <div className="mb-3 rounded-xl bg-[#F6FAF7] border border-[#E1E9E4] p-3">
                         <label className={labelCls} htmlFor={`cpn-${q.id}`}>কুপন কোড (যদি থাকে)</label>
                         <div className="flex gap-2">
                           <input
@@ -914,18 +914,18 @@ export function QuotationPanel({
                               }
                               checkCoupon.mutate(couponCode.trim());
                             }}
-                            className="shrink-0 bg-white border-[1.5px] border-[#cfe3d3] text-[#064B27] font-semibold text-sm px-4 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60"
+                            className="shrink-0 bg-white border-[1.5px] border-[#C9DFD2] text-[#054A2B] font-semibold text-sm px-4 rounded-xl hover:bg-[#F3F8F4] disabled:opacity-60"
                           >
                             যাচাই করুন
                           </button>
                         </div>
                         {couponInfo && (
-                          <p className="mt-2 text-sm text-[#064B27] font-semibold">
+                          <p className="mt-2 text-sm text-[#054A2B] font-semibold">
                             কুপন <span className="font-en">{couponInfo.code}</span> প্রযোজ্য — ছাড় {bdt(couponInfo.discount)}, অনুমোদনের পর মূল্য হবে {bdt(couponInfo.discountedTotal)}।
                           </p>
                         )}
                         {couponError && <p className="mt-2 text-sm font-semibold text-red-700">{couponError}</p>}
-                        <p className="mt-1.5 text-[12.5px] text-[#737B73]">ছাড় যোগ্য চার্জের (শ্রম + অতিরিক্ত) উপর প্রযোজ্য হয়; অনুমোদনের সময় সার্ভার আবার যাচাই করে।</p>
+                        <p className="mt-1.5 text-[12.5px] text-[#5C6B76]">ছাড় যোগ্য চার্জের (শ্রম + অতিরিক্ত) উপর প্রযোজ্য হয়; অনুমোদনের সময় সার্ভার আবার যাচাই করে।</p>
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2">
@@ -939,7 +939,7 @@ export function QuotationPanel({
                             couponCode: q.kind === "initial" && couponCode.trim() ? couponCode.trim() : undefined,
                           })
                         }
-                        className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl"
+                        className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl"
                       >
                         অনুমোদন করুন — মূল্য চূড়ান্ত হবে
                       </button>
@@ -961,7 +961,7 @@ export function QuotationPanel({
       )}
       {canCreate && (
         <form
-          className="mt-5 rounded-2xl bg-[#F8FAF8] border border-[#E5EAE5] p-4"
+          className="mt-5 rounded-2xl bg-[#F6FAF7] border border-[#E1E9E4] p-4"
           onSubmit={(e) => {
             e.preventDefault();
             setError("");
@@ -969,7 +969,7 @@ export function QuotationPanel({
             create.mutate();
           }}
         >
-          <p className="font-bold text-[15px] text-[#064B27]">নতুন কোটেশন তৈরি করুন</p>
+          <p className="font-bold text-[15px] text-[#054A2B]">নতুন কোটেশন তৈরি করুন</p>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className={labelCls} htmlFor={`q-kind-${booking.id}`}>ধরন</label>
@@ -1004,11 +1004,11 @@ export function QuotationPanel({
               <input id={`q-note-${booking.id}`} className={inputCls} {...FIELDS.createQuotation.note} value={note} onChange={(e) => setNote(e.target.value)} placeholder="কাজের বিবরণ বা শর্ত" />
             </div>
           </div>
-          <p className="mt-2.5 text-sm text-[#4c584c]">
+          <p className="mt-2.5 text-sm text-[#43534B]">
             মোট: <b className="font-en">{bdt(total)}</b>
-            <span className="text-[#737B73]"> • কমিশনের ভিত্তি হবে শ্রম + অতিরিক্ত চার্জ (মালামাল ও যাতায়াত বাদে)</span>
+            <span className="text-[#5C6B76]"> • কমিশনের ভিত্তি হবে শ্রম + অতিরিক্ত চার্জ (মালামাল ও যাতায়াত বাদে)</span>
           </p>
-          <button type="submit" disabled={create.isPending || total <= 0} className="mt-3 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl">
+          <button type="submit" disabled={create.isPending || total <= 0} className="mt-3 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-5 py-2.5 rounded-xl">
             {create.isPending ? "পাঠানো হচ্ছে…" : "কোটেশন পাঠান — গ্রাহকের অনুমোদন লাগবে"}
           </button>
         </form>
@@ -1125,7 +1125,7 @@ export function BookingDetailPage({ code }: { code: string }) {
         <EmptyState
           title="লগইন প্রয়োজন"
           body="বুকিংয়ের বিবরণ দেখতে লগইন করুন।"
-          action={<a href="#/login" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">লগইন করুন</a>}
+          action={<a href="#/login" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">লগইন করুন</a>}
         />
       </div>
     );
@@ -1153,15 +1153,15 @@ export function BookingDetailPage({ code }: { code: string }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 lg:py-12">
-      <button type="button" onClick={() => go(role === "professional" ? "/pro-dashboard" : role === "admin" ? "/admin" : "/dashboard")} className="inline-flex items-center gap-1.5 text-[#087A35] font-medium text-[15px] hover:underline">
+      <button type="button" onClick={() => go(role === "professional" ? "/pro-dashboard" : role === "admin" ? "/admin" : "/dashboard")} className="inline-flex items-center gap-1.5 text-[#075B35] font-medium text-[15px] hover:underline">
         {Icon.arrowLeft("w-4 h-4")} ড্যাশবোর্ডে ফিরুন
       </button>
-      <div className="mt-4 rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-7">
+      <div className="mt-4 rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-[24px] font-bold text-[#064B27]">{b.serviceName}</h1>
-            <p className="text-sm text-[#737B73]">
-              বুকিং কোড: <span className="font-en font-semibold text-[#202820]">{b.code}</span> • {fmtDateTime(b.createdAt)}
+            <h1 className="text-[24px] font-bold text-[#054A2B]">{b.serviceName}</h1>
+            <p className="text-sm text-[#5C6B76]">
+              বুকিং কোড: <span className="font-en font-semibold text-[#172B3A]">{b.code}</span> • {fmtDateTime(b.createdAt)}
             </p>
           </div>
           <BookingStatusChip status={b.status} stage={b.stage} />
@@ -1178,7 +1178,7 @@ export function BookingDetailPage({ code }: { code: string }) {
               const idx = STAGE_ORDER.indexOf(b.stage as (typeof STAGE_ORDER)[number]);
               const active = idx >= 0 && STAGE_ORDER.indexOf(s) <= idx;
               return (
-                <li key={s} className={`rounded-lg px-1 py-2 text-center text-[11px] sm:text-xs font-semibold ${active ? "bg-[#087A35] text-white" : "bg-[#F0F3F0] text-[#737B73]"}`}>
+                <li key={s} className={`rounded-lg px-1 py-2 text-center text-[11px] sm:text-xs font-semibold ${active ? "bg-[#075B35] text-white" : "bg-[#EEF3F0] text-[#5C6B76]"}`}>
                   {STAGE_BN[s]}
                 </li>
               );
@@ -1197,16 +1197,16 @@ export function BookingDetailPage({ code }: { code: string }) {
         )}
 
         <dl className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-3 text-[15px]">
-          <div><dt className="text-[#737B73] text-[13px]">গ্রাহক</dt><dd className="font-medium">{b.customerName} • <span className="font-en">{b.phone}</span></dd></div>
-          <div><dt className="text-[#737B73] text-[13px]">প্রফেশনাল</dt><dd className="font-medium">{b.professionalName ?? "এখনো অ্যাসাইন হয়নি"}</dd></div>
-          <div><dt className="text-[#737B73] text-[13px]">ঠিকানা</dt><dd className="font-medium">{b.address}{b.area ? `, ${b.area}` : ""}, {b.upazila}, {b.district}</dd></div>
-          <div><dt className="text-[#737B73] text-[13px]">পছন্দের সময়</dt><dd className="font-medium">{fmtDate(b.preferredDate)} • {b.preferredTime}</dd></div>
-          <div className="sm:col-span-2"><dt className="text-[#737B73] text-[13px]">কাজের বিবরণ</dt><dd className="font-medium leading-relaxed">{b.description}</dd></div>
+          <div><dt className="text-[#5C6B76] text-[13px]">গ্রাহক</dt><dd className="font-medium">{b.customerName} • <span className="font-en">{b.phone}</span></dd></div>
+          <div><dt className="text-[#5C6B76] text-[13px]">প্রফেশনাল</dt><dd className="font-medium">{b.professionalName ?? "এখনো অ্যাসাইন হয়নি"}</dd></div>
+          <div><dt className="text-[#5C6B76] text-[13px]">ঠিকানা</dt><dd className="font-medium">{b.address}{b.area ? `, ${b.area}` : ""}, {b.upazila}, {b.district}</dd></div>
+          <div><dt className="text-[#5C6B76] text-[13px]">পছন্দের সময়</dt><dd className="font-medium">{fmtDate(b.preferredDate)} • {b.preferredTime}</dd></div>
+          <div className="sm:col-span-2"><dt className="text-[#5C6B76] text-[13px]">কাজের বিবরণ</dt><dd className="font-medium leading-relaxed">{b.description}</dd></div>
           {b.instructions && (
-            <div className="sm:col-span-2"><dt className="text-[#737B73] text-[13px]">অতিরিক্ত নির্দেশনা</dt><dd className="font-medium">{b.instructions}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-[#5C6B76] text-[13px]">অতিরিক্ত নির্দেশনা</dt><dd className="font-medium">{b.instructions}</dd></div>
           )}
           <div>
-            <dt className="text-[#737B73] text-[13px]">মূল্য</dt>
+            <dt className="text-[#5C6B76] text-[13px]">মূল্য</dt>
             <dd className="font-medium">
               {b.finalPrice != null ? (
                 <>৳{b.finalPrice.toLocaleString("bn-BD")} ({b.paymentStatus === "cash_paid" ? "ক্যাশে পরিশোধিত" : "পরিশোধ বাকি"})</>
@@ -1219,16 +1219,16 @@ export function BookingDetailPage({ code }: { code: string }) {
 
         {b.photoUrls.length > 0 && (
           <div className="mt-5">
-            <p className="text-[13px] text-[#737B73] mb-2">কাজের ছবি</p>
+            <p className="text-[13px] text-[#5C6B76] mb-2">কাজের ছবি</p>
             <div className="flex flex-wrap gap-3">
               {b.photoUrls.map((u, i) => (
-                <img key={i} src={u} alt={`কাজের ছবি ${i + 1}`} className="w-28 h-28 object-cover rounded-xl border border-[#E5EAE5]" loading="lazy" />
+                <img key={i} src={u} alt={`কাজের ছবি ${i + 1}`} className="w-28 h-28 object-cover rounded-xl border border-[#E1E9E4]" loading="lazy" />
               ))}
             </div>
           </div>
         )}
 
-        {msg && <p className="mt-5 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{msg}</p>}
+        {msg && <p className="mt-5 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">{msg}</p>}
         {actionError && (
           <div className="mt-5">
             <ErrorBox message={actionError} />
@@ -1242,17 +1242,17 @@ export function BookingDetailPage({ code }: { code: string }) {
               type="button"
               disabled={confirmDone.isPending}
               onClick={() => confirmDone.mutate(b.id)}
-              className="bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60"
+              className="bg-[#075B35] hover:bg-[#054A2B] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60"
             >
               কাজ সম্পন্ন নিশ্চিত করুন
             </button>
           )}
           {isOwner && b.stage === "in_progress" && (
-            <p className="text-sm text-[#737B73]">প্রফেশনাল কাজ শেষ বলে জানালে আপনি সম্পন্ন নিশ্চিত করতে পারবেন।</p>
+            <p className="text-sm text-[#5C6B76]">প্রফেশনাল কাজ শেষ বলে জানালে আপনি সম্পন্ন নিশ্চিত করতে পারবেন।</p>
           )}
           {isAssignedPro && b.stage === "assigned" && (
             <>
-              <button type="button" disabled={respond.isPending} onClick={() => respond.mutate({ id: b.id, accept: true })} className="bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
+              <button type="button" disabled={respond.isPending} onClick={() => respond.mutate({ id: b.id, accept: true })} className="bg-[#075B35] hover:bg-[#054A2B] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
                 কাজটি গ্রহণ করুন
               </button>
               <button type="button" disabled={respond.isPending} onClick={() => respond.mutate({ id: b.id, accept: false })} className="border-[1.5px] border-red-300 text-red-700 font-semibold px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
@@ -1261,17 +1261,17 @@ export function BookingDetailPage({ code }: { code: string }) {
             </>
           )}
           {isAssignedPro && b.stage === "accepted" && (
-            <button type="button" disabled={advance.isPending} onClick={() => advance.mutate({ id: b.id, action: "start" })} className="bg-[#087A35] hover:bg-[#064B27] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
+            <button type="button" disabled={advance.isPending} onClick={() => advance.mutate({ id: b.id, action: "start" })} className="bg-[#075B35] hover:bg-[#054A2B] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
               কাজ শুরু করুন
             </button>
           )}
           {isAssignedPro && b.stage === "in_progress" && (
-            <button type="button" disabled={advance.isPending} onClick={() => advance.mutate({ id: b.id, action: "done" })} className="bg-[#FF8A00] hover:bg-[#E67A00] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
+            <button type="button" disabled={advance.isPending} onClick={() => advance.mutate({ id: b.id, action: "done" })} className="bg-[#FF8500] hover:bg-[#E67600] text-white font-bold px-5 py-2.5 rounded-xl disabled:opacity-60">
               কাজ শেষ — গ্রাহককে জানান
             </button>
           )}
           {isAssignedPro && b.stage === "pro_completed" && (
-            <p className="text-sm text-[#737B73]">আপনি কাজ শেষ বলে জানিয়েছেন — গ্রাহকের নিশ্চিতকরণের অপেক্ষায়।</p>
+            <p className="text-sm text-[#5C6B76]">আপনি কাজ শেষ বলে জানিয়েছেন — গ্রাহকের নিশ্চিতকরণের অপেক্ষায়।</p>
           )}
         </div>
 
@@ -1289,8 +1289,8 @@ export function BookingDetailPage({ code }: { code: string }) {
         {/* customer cancel request (Phase 9): one clear button — the
             admin decides Waiting / Complete / Rejected */}
         {isOwner && role === "customer" && ["pending", "price_confirmed", "assigned", "accepted", "rescheduled"].includes(b.stage) && (
-          <section aria-label="বুকিং বাতিলের অনুরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
-            <h2 className="font-bold text-[#064B27]">বুকিং বাতিল করতে চান?</h2>
+          <section aria-label="বুকিং বাতিলের অনুরোধ" className="mt-8 border-t border-[#EEF3F0] pt-6">
+            <h2 className="font-bold text-[#054A2B]">বুকিং বাতিল করতে চান?</h2>
             {(() => {
               const cr = cancelReqQ.data?.request;
               if (cr && (cr.status === "requested" || cr.status === "under_review")) {
@@ -1310,7 +1310,7 @@ export function BookingDetailPage({ code }: { code: string }) {
                       {cr.adminNote ? ` অ্যাডমিনের নোট: ${cr.adminNote}` : ""}
                     </p>
                   )}
-                  <p className="mt-1 text-sm text-[#737B73]">
+                  <p className="mt-1 text-sm text-[#5C6B76]">
                     অনুরোধ পাঠালে অ্যাডমিন যাচাই করে সিদ্ধান্ত দেবেন — অনুমোদিত হলেই কেবল বুকিং বাতিল হবে। অনলাইন পেমেন্ট থাকলে রিফান্ডের সিদ্ধান্ত প্রকাশিত বাতিল নীতি অনুযায়ী কেসভেদে অ্যাডমিন জানাবেন।
                   </p>
                   <form
@@ -1341,10 +1341,10 @@ export function BookingDetailPage({ code }: { code: string }) {
 
         {/* customer reschedule request + dispute (Phase 7) */}
         {isOwner && role === "customer" && ["pending", "price_confirmed", "assigned", "accepted"].includes(b.stage) && (
-          <section aria-label="সময় বদলের অনুরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
-            <h2 className="font-bold text-[#064B27]">সময় বদল করতে চান?</h2>
+          <section aria-label="সময় বদলের অনুরোধ" className="mt-8 border-t border-[#EEF3F0] pt-6">
+            <h2 className="font-bold text-[#054A2B]">সময় বদল করতে চান?</h2>
             {b.rescheduleRequestedDate ? (
-              <p className="mt-2 text-sm text-[#4c584c]">
+              <p className="mt-2 text-sm text-[#43534B]">
                 আপনার অনুরোধ পাঠানো হয়েছে: <b>{fmtDate(b.rescheduleRequestedDate)} • {b.rescheduleRequestedTime}</b> — অ্যাডমিন নিশ্চিত করলে সময় বদলাবে।
               </p>
             ) : (
@@ -1369,7 +1369,7 @@ export function BookingDetailPage({ code }: { code: string }) {
                     ))}
                   </select>
                 </div>
-                <button type="submit" disabled={reschedule.isPending} className="col-span-2 sm:col-span-1 border-[1.5px] border-[#087A35] text-[#087A35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
+                <button type="submit" disabled={reschedule.isPending} className="col-span-2 sm:col-span-1 border-[1.5px] border-[#075B35] text-[#075B35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F3F8F4] disabled:opacity-60">
                   {reschedule.isPending ? "পাঠানো হচ্ছে…" : "সময় বদলের অনুরোধ পাঠান"}
                 </button>
               </form>
@@ -1377,9 +1377,9 @@ export function BookingDetailPage({ code }: { code: string }) {
           </section>
         )}
         {isOwner && role === "customer" && ["assigned", "accepted", "in_progress", "pro_completed", "customer_confirmed", "admin_reviewed"].includes(b.stage) && (
-          <section aria-label="বিরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
-            <h2 className="font-bold text-[#064B27]">কাজ নিয়ে সমস্যা হয়েছে?</h2>
-            <p className="mt-1 text-sm text-[#737B73]">
+          <section aria-label="বিরোধ" className="mt-8 border-t border-[#EEF3F0] pt-6">
+            <h2 className="font-bold text-[#054A2B]">কাজ নিয়ে সমস্যা হয়েছে?</h2>
+            <p className="mt-1 text-sm text-[#5C6B76]">
               বিরোধ জানালে অ্যাডমিন বিষয়টি দেখবেন; নিষ্পত্তি না হওয়া পর্যন্ত এই বুকিংয়ের সেটেলমেন্ট স্থগিত থাকবে।
             </p>
             <form
@@ -1405,9 +1405,9 @@ export function BookingDetailPage({ code }: { code: string }) {
           </section>
         )}
         {isAssignedPro && ["assigned", "accepted", "in_progress", "pro_completed", "customer_confirmed", "admin_reviewed"].includes(b.stage) && (
-          <section aria-label="বিরোধ" className="mt-8 border-t border-[#F0F3F0] pt-6">
-            <h2 className="font-bold text-[#064B27]">এই কাজ নিয়ে বিরোধ আছে?</h2>
-            <p className="mt-1 text-sm text-[#737B73]">
+          <section aria-label="বিরোধ" className="mt-8 border-t border-[#EEF3F0] pt-6">
+            <h2 className="font-bold text-[#054A2B]">এই কাজ নিয়ে বিরোধ আছে?</h2>
+            <p className="mt-1 text-sm text-[#5C6B76]">
               বিরোধ জানালে অ্যাডমিন বিষয়টি দেখবেন; সিদ্ধান্ত কারণসহ রেকর্ড না হওয়া পর্যন্ত এই বুকিংয়ের সেটেলমেন্ট (আপনার পেআউট) স্থগিত থাকবে।
             </p>
             <form
@@ -1441,13 +1441,13 @@ export function BookingDetailPage({ code }: { code: string }) {
 
         {/* review */}
         {isOwner && (b.stage === "customer_confirmed" || b.stage === "admin_reviewed") && (
-          <div className="mt-8 border-t border-[#F0F3F0] pt-6">
-            <h2 className="font-bold text-[#064B27]">আপনার রিভিউ</h2>
+          <div className="mt-8 border-t border-[#EEF3F0] pt-6">
+            <h2 className="font-bold text-[#054A2B]">আপনার রিভিউ</h2>
             {myReview ? (
               <div className="mt-3">
                 <Stars value={myReview.rating} />
                 <p className="mt-1.5 text-[15px]">“{myReview.text}”</p>
-                <p className="mt-1 text-[13px] text-[#737B73]">
+                <p className="mt-1 text-[13px] text-[#5C6B76]">
                   অবস্থা: {myReview.status === "approved" ? "প্রকাশিত" : myReview.status === "rejected" ? "প্রকাশ করা হয়নি" : "মডারেশনের অপেক্ষায়"}
                 </p>
               </div>
@@ -1482,7 +1482,7 @@ export function BookingDetailPage({ code }: { code: string }) {
                   <label className={labelCls} htmlFor="rv-text">আপনার অভিজ্ঞতা লিখুন</label>
                   <textarea id="rv-text" className={inputCls} rows={3} {...FIELDS.submitReview.text} value={reviewText} onChange={(e) => setReviewText(e.target.value)} required placeholder="কাজ কেমন হয়েছে, প্রফেশনালের আচরণ কেমন ছিল…" />
                 </div>
-                <button type="submit" disabled={review.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+                <button type="submit" disabled={review.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
                   {review.isPending ? "পাঠানো হচ্ছে…" : "রিভিউ পাঠান"}
                 </button>
               </form>
@@ -1491,25 +1491,25 @@ export function BookingDetailPage({ code }: { code: string }) {
         )}
 
         {/* timeline */}
-        <div className="mt-8 border-t border-[#F0F3F0] pt-6">
-          <h2 className="font-bold text-[#064B27] mb-4">বুকিংয়ের ইতিহাস</h2>
-          <ol className="relative border-l-2 border-[#E2F4E7] ml-2 space-y-4">
+        <div className="mt-8 border-t border-[#EEF3F0] pt-6">
+          <h2 className="font-bold text-[#054A2B] mb-4">বুকিংয়ের ইতিহাস</h2>
+          <ol className="relative border-l-2 border-[#E4F1E8] ml-2 space-y-4">
             {b.events.map((e, i) => (
               <li key={i} className="pl-5 relative">
-                <span className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-[#087A35]" />
+                <span className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-[#075B35]" />
                 <p className="font-semibold text-[15px]">{STATUS_BN[e.status] ?? e.status}</p>
-                {e.note && <p className="text-sm text-[#4c584c]">{e.note}</p>}
-                <p className="text-[12.5px] text-[#737B73]">{fmtDateTime(e.createdAt)}</p>
+                {e.note && <p className="text-sm text-[#43534B]">{e.note}</p>}
+                <p className="text-[12.5px] text-[#5C6B76]">{fmtDateTime(e.createdAt)}</p>
               </li>
             ))}
           </ol>
         </div>
 
         {isAssignedPro && (
-          <div className="mt-6 flex items-center gap-3 rounded-2xl bg-[#F0FAF2] p-4">
+          <div className="mt-6 flex items-center gap-3 rounded-2xl bg-[#F3F8F4] p-4">
             <Avatar name={b.customerName} photoUrl={null} size="w-10 h-10" textSize="text-sm" />
-            <p className="text-sm text-[#4c584c]">
-              গ্রাহকের সাথে যোগাযোগ: <a className="font-bold font-en text-[#087A35]" href={`tel:${b.phone}`}>{b.phone}</a>
+            <p className="text-sm text-[#43534B]">
+              গ্রাহকের সাথে যোগাযোগ: <a className="font-bold font-en text-[#075B35]" href={`tel:${b.phone}`}>{b.phone}</a>
             </p>
           </div>
         )}

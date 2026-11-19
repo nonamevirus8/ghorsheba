@@ -131,7 +131,7 @@ export type ExportPayload = z.infer<typeof exportPayloadSchema>;
 
 // Ledger amounts are stored unsigned; the direction is a property of
 // the entry type. "in" = money (or a claim on money) coming into
-// GhorSheba's hands; "out" = money owed out of the held balance
+// MistriDako's hands; "out" = money owed out of the held balance
 // (commission due to be netted, payouts, refunds, adjustments).
 const LEDGER_DIRECTION: Record<string, "in" | "out"> = {
   online_collection: "in",

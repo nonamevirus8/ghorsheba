@@ -1,4 +1,4 @@
-// GhorSheba data model — Postgres edition.
+// MistriDako data model — Postgres edition.
 //
 // This is the same schema as the original Muse-platform build (which used
 // SQLite): users, professionals, services, bookings, reviews,
@@ -370,7 +370,7 @@ export const settings = pgTable("settings", {
   // or hours, it simply omits the lines while these are empty.
   businessAddress: text("business_address"),
   officeHours: text("office_hours"),
-  // Manual-payment receiving number (Master Phase 3): the GhorSheba
+  // Manual-payment receiving number (Master Phase 3): the MistriDako
   // MFS number customers send their online payment to before submitting
   // the TrxID at checkout. Set by a finance/super admin in Platform
   // Settings; null until the owner configures a real number — the

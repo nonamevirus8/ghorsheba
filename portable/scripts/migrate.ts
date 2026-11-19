@@ -7,5 +7,5 @@
 import { getDb } from "../server/src/db";
 
 await getDb();
-console.log("GhorSheba database is ready (tables + seed data applied).");
+console.log("MistriDako database is ready (tables + seed data applied).");
 process.exit(0);

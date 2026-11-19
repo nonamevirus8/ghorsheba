@@ -64,12 +64,12 @@ function TabsBar({
           role="tab"
           aria-selected={active === t.key}
           className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-[14.5px] font-semibold whitespace-nowrap ${
-            active === t.key ? "bg-[#087A35] text-white" : "bg-[#F0FAF2] text-[#064B27] hover:bg-[#E2F4E7]"
+            active === t.key ? "bg-[#075B35] text-white" : "bg-[#F3F8F4] text-[#054A2B] hover:bg-[#E4F1E8]"
           }`}
         >
           {t.label}
           {t.badge != null && t.badge > 0 && (
-            <span className={`min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold grid place-items-center ${active === t.key ? "bg-white text-[#087A35]" : "bg-[#FF8A00] text-white"}`}>
+            <span className={`min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold grid place-items-center ${active === t.key ? "bg-white text-[#075B35]" : "bg-[#FF8500] text-white"}`}>
               {t.badge}
             </span>
           )}
@@ -81,10 +81,10 @@ function TabsBar({
 
 function StatCard({ label, value, icon }: { label: string; value: ReactNode; icon: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
-      <span className="inline-grid place-items-center w-9 h-9 rounded-lg bg-[#F0FAF2] text-[#087A35] mb-2">{icon}</span>
-      <p className="text-[22px] font-bold leading-none text-[#064B27]">{value}</p>
-      <p className="mt-1 text-[13px] text-[#737B73]">{label}</p>
+    <div className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
+      <span className="inline-grid place-items-center w-9 h-9 rounded-lg bg-[#F3F8F4] text-[#075B35] mb-2">{icon}</span>
+      <p className="text-[22px] font-bold leading-none text-[#054A2B]">{value}</p>
+      <p className="mt-1 text-[13px] text-[#5C6B76]">{label}</p>
     </div>
   );
 }
@@ -107,15 +107,15 @@ function FreshnessBar({
 }) {
   if (!dataUpdatedAt) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#737B73]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#5C6B76]">
       <span className="inline-flex items-center gap-1.5">
-        {Icon.clock("w-4 h-4")} সর্বশেষ আপডেট: <span className="font-en font-semibold text-[#4c584c]">{fmtTime(dataUpdatedAt)}</span>
+        {Icon.clock("w-4 h-4")} সর্বশেষ আপডেট: <span className="font-en font-semibold text-[#43534B]">{fmtTime(dataUpdatedAt)}</span>
       </span>
       <button
         type="button"
         onClick={onRefresh}
         disabled={isFetching}
-        className="inline-flex items-center gap-1.5 border border-[#E5EAE5] bg-white hover:bg-[#F0FAF2] disabled:opacity-60 text-[#064B27] font-semibold px-3 py-1.5 rounded-lg"
+        className="inline-flex items-center gap-1.5 border border-[#E1E9E4] bg-white hover:bg-[#F3F8F4] disabled:opacity-60 text-[#054A2B] font-semibold px-3 py-1.5 rounded-lg"
       >
         {Icon.refresh("w-4 h-4")} {isFetching ? "আপডেট হচ্ছে…" : "রিফ্রেশ করুন"}
       </button>
@@ -194,7 +194,7 @@ function ListControls({
     <div className="mb-4">
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737B73] pointer-events-none">{Icon.search("w-4 h-4")}</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5C6B76] pointer-events-none">{Icon.search("w-4 h-4")}</span>
           <label className="sr-only" htmlFor={searchLabel}>{searchLabel}</label>
           <input
             id={searchLabel}
@@ -209,7 +209,7 @@ function ListControls({
           <label className="sr-only" htmlFor={`${searchLabel}-sort`}>সাজান</label>
           <select
             id={`${searchLabel}-sort`}
-            className="w-full sm:w-auto border border-[#E5EAE5] rounded-xl px-3 py-2.5 bg-white text-sm font-medium"
+            className="w-full sm:w-auto border border-[#E1E9E4] rounded-xl px-3 py-2.5 bg-white text-sm font-medium"
             value={sort}
             onChange={(e) => setSort(e.target.value)}
           >
@@ -220,14 +220,14 @@ function ListControls({
         </div>
       </div>
       {total > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-[#737B73]">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-[#5C6B76]">
           <span>মোট {total}টি • পেজ {page} / {pageCount}</span>
           <span className="ml-auto flex gap-2">
             <button
               type="button"
               disabled={page <= 1}
               onClick={() => setPage(page - 1)}
-              className="inline-flex items-center gap-1 border border-[#E5EAE5] bg-white px-3 py-1.5 rounded-lg font-semibold text-[#064B27] disabled:opacity-40"
+              className="inline-flex items-center gap-1 border border-[#E1E9E4] bg-white px-3 py-1.5 rounded-lg font-semibold text-[#054A2B] disabled:opacity-40"
             >
               {Icon.chevronLeft("w-4 h-4")} আগের
             </button>
@@ -235,7 +235,7 @@ function ListControls({
               type="button"
               disabled={page >= pageCount}
               onClick={() => setPage(page + 1)}
-              className="inline-flex items-center gap-1 border border-[#E5EAE5] bg-white px-3 py-1.5 rounded-lg font-semibold text-[#064B27] disabled:opacity-40"
+              className="inline-flex items-center gap-1 border border-[#E1E9E4] bg-white px-3 py-1.5 rounded-lg font-semibold text-[#054A2B] disabled:opacity-40"
             >
               পরের {Icon.chevronRight("w-4 h-4")}
             </button>
@@ -250,19 +250,19 @@ export function BookingCard({ b }: { b: Booking }) {
   return (
     <a
       href={`#/booking/${b.code}`}
-      className="block rounded-2xl border border-[#E5EAE5] bg-white p-4 hover:border-[#087A35] hover:shadow-[0_8px_24px_rgba(6,75,39,0.08)] transition-all"
+      className="block rounded-2xl border border-[#E1E9E4] bg-white p-4 hover:border-[#075B35] hover:shadow-[0_8px_24px_rgba(5,74,43,0.08)] transition-all"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-bold text-[#202820] truncate">{b.serviceName}</p>
-          <p className="text-[13px] text-[#737B73]">
+          <p className="font-bold text-[#172B3A] truncate">{b.serviceName}</p>
+          <p className="text-[13px] text-[#5C6B76]">
             <span className="font-en">{b.code}</span> • {b.upazila}
           </p>
         </div>
         <BookingStatusChip status={b.status} stage={b.stage} />
       </div>
-      <p className="mt-2 text-sm text-[#4c584c] line-clamp-2">{b.description}</p>
-      <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-[#737B73]">
+      <p className="mt-2 text-sm text-[#43534B] line-clamp-2">{b.description}</p>
+      <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-[#5C6B76]">
         <span className="inline-flex items-center gap-1">{Icon.calendar("w-4 h-4")} {fmtDate(b.preferredDate)} • {b.preferredTime}</span>
         <span className="inline-flex items-center gap-1">{Icon.user("w-4 h-4")} {b.professionalName ?? "প্রফেশনাল অ্যাসাইন হয়নি"}</span>
       </p>
@@ -270,7 +270,7 @@ export function BookingCard({ b }: { b: Booking }) {
         <p className="mt-2 text-[13px] font-semibold text-[#B45309]">প্রফেশনালের সাড়ার অপেক্ষায়</p>
       )}
       {b.stage === "pro_completed" && (
-        <p className="mt-2 text-[13px] font-semibold text-[#087A35]">কাজ শেষ — নিশ্চিতকরণ বাকি</p>
+        <p className="mt-2 text-[13px] font-semibold text-[#075B35]">কাজ শেষ — নিশ্চিতকরণ বাকি</p>
       )}
       {b.stage === "disputed" && (
         <p className="mt-2 text-[13px] font-semibold text-red-700">এই বুকিংয়ে বিরোধ চলমান — সেটেলমেন্ট স্থগিত</p>
@@ -305,14 +305,14 @@ function NotificationsList({ notifs, token }: { notifs: Notif[]; token: string }
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-[#737B73]" aria-live="polite">
+        <p className="text-sm text-[#5C6B76]" aria-live="polite">
           {unread > 0 ? `${unread}টি অপঠিত নোটিফিকেশন` : "সব নোটিফিকেশন পড়া হয়েছে"}
         </p>
         <button
           type="button"
           onClick={() => mark.mutate()}
           disabled={mark.isPending}
-          className="text-sm font-semibold text-[#087A35] hover:underline disabled:opacity-60"
+          className="text-sm font-semibold text-[#075B35] hover:underline disabled:opacity-60"
         >
           সব পড়া হয়েছে হিসেবে চিহ্নিত করুন
         </button>
@@ -322,24 +322,24 @@ function NotificationsList({ notifs, token }: { notifs: Notif[]; token: string }
           const content = (
             <>
               <p className="font-semibold text-[15px] flex items-center gap-2">
-                <span className="text-[#087A35]">{Icon.bell("w-4 h-4")}</span>
+                <span className="text-[#075B35]">{Icon.bell("w-4 h-4")}</span>
                 {n.title}
-                {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#FF8A00]" aria-label="অপঠিত" />}
+                {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#FF8500]" aria-label="অপঠিত" />}
               </p>
-              {n.body && <p className="mt-1 text-sm text-[#4c584c]">{n.body}</p>}
-              <p className="mt-1 text-[12.5px] text-[#737B73]">{fmtDateTime(n.createdAt)}</p>
+              {n.body && <p className="mt-1 text-sm text-[#43534B]">{n.body}</p>}
+              <p className="mt-1 text-[12.5px] text-[#5C6B76]">{fmtDateTime(n.createdAt)}</p>
               {n.link && (
-                <p className="mt-1.5 text-[13px] font-semibold text-[#087A35]">সংশ্লিষ্ট পেজে যান →</p>
+                <p className="mt-1.5 text-[13px] font-semibold text-[#075B35]">সংশ্লিষ্ট পেজে যান →</p>
               )}
             </>
           );
-          const cls = `block rounded-2xl border p-4 ${n.isRead ? "border-[#E5EAE5] bg-white" : "border-[#cfe3d3] bg-[#F0FAF2]"}`;
+          const cls = `block rounded-2xl border p-4 ${n.isRead ? "border-[#E1E9E4] bg-white" : "border-[#C9DFD2] bg-[#F3F8F4]"}`;
           return (
             <li key={n.id}>
               {n.link ? (
                 <a
                   href={n.link}
-                  className={`${cls} hover:border-[#087A35] transition-colors`}
+                  className={`${cls} hover:border-[#075B35] transition-colors`}
                   onClick={() => {
                     if (!n.isRead) markOne.mutate(n.id);
                   }}
@@ -372,7 +372,7 @@ function GateMessage({ query }: { query: ReturnType<typeof useMe> }) {
         <EmptyState
           title="লগইন প্রয়োজন"
           body={sessionFailed ? "আপনার সেশন শেষ হয়ে গেছে — আবার লগইন করুন।" : "ড্যাশবোর্ড দেখতে প্রথমে লগইন করুন।"}
-          action={<a href="#/login" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">লগইন করুন</a>}
+          action={<a href="#/login" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">লগইন করুন</a>}
         />
       </div>
     );
@@ -409,14 +409,14 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
   if (user.role === "professional") {
     return (
       <div className="max-w-xl mx-auto px-4 py-14">
-        <EmptyState title="আপনি প্রফেশনাল হিসেবে লগইন করেছেন" body="আপনার কাজের ড্যাশবোর্ড প্রফেশনাল প্যানেলে।" action={<a href="#/pro-dashboard" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">প্রফেশনাল ড্যাশবোর্ড</a>} />
+        <EmptyState title="আপনি প্রফেশনাল হিসেবে লগইন করেছেন" body="আপনার কাজের ড্যাশবোর্ড প্রফেশনাল প্যানেলে।" action={<a href="#/pro-dashboard" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">প্রফেশনাল ড্যাশবোর্ড</a>} />
       </div>
     );
   }
   if (user.role === "admin") {
     return (
       <div className="max-w-xl mx-auto px-4 py-14">
-        <EmptyState title="আপনি অ্যাডমিন হিসেবে লগইন করেছেন" body="অ্যাডমিন প্যানেল থেকে পুরো প্ল্যাটফর্ম পরিচালনা করুন।" action={<a href="#/admin" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">অ্যাডমিন প্যানেল</a>} />
+        <EmptyState title="আপনি অ্যাডমিন হিসেবে লগইন করেছেন" body="অ্যাডমিন প্যানেল থেকে পুরো প্ল্যাটফর্ম পরিচালনা করুন।" action={<a href="#/admin" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">অ্যাডমিন প্যানেল</a>} />
       </div>
     );
   }
@@ -440,10 +440,10 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
       <div className="flex items-center gap-3.5 mb-6">
         <Avatar name={user.name} photoUrl={user.photoUrl} size="w-13 h-13" />
         <div>
-          <h1 className="text-[24px] font-bold text-[#064B27] leading-tight">স্বাগতম, {user.name}</h1>
-          <p className="text-sm text-[#737B73] font-en">{user.phone}</p>
+          <h1 className="text-[24px] font-bold text-[#054A2B] leading-tight">স্বাগতম, {user.name}</h1>
+          <p className="text-sm text-[#5C6B76] font-en">{user.phone}</p>
         </div>
-        <a href="#/services" className="ml-auto hidden sm:inline-flex bg-[#FF8A00] hover:bg-[#E67A00] text-white font-bold px-4 py-2.5 rounded-xl">
+        <a href="#/services" className="ml-auto hidden sm:inline-flex bg-[#FF8500] hover:bg-[#E67600] text-white font-bold px-4 py-2.5 rounded-xl">
           + নতুন বুকিং
         </a>
       </div>
@@ -461,7 +461,7 @@ export function CustomerDashboard({ params }: { params: URLSearchParams }) {
             <EmptyState
               title="এখনো কোনো বুকিং করেননি"
               body="পছন্দের সার্ভিস বেছে প্রথম বুকিংটি করুন।"
-              action={<a href="#/services" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">সার্ভিস দেখুন</a>}
+              action={<a href="#/services" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">সার্ভিস দেখুন</a>}
             />
           ) : (
             <div className="grid md:grid-cols-2 gap-3.5">
@@ -536,14 +536,14 @@ function TicketThread({ token, ticketId, admin = false }: { token: string; ticke
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-en text-[13px] font-semibold text-[#737B73]">{t.code}</span>
+        <span className="font-en text-[13px] font-semibold text-[#5C6B76]">{t.code}</span>
         <TicketStatusChip status={t.status} />
-        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#F0FAF2] text-[#064B27]">
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#F3F8F4] text-[#054A2B]">
           {TICKET_CATEGORY_BN[t.category] ?? t.category}
         </span>
-        {t.bookingCode && <span className="font-en text-[13px] text-[#737B73]">বুকিং: {t.bookingCode}</span>}
+        {t.bookingCode && <span className="font-en text-[13px] text-[#5C6B76]">বুকিং: {t.bookingCode}</span>}
         {admin && (
-          <span className="text-[13px] text-[#737B73]">
+          <span className="text-[13px] text-[#5C6B76]">
             {t.ownerName} • <span className="font-en">{t.ownerPhone}</span> • {t.ownerRole === "professional" ? "প্রফেশনাল" : "গ্রাহক"}
           </span>
         )}
@@ -553,14 +553,14 @@ function TicketThread({ token, ticketId, admin = false }: { token: string; ticke
           <li
             key={m.id}
             className={`rounded-2xl px-3.5 py-2.5 text-sm ${
-              m.authorRole === "admin" ? "bg-[#F0FAF2] border border-[#cfe3d3]" : "bg-[#F7F9F7] border border-[#E5EAE5]"
+              m.authorRole === "admin" ? "bg-[#F3F8F4] border border-[#C9DFD2]" : "bg-[#F4F8F5] border border-[#E1E9E4]"
             }`}
           >
-            <p className="text-[12.5px] font-semibold text-[#064B27]">
+            <p className="text-[12.5px] font-semibold text-[#054A2B]">
               {m.authorRole === "admin" ? "সাপোর্ট টিম" : m.authorName}
-              <span className="ml-2 font-normal text-[#737B73]">{fmtDateTime(m.createdAt)}</span>
+              <span className="ml-2 font-normal text-[#5C6B76]">{fmtDateTime(m.createdAt)}</span>
             </p>
-            <p className="mt-0.5 whitespace-pre-wrap text-[#374237]">{m.body}</p>
+            <p className="mt-0.5 whitespace-pre-wrap text-[#2E4238]">{m.body}</p>
           </li>
         ))}
       </ul>
@@ -569,7 +569,7 @@ function TicketThread({ token, ticketId, admin = false }: { token: string; ticke
           <label className="text-sm font-medium" htmlFor={`ticket-status-${ticketId}`}>টিকিটের অবস্থা</label>
           <select
             id={`ticket-status-${ticketId}`}
-            className="border border-[#E5EAE5] rounded-xl px-3 py-2 bg-white text-sm"
+            className="border border-[#E1E9E4] rounded-xl px-3 py-2 bg-white text-sm"
             value={t.status}
             disabled={setStatus.isPending}
             onChange={(e) =>
@@ -580,11 +580,11 @@ function TicketThread({ token, ticketId, admin = false }: { token: string; ticke
               <option key={s} value={s}>{TICKET_STATUS_BN[s]}</option>
             ))}
           </select>
-          {setStatus.isPending && <span className="text-sm text-[#737B73]">বদলানো হচ্ছে…</span>}
+          {setStatus.isPending && <span className="text-sm text-[#5C6B76]">বদলানো হচ্ছে…</span>}
         </div>
       )}
       {closed ? (
-        <p className="mt-3 text-sm text-[#737B73]">এই টিকিট বন্ধ করা হয়েছে — নতুন সাহায্য লাগলে নতুন টিকিট খুলুন।</p>
+        <p className="mt-3 text-sm text-[#5C6B76]">এই টিকিট বন্ধ করা হয়েছে — নতুন সাহায্য লাগলে নতুন টিকিট খুলুন।</p>
       ) : (
         <form
           className="mt-3 flex flex-col gap-2"
@@ -609,7 +609,7 @@ function TicketThread({ token, ticketId, admin = false }: { token: string; ticke
           <button
             type="submit"
             disabled={reply.isPending || !body.trim()}
-            className="self-start bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+            className="self-start bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
           >
             {reply.isPending ? "পাঠানো হচ্ছে…" : "উত্তর পাঠান"}
           </button>
@@ -651,15 +651,15 @@ function TicketSupport({ token }: { token: string }) {
   return (
     <div className="grid lg:grid-cols-2 gap-6 items-start">
       <form
-        className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError("");
           create.mutate();
         }}
       >
-        <h2 className="font-bold text-[#064B27]">সাপোর্ট টিকিট খুলুন</h2>
-        <p className="text-sm text-[#737B73] -mt-2">আমাদের টিম এই থ্রেডেই উত্তর দেবে — উত্তর এলে নোটিফিকেশন পাবেন।</p>
+        <h2 className="font-bold text-[#054A2B]">সাপোর্ট টিকিট খুলুন</h2>
+        <p className="text-sm text-[#5C6B76] -mt-2">আমাদের টিম এই থ্রেডেই উত্তর দেবে — উত্তর এলে নোটিফিকেশন পাবেন।</p>
         <div>
           <label className={labelCls} htmlFor="tk-subject">বিষয় *</label>
           <input id="tk-subject" className={inputCls} {...FIELDS.createSupportTicket.subject} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: পেমেন্ট নিয়ে প্রশ্ন" />
@@ -681,12 +681,12 @@ function TicketSupport({ token }: { token: string }) {
           <textarea id="tk-msg" className={inputCls} rows={4} {...FIELDS.createSupportTicket.message} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
         </div>
         {error && <ErrorBox message={error} />}
-        <button type="submit" disabled={create.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+        <button type="submit" disabled={create.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
           {create.isPending ? "খোলা হচ্ছে…" : "টিকিট খুলুন"}
         </button>
       </form>
       <div>
-        <h2 className="font-bold text-[#064B27] mb-3">আমার সাপোর্ট টিকিট</h2>
+        <h2 className="font-bold text-[#054A2B] mb-3">আমার সাপোর্ট টিকিট</h2>
         {mine.isPending ? (
           <Spinner />
         ) : tickets.length === 0 ? (
@@ -694,7 +694,7 @@ function TicketSupport({ token }: { token: string }) {
         ) : (
           <ul className="space-y-3">
             {tickets.map((t) => (
-              <li key={t.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <li key={t.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
                 <button
                   type="button"
                   className="w-full text-left"
@@ -705,12 +705,12 @@ function TicketSupport({ token }: { token: string }) {
                     <span className="font-semibold">{t.subject}</span>
                     <TicketStatusChip status={t.status} />
                   </span>
-                  <span className="mt-1 block text-[12.5px] text-[#737B73]">
+                  <span className="mt-1 block text-[12.5px] text-[#5C6B76]">
                     <span className="font-en">{t.code}</span> • {t.messageCount}টি বার্তা • {fmtDateTime(t.updatedAt)}
                   </span>
                 </button>
                 {openId === t.id && (
-                  <div className="mt-3 border-t border-[#E5EAE5] pt-3">
+                  <div className="mt-3 border-t border-[#E1E9E4] pt-3">
                     <TicketThread token={token} ticketId={t.id} />
                   </div>
                 )}
@@ -728,8 +728,8 @@ function SupportTab({ token }: { token: string }) {
     <div className="space-y-10">
       <TicketSupport token={token} />
       <div>
-        <h2 className="font-bold text-[#064B27] mb-3">অভিযোগ (আগের পদ্ধতি)</h2>
-        <p className="text-sm text-[#737B73] mb-4 -mt-1">
+        <h2 className="font-bold text-[#054A2B] mb-3">অভিযোগ (আগের পদ্ধতি)</h2>
+        <p className="text-sm text-[#5C6B76] mb-4 -mt-1">
           আগের অভিযোগগুলো এখানেই আছে — নতুন করে সাহায্য চাইতে উপরের সাপোর্ট টিকিট ব্যবহার করুন, সেখানে সরাসরি উত্তর পাবেন।
         </p>
         <ComplaintsSection token={token} />
@@ -764,7 +764,7 @@ function ComplaintsSection({ token }: { token: string }) {
   return (
     <div className="grid lg:grid-cols-2 gap-6 items-start">
       <form
-        className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError("");
@@ -772,7 +772,7 @@ function ComplaintsSection({ token }: { token: string }) {
           submit.mutate();
         }}
       >
-        <h2 className="font-bold text-[#064B27]">অভিযোগ / অনুরোধ পাঠান</h2>
+        <h2 className="font-bold text-[#054A2B]">অভিযোগ / অনুরোধ পাঠান</h2>
         <div>
           <label className={labelCls} htmlFor="cp-subject">বিষয় *</label>
           <input id="cp-subject" className={inputCls} {...FIELDS.submitComplaint.subject} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: বুকিং নিয়ে সমস্যা" />
@@ -786,13 +786,13 @@ function ComplaintsSection({ token }: { token: string }) {
           <textarea id="cp-msg" className={inputCls} rows={4} {...FIELDS.submitComplaint.message} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
         </div>
         {error && <ErrorBox message={error} />}
-        {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">আপনার বার্তা পৌঁছেছে — আমাদের টিম দেখে ব্যবস্থা নেবে।</p>}
-        <button type="submit" disabled={submit.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+        {ok && <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">আপনার বার্তা পৌঁছেছে — আমাদের টিম দেখে ব্যবস্থা নেবে।</p>}
+        <button type="submit" disabled={submit.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
           {submit.isPending ? "পাঠানো হচ্ছে…" : "পাঠান"}
         </button>
       </form>
       <div>
-        <h2 className="font-bold text-[#064B27] mb-3">আমার আগের অভিযোগসমূহ</h2>
+        <h2 className="font-bold text-[#054A2B] mb-3">আমার আগের অভিযোগসমূহ</h2>
         {mine.isPending ? (
           <Spinner />
         ) : (mine.data?.complaints.length ?? 0) === 0 ? (
@@ -800,16 +800,16 @@ function ComplaintsSection({ token }: { token: string }) {
         ) : (
           <ul className="space-y-3">
             {mine.data?.complaints.map((c) => (
-              <li key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <li key={c.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-semibold">{c.subject}</p>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.status === "resolved" ? "bg-[#087A35] text-white" : "bg-amber-100 text-amber-800"}`}>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.status === "resolved" ? "bg-[#075B35] text-white" : "bg-amber-100 text-amber-800"}`}>
                     {c.status === "resolved" ? "সমাধান হয়েছে" : "খোলা আছে"}
                   </span>
                 </div>
-                <p className="mt-1 text-sm text-[#4c584c]">{c.message}</p>
-                {c.adminNote && <p className="mt-2 text-sm bg-[#F0FAF2] rounded-lg px-3 py-2">অ্যাডমিনের জবাব: {c.adminNote}</p>}
-                <p className="mt-1.5 text-[12.5px] text-[#737B73]">{fmtDateTime(c.createdAt)}</p>
+                <p className="mt-1 text-sm text-[#43534B]">{c.message}</p>
+                {c.adminNote && <p className="mt-2 text-sm bg-[#F3F8F4] rounded-lg px-3 py-2">অ্যাডমিনের জবাব: {c.adminNote}</p>}
+                <p className="mt-1.5 text-[12.5px] text-[#5C6B76]">{fmtDateTime(c.createdAt)}</p>
               </li>
             ))}
           </ul>
@@ -841,7 +841,7 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
   return (
     <div className="space-y-8">
     <form
-      className="max-w-xl rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+      className="max-w-xl rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         setError("");
@@ -853,7 +853,7 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
         <Avatar name={me.user.name} photoUrl={me.user.photoUrl} size="w-14 h-14" />
         <div>
           <p className="font-bold">{me.user.name}</p>
-          <p className="text-sm text-[#737B73] font-en">{me.user.phone}</p>
+          <p className="text-sm text-[#5C6B76] font-en">{me.user.phone}</p>
         </div>
       </div>
       <div>
@@ -882,8 +882,8 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
         }}
       />
       {error && <ErrorBox message={error} />}
-      {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">প্রোফাইল সংরক্ষিত হয়েছে।</p>}
-      <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+      {ok && <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">প্রোফাইল সংরক্ষিত হয়েছে।</p>}
+      <button type="submit" disabled={save.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
         {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
       </button>
     </form>
@@ -915,8 +915,8 @@ function ReceiptView({ token, code }: { token: string; code: string }) {
   if (receipt.isError) return <ErrorBox message={errMsg(receipt.error)} />;
   const r = receipt.data!;
   return (
-    <div className="mt-3 rounded-2xl border border-[#cfe3d3] bg-[#FBFDFB] p-4">
-      <p className="font-bold text-[#064B27]">
+    <div className="mt-3 rounded-2xl border border-[#C9DFD2] bg-[#FAFCFB] p-4">
+      <p className="font-bold text-[#054A2B]">
         রসিদ — {r.serviceName} • <span className="font-en">{r.bookingCode}</span>
       </p>
       {r.breakdown ? (
@@ -924,17 +924,17 @@ function ReceiptView({ token, code }: { token: string; code: string }) {
           <BreakdownRows bd={r.breakdown} />
         </div>
       ) : (
-        <p className="mt-2 text-sm text-[#737B73]">এই বুকিংয়ের মূল্য হিসাব এখনো সংরক্ষিত হয়নি।</p>
+        <p className="mt-2 text-sm text-[#5C6B76]">এই বুকিংয়ের মূল্য হিসাব এখনো সংরক্ষিত হয়নি।</p>
       )}
       {r.ledger.length > 0 && (
         <div className="mt-4">
-          <p className="text-[13px] font-semibold text-[#737B73] mb-1.5">লেজার এন্ট্রি (যাচাইকৃত হিসাব)</p>
+          <p className="text-[13px] font-semibold text-[#5C6B76] mb-1.5">লেজার এন্ট্রি (যাচাইকৃত হিসাব)</p>
           <ul className="space-y-1 text-sm">
             {r.ledger.map((e) => (
               <li key={e.id} className="flex items-baseline justify-between gap-4">
                 <span>
                   {LEDGER_ENTRY_BN[e.entryType] ?? e.entryType}
-                  <span className="text-[#737B73]"> • {fmtDateTime(e.createdAt)}</span>
+                  <span className="text-[#5C6B76]"> • {fmtDateTime(e.createdAt)}</span>
                 </span>
                 <span className="font-en font-medium">{bdt(e.amount)}</span>
               </li>
@@ -960,7 +960,7 @@ function PaymentsTab({ token }: { token: string }) {
       <EmptyState
         title="কোনো অনলাইন পেমেন্ট নেই"
         body="মূল্য নিশ্চিত হওয়া বুকিংয়ের বিবরণ পেজ থেকে অনলাইন পেমেন্ট (বিকাশ/নগদ/রকেট — TrxID) জমা দিতে পারবেন।"
-        action={<a href="#/dashboard" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">আমার বুকিং দেখুন</a>}
+        action={<a href="#/dashboard" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">আমার বুকিং দেখুন</a>}
       />
     );
   }
@@ -973,21 +973,21 @@ function PaymentsTab({ token }: { token: string }) {
   return (
     <div className="space-y-3.5">
       {list.map((p) => (
-        <div key={p.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+        <div key={p.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-bold">
                 <span className="font-en">{bdt(p.amount)}</span> • {PROVIDER_BN[p.provider] ?? providerEn(p.provider)}
               </p>
-              <p className="text-[13px] text-[#737B73]">
-                বুকিং <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a>
+              <p className="text-[13px] text-[#5C6B76]">
+                বুকিং <a className="font-en font-semibold text-[#075B35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a>
                 {" • "}{PAYMENT_MODEL_BN[p.paymentModel] ?? p.paymentModel}
                 {" • "}TrxID: <span className="font-en">{p.providerTrxId}</span>
               </p>
             </div>
             <PaymentStatusChip status={p.status} />
           </div>
-          <p className="mt-1.5 text-[12.5px] text-[#737B73]">
+          <p className="mt-1.5 text-[12.5px] text-[#5C6B76]">
             জমা: {fmtDateTime(p.createdAt)}
             {p.verifiedAt ? ` • যাচাই: ${fmtDateTime(p.verifiedAt)}` : ""}
           </p>
@@ -997,7 +997,7 @@ function PaymentsTab({ token }: { token: string }) {
           <button
             type="button"
             onClick={() => setReceiptFor(receiptFor === p.bookingCode ? null : p.bookingCode)}
-            className="mt-2.5 text-sm font-semibold text-[#087A35] hover:underline"
+            className="mt-2.5 text-sm font-semibold text-[#075B35] hover:underline"
             aria-expanded={receiptFor === p.bookingCode}
           >
             {receiptFor === p.bookingCode ? "রসিদ লুকান" : "রসিদ ও হিসাব দেখুন"}
@@ -1021,7 +1021,7 @@ const REFUND_STATUS_BN: Record<string, { label: string; cls: string }> = {
   requested: { label: "বিচারাধীন", cls: "bg-amber-100 text-amber-800" },
   approved: { label: "অনুমোদিত — রিফান্ড প্রক্রিয়াধীন", cls: "bg-sky-100 text-sky-800" },
   rejected: { label: "প্রত্যাখ্যাত", cls: "bg-red-100 text-red-700" },
-  refunded: { label: "রিফান্ড সম্পন্ন", cls: "bg-[#087A35] text-white" },
+  refunded: { label: "রিফান্ড সম্পন্ন", cls: "bg-[#075B35] text-white" },
 };
 
 function RefundsTab({ token }: { token: string }) {
@@ -1065,7 +1065,7 @@ function RefundsTab({ token }: { token: string }) {
   return (
     <div className="grid lg:grid-cols-2 gap-6 items-start">
       <form
-        className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError("");
@@ -1073,13 +1073,13 @@ function RefundsTab({ token }: { token: string }) {
           submit.mutate();
         }}
       >
-        <h2 className="font-bold text-[#064B27]">রিফান্ডের অনুরোধ পাঠান</h2>
-        <p className="text-sm text-[#737B73] leading-relaxed">
+        <h2 className="font-bold text-[#054A2B]">রিফান্ডের অনুরোধ পাঠান</h2>
+        <p className="text-sm text-[#5C6B76] leading-relaxed">
           অনুরোধ পাঠালেই রিফান্ড হয় না — অ্যাডমিন যাচাই করে সিদ্ধান্ত জানাবেন এবং অনুমোদিত হলে আলাদাভাবে
           রিফান্ড প্রক্রিয়া হবে। শুধু অনলাইন পেমেন্ট করা বুকিংয়ের জন্যই রিফান্ড অনুরোধ করা যায়।
         </p>
         {refundableCodes.length === 0 ? (
-          <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+          <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">
             রিফান্ড অনুরোধের মতো কোনো অনলাইন পেমেন্ট এখনো নেই।
           </p>
         ) : (
@@ -1106,15 +1106,15 @@ function RefundsTab({ token }: { token: string }) {
               <textarea id="rf-detail" className={inputCls} rows={4} {...FIELDS.submitRefundRequest.detail} value={detail} onChange={(e) => setDetail(e.target.value)} required placeholder="কী হয়েছিল, কেন রিফান্ড চাইছেন — বিস্তারিত লিখুন" />
             </div>
             {error && <ErrorBox message={error} />}
-            {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">আপনার রিফান্ড অনুরোধ পৌঁছেছে — অ্যাডমিন যাচাই করে জানাবেন।</p>}
-            <button type="submit" disabled={submit.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+            {ok && <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">আপনার রিফান্ড অনুরোধ পৌঁছেছে — অ্যাডমিন যাচাই করে জানাবেন।</p>}
+            <button type="submit" disabled={submit.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
               {submit.isPending ? "পাঠানো হচ্ছে…" : "অনুরোধ পাঠান"}
             </button>
           </>
         )}
       </form>
       <div>
-        <h2 className="font-bold text-[#064B27] mb-3">আমার রিফান্ড অনুরোধসমূহ</h2>
+        <h2 className="font-bold text-[#054A2B] mb-3">আমার রিফান্ড অনুরোধসমূহ</h2>
         {requests.isPending ? (
           <Spinner />
         ) : list.length === 0 ? (
@@ -1122,22 +1122,22 @@ function RefundsTab({ token }: { token: string }) {
         ) : (
           <ul className="space-y-3">
             {list.map((r) => {
-              const st = REFUND_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-[#F0F3F0] text-[#4c584c]" };
+              const st = REFUND_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-[#EEF3F0] text-[#43534B]" };
               return (
-                <li key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                <li key={r.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold">
                       {REFUND_REASON_BN[r.reason] ?? r.reason}
-                      <span className="block text-[13px] font-normal text-[#737B73]">
+                      <span className="block text-[13px] font-normal text-[#5C6B76]">
                         বুকিং <span className="font-en">{r.bookingCode}</span> • {fmtDateTime(r.createdAt)}
                       </span>
                     </p>
                     <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${st.cls}`}>{st.label}</span>
                   </div>
-                  <p className="mt-1.5 text-sm text-[#4c584c]">{r.detail}</p>
-                  {r.adminNote && <p className="mt-2 text-sm bg-[#F0FAF2] rounded-lg px-3 py-2">অ্যাডমিনের নোট: {r.adminNote}</p>}
+                  <p className="mt-1.5 text-sm text-[#43534B]">{r.detail}</p>
+                  {r.adminNote && <p className="mt-2 text-sm bg-[#F3F8F4] rounded-lg px-3 py-2">অ্যাডমিনের নোট: {r.adminNote}</p>}
                   {r.status === "refunded" && r.refundAmount != null && (
-                    <p className="mt-2 text-sm font-semibold text-[#064B27]">
+                    <p className="mt-2 text-sm font-semibold text-[#054A2B]">
                       ফেরত পেয়েছেন: {bdt(r.refundAmount)}
                       {r.refundReference ? (
                         <>
@@ -1175,22 +1175,22 @@ function ReviewsTab({ token }: { token: string }) {
   return (
     <ul className="space-y-3">
       {list.map((r) => (
-        <li key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+        <li key={r.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-semibold">{r.serviceName}</p>
-              <p className="text-[13px] text-[#737B73]">
+              <p className="text-[13px] text-[#5C6B76]">
                 প্রফেশনাল: {r.professionalName ?? "—"} • {fmtDateTime(r.createdAt)}
               </p>
             </div>
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#087A35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#075B35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
               {r.status === "approved" ? "প্রকাশিত" : r.status === "rejected" ? "প্রকাশ করা হয়নি" : "মডারেশনের অপেক্ষায়"}
             </span>
           </div>
           <div className="mt-2">
             <Stars value={r.rating} />
           </div>
-          <p className="mt-1.5 text-[15px] text-[#4c584c]">“{r.text}”</p>
+          <p className="mt-1.5 text-[15px] text-[#43534B]">“{r.text}”</p>
         </li>
       ))}
     </ul>
@@ -1265,9 +1265,9 @@ function AddressesSection({ token }: { token: string }) {
   return (
     <section aria-label="সংরক্ষিত ঠিকানা" className="max-w-xl">
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="font-bold text-[#064B27]">আমার ঠিকানাসমূহ</h2>
+        <h2 className="font-bold text-[#054A2B]">আমার ঠিকানাসমূহ</h2>
         {!showForm && (
-          <button type="button" onClick={() => { resetForm(); setShowForm(true); }} className="text-sm font-semibold text-[#087A35] hover:underline">
+          <button type="button" onClick={() => { resetForm(); setShowForm(true); }} className="text-sm font-semibold text-[#075B35] hover:underline">
             + নতুন ঠিকানা
           </button>
         )}
@@ -1279,18 +1279,18 @@ function AddressesSection({ token }: { token: string }) {
       ) : (
         <ul className="space-y-3 mb-4">
           {list.map((a) => (
-            <li key={a.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+            <li key={a.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <p className="font-semibold">
                   {a.label}
-                  {a.isDefault && <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-[#087A35] text-white">ডিফল্ট</span>}
+                  {a.isDefault && <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-[#075B35] text-white">ডিফল্ট</span>}
                 </p>
                 <span className="flex gap-2 shrink-0">
-                  <button type="button" onClick={() => startEdit(a)} className="text-sm font-semibold text-[#087A35] hover:underline">সম্পাদনা</button>
+                  <button type="button" onClick={() => startEdit(a)} className="text-sm font-semibold text-[#075B35] hover:underline">সম্পাদনা</button>
                   <button type="button" disabled={del.isPending} onClick={() => del.mutate(a.id)} className="text-sm font-semibold text-red-600 hover:underline disabled:opacity-60">মুছুন</button>
                 </span>
               </div>
-              <p className="mt-1 text-sm text-[#4c584c]">
+              <p className="mt-1 text-sm text-[#43534B]">
                 {a.address}{a.area ? `, ${a.area}` : ""}, {a.upazila}, টাঙ্গাইল
                 {a.phone ? <> • <span className="font-en">{a.phone}</span></> : null}
               </p>
@@ -1300,14 +1300,14 @@ function AddressesSection({ token }: { token: string }) {
       )}
       {showForm && (
         <form
-          className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+          className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             setError("");
             save.mutate();
           }}
         >
-          <h3 className="font-bold text-[#064B27]">{editing ? "ঠিকানা সম্পাদনা" : "নতুন ঠিকানা"}</h3>
+          <h3 className="font-bold text-[#054A2B]">{editing ? "ঠিকানা সম্পাদনা" : "নতুন ঠিকানা"}</h3>
           <div>
             <label className={labelCls} htmlFor="ad-label">নাম/লেবেল *</label>
             <input id="ad-label" className={inputCls} {...FIELDS.saveMyAddress.label} value={label} onChange={(e) => setLabel(e.target.value)} required placeholder="যেমন: বাসা, অফিস" />
@@ -1334,15 +1334,15 @@ function AddressesSection({ token }: { token: string }) {
             <input id="ad-phone" className={`${inputCls} font-en`} {...FIELDS.saveMyAddress.phone} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01XXXXXXXXX" inputMode="numeric" />
           </div>
           <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer">
-            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="w-4 h-4 accent-[#087A35]" />
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="w-4 h-4 accent-[#075B35]" />
             এটিকে ডিফল্ট ঠিকানা করুন
           </label>
           {error && <ErrorBox message={error} />}
           <div className="flex gap-2.5">
-            <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+            <button type="submit" disabled={save.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
               {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
             </button>
-            <button type="button" onClick={resetForm} className="border border-[#E5EAE5] font-semibold px-4 py-2.5 rounded-xl">
+            <button type="button" onClick={resetForm} className="border border-[#E1E9E4] font-semibold px-4 py-2.5 rounded-xl">
               বাতিল
             </button>
           </div>
@@ -1398,7 +1398,7 @@ function SecurityTab({ token }: { token: string }) {
     <div className="grid lg:grid-cols-2 gap-6 items-start">
       <div className="space-y-6">
         <form
-          className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+          className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             setPwError("");
@@ -1410,7 +1410,7 @@ function SecurityTab({ token }: { token: string }) {
             changePw.mutate();
           }}
         >
-          <h2 className="font-bold text-[#064B27]">পাসওয়ার্ড পরিবর্তন</h2>
+          <h2 className="font-bold text-[#054A2B]">পাসওয়ার্ড পরিবর্তন</h2>
           <div>
             <label className={labelCls} htmlFor="sec-current">বর্তমান পাসওয়ার্ড *</label>
             <input id="sec-current" type="password" className={inputCls} {...FIELDS.changeMyPassword.currentPassword} value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} required autoComplete="current-password" />
@@ -1423,10 +1423,10 @@ function SecurityTab({ token }: { token: string }) {
             <label className={labelCls} htmlFor="sec-confirm">নতুন পাসওয়ার্ড আবার লিখুন *</label>
             <input id="sec-confirm" type="password" className={inputCls} {...FIELDS.changeMyPassword.newPassword} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} required autoComplete="new-password" />
           </div>
-          <p className="text-[13px] text-[#737B73]">পাসওয়ার্ড বদলালে অন্য সব ডিভাইসের সেশন বাতিল হয়ে যাবে; এই ডিভাইসে লগইন থাকবে।</p>
+          <p className="text-[13px] text-[#5C6B76]">পাসওয়ার্ড বদলালে অন্য সব ডিভাইসের সেশন বাতিল হয়ে যাবে; এই ডিভাইসে লগইন থাকবে।</p>
           {pwError && <ErrorBox message={pwError} />}
-          {pwOk && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">পাসওয়ার্ড পরিবর্তন হয়েছে।</p>}
-          <button type="submit" disabled={changePw.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+          {pwOk && <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">পাসওয়ার্ড পরিবর্তন হয়েছে।</p>}
+          <button type="submit" disabled={changePw.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
             {changePw.isPending ? "পরিবর্তন হচ্ছে…" : "পাসওয়ার্ড পরিবর্তন করুন"}
           </button>
         </form>
@@ -1440,7 +1440,7 @@ function SecurityTab({ token }: { token: string }) {
             </p>
           ) : (
             <>
-              <p className="text-sm text-[#737B73] leading-relaxed">
+              <p className="text-sm text-[#5C6B76] leading-relaxed">
                 অনুরোধ পাঠালে অ্যাকাউন্ট সাথে সাথে মুছে যায় না — অ্যাডমিন পর্যালোচনা করে প্রক্রিয়া করবেন।
                 {delReq ? ` আগের অনুরোধের অবস্থা: ${delReq.status === "approved" ? "অনুমোদিত" : "প্রত্যাখ্যাত"}।` : ""}
               </p>
@@ -1465,9 +1465,9 @@ function SecurityTab({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6">
-        <h2 className="font-bold text-[#064B27]">সক্রিয় সেশনসমূহ</h2>
-        <p className="mt-1 text-sm text-[#737B73]">যেসব ডিভাইস/ব্রাউজারে এই অ্যাকাউন্টে লগইন আছে। অপরিচিত সেশন দেখলে বাতিল করুন।</p>
+      <div className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6">
+        <h2 className="font-bold text-[#054A2B]">সক্রিয় সেশনসমূহ</h2>
+        <p className="mt-1 text-sm text-[#5C6B76]">যেসব ডিভাইস/ব্রাউজারে এই অ্যাকাউন্টে লগইন আছে। অপরিচিত সেশন দেখলে বাতিল করুন।</p>
         {sessError && (
           <div className="mt-3">
             <ErrorBox message={sessError} />
@@ -1476,17 +1476,17 @@ function SecurityTab({ token }: { token: string }) {
         {sessions.isPending ? (
           <Spinner />
         ) : (sessions.data?.sessions.length ?? 0) === 0 ? (
-          <p className="mt-3 text-sm text-[#737B73]">কোনো সক্রিয় সেশন পাওয়া যায়নি।</p>
+          <p className="mt-3 text-sm text-[#5C6B76]">কোনো সক্রিয় সেশন পাওয়া যায়নি।</p>
         ) : (
           <ul className="mt-3 space-y-3">
             {sessions.data?.sessions.map((s) => (
-              <li key={s.ref} className="rounded-2xl border border-[#E5EAE5] p-4 flex items-start justify-between gap-3">
+              <li key={s.ref} className="rounded-2xl border border-[#E1E9E4] p-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold text-[15px]">
                     {s.current ? "এই ডিভাইস / ব্রাউজার" : "অন্য সেশন"}
-                    {s.current && <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-[#087A35] text-white">বর্তমান</span>}
+                    {s.current && <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-[#075B35] text-white">বর্তমান</span>}
                   </p>
-                  <p className="mt-0.5 text-[13px] text-[#737B73]">
+                  <p className="mt-0.5 text-[13px] text-[#5C6B76]">
                     লগইন: {fmtDateTime(s.createdAt)} • মেয়াদ শেষ: {fmtDateTime(s.expiresAt)}
                   </p>
                 </div>
@@ -1542,7 +1542,7 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
   if (user.role === "customer") {
     return (
       <div className="max-w-xl mx-auto px-4 py-14">
-        <EmptyState title="আপনি গ্রাহক হিসেবে লগইন করেছেন" action={<a href="#/dashboard" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">গ্রাহক ড্যাশবোর্ড</a>} />
+        <EmptyState title="আপনি গ্রাহক হিসেবে লগইন করেছেন" action={<a href="#/dashboard" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">গ্রাহক ড্যাশবোর্ড</a>} />
       </div>
     );
   }
@@ -1552,7 +1552,7 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
         <EmptyState
           title="প্রফেশনাল প্রোফাইল পাওয়া যায়নি"
           body="প্রফেশনাল হিসেবে কাজ করতে আবেদন করুন।"
-          action={<a href="#/join" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">আবেদন করুন</a>}
+          action={<a href="#/join" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">আবেদন করুন</a>}
         />
       </div>
     );
@@ -1590,12 +1590,12 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
       <div className="flex items-center gap-3.5 mb-5">
         <Avatar name={user.name} photoUrl={user.photoUrl} size="w-13 h-13" />
         <div>
-          <h1 className="text-[24px] font-bold text-[#064B27] leading-tight">{user.name}</h1>
-          <p className="text-sm text-[#737B73]">
+          <h1 className="text-[24px] font-bold text-[#054A2B] leading-tight">{user.name}</h1>
+          <p className="text-sm text-[#5C6B76]">
             {pro.categoryName} • {pro.experienceYears} বছরের অভিজ্ঞতা
           </p>
         </div>
-        <span className={`ml-auto text-xs font-bold px-3 py-1.5 rounded-full ${pro.status === "verified" ? "bg-[#087A35] text-white" : pro.status === "pending" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>
+        <span className={`ml-auto text-xs font-bold px-3 py-1.5 rounded-full ${pro.status === "verified" ? "bg-[#075B35] text-white" : pro.status === "pending" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>
           {PRO_STATUS_BN[pro.status]}
         </span>
       </div>
@@ -1651,7 +1651,7 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
                   type="button"
                   onClick={() => setFilter(k)}
                   aria-pressed={filter === k}
-                  className={`px-3.5 py-2 rounded-full text-sm font-semibold ${filter === k ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+                  className={`px-3.5 py-2 rounded-full text-sm font-semibold ${filter === k ? "bg-[#054A2B] text-white" : "bg-white border border-[#E1E9E4] text-[#43534B]"}`}
                 >
                   {label}
                 </button>
@@ -1668,7 +1668,7 @@ export function ProDashboard({ params }: { params: URLSearchParams }) {
                 ))}
               </div>
             )}
-            <p className="mt-4 text-sm text-[#737B73]">কাজ গ্রহণ/শুরু/শেষ করতে বুকিং কার্ডে চাপ দিয়ে বিবরণ পেজে যান।</p>
+            <p className="mt-4 text-sm text-[#5C6B76]">কাজ গ্রহণ/শুরু/শেষ করতে বুকিং কার্ডে চাপ দিয়ে বিবরণ পেজে যান।</p>
           </div>
         )}
         {tab === "earnings" && <ProEarningsTab token={token} />}
@@ -1700,14 +1700,14 @@ const WITHDRAWAL_STATUS_BN: Record<string, { label: string; cls: string }> = {
   approved: { label: "অনুমোদিত", cls: "bg-sky-100 text-sky-800" },
   held: { label: "হোল্ডে আছে", cls: "bg-red-100 text-red-700" },
   rejected: { label: "বাতিল", cls: "bg-red-100 text-red-700" },
-  paid: { label: "পরিশোধিত", cls: "bg-[#087A35] text-white" },
+  paid: { label: "পরিশোধিত", cls: "bg-[#075B35] text-white" },
 };
 
 function MoneyRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
-      <span className="text-[14px] text-[#737B73]">{label}</span>
-      <span className={`font-en text-[14.5px] ${strong ? "font-bold text-[#064B27]" : "font-semibold text-[#202820]"}`}>{value}</span>
+      <span className="text-[14px] text-[#5C6B76]">{label}</span>
+      <span className={`font-en text-[14.5px] ${strong ? "font-bold text-[#054A2B]" : "font-semibold text-[#172B3A]"}`}>{value}</span>
     </div>
   );
 }
@@ -1778,7 +1778,7 @@ function ProEarningsTab({ token }: { token: string }) {
       </div>
 
       <section aria-label="বুকিং অনুযায়ী আয়ের হিসাব">
-        <h2 className="text-lg font-bold text-[#064B27] mb-3">বুকিং অনুযায়ী হিসাব</h2>
+        <h2 className="text-lg font-bold text-[#054A2B] mb-3">বুকিং অনুযায়ী হিসাব</h2>
         {rows.length === 0 ? (
           <EmptyState
             title="এখনো কোনো যাচাইকৃত পেমেন্ট নেই"
@@ -1787,18 +1787,18 @@ function ProEarningsTab({ token }: { token: string }) {
         ) : (
           <div className="grid md:grid-cols-2 gap-3.5">
             {rows.map((r) => (
-              <div key={r.bookingId} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <div key={r.bookingId} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <p className="font-bold text-[15px]">
-                    {r.serviceName} <span className="font-en text-[13px] text-[#737B73]">• {r.code}</span>
+                    {r.serviceName} <span className="font-en text-[13px] text-[#5C6B76]">• {r.code}</span>
                   </p>
                   {r.paymentModel && (
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#F0FAF2] text-[#064B27]">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#F3F8F4] text-[#054A2B]">
                       {PAYMENT_MODEL_BN[r.paymentModel] ?? r.paymentModel}
                     </span>
                   )}
                 </div>
-                <div className="divide-y divide-[#F0F4F0]">
+                <div className="divide-y divide-[#EEF3F0]">
                   <MoneyRow label="সার্ভিস চার্জ (বিল)" value={r.serviceCharge != null ? bdt(r.serviceCharge) : "—"} />
                   <MoneyRow label="কমিশন" value={`− ${bdt(r.commission)}`} />
                   <MoneyRow label="হেল্ড (অনলাইন অংশ)" value={bdt(r.held)} />
@@ -1815,12 +1815,12 @@ function ProEarningsTab({ token }: { token: string }) {
         )}
       </section>
 
-      <section aria-label="উইথড্র" className="rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6">
-        <h2 className="text-lg font-bold text-[#064B27]">টাকা উত্তোলন (উইথড্র)</h2>
-        <p className="mt-1 text-[15px] text-[#4c584c]">
-          উত্তোলনযোগ্য ব্যালেন্স: <b className="font-en text-[#064B27]">{bdt(wallet.availableBalance)}</b>
+      <section aria-label="উইথড্র" className="rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6">
+        <h2 className="text-lg font-bold text-[#054A2B]">টাকা উত্তোলন (উইথড্র)</h2>
+        <p className="mt-1 text-[15px] text-[#43534B]">
+          উত্তোলনযোগ্য ব্যালেন্স: <b className="font-en text-[#054A2B]">{bdt(wallet.availableBalance)}</b>
           {wallet.openWithdrawalTotal > 0 && (
-            <span className="text-[#737B73]"> (হেল্ড {bdt(wallet.held)} থেকে অপেক্ষমাণ অনুরোধ {bdt(wallet.openWithdrawalTotal)} বাদ দিয়ে)</span>
+            <span className="text-[#5C6B76]"> (হেল্ড {bdt(wallet.held)} থেকে অপেক্ষমাণ অনুরোধ {bdt(wallet.openWithdrawalTotal)} বাদ দিয়ে)</span>
           )}
           {wallet.frozenHeld > 0 && (
             <span className="block mt-1 font-semibold text-red-700">
@@ -1849,7 +1849,7 @@ function ProEarningsTab({ token }: { token: string }) {
               <option value="pathao_pay">পাঠাও পে (শীঘ্রই আসছে)</option>
             </select>
             {method === "pathao_pay" && (
-              <p className="mt-1.5 text-[13px] text-[#737B73]">
+              <p className="mt-1.5 text-[13px] text-[#5C6B76]">
                 পাঠাও পে এখনো চালু হয়নি — এর কোনো পাবলিক মার্চেন্ট API নেই। এই মাধ্যম বেছে নিলে পেআউট অ্যাডমিন ম্যানুয়ালি সমন্বয় করবেন।
               </p>
             )}
@@ -1858,15 +1858,15 @@ function ProEarningsTab({ token }: { token: string }) {
             <label className={labelCls} htmlFor="wd-number">{method === "bank" ? "ব্যাংক অ্যাকাউন্ট নম্বর" : "মোবাইল নম্বর"}</label>
             <input id="wd-number" className={`${inputCls} font-en`} {...FIELDS.updateWithdrawalInfo.number} value={number} onChange={(e) => setNumber(e.target.value)} placeholder={method === "bank" ? "অ্যাকাউন্ট নম্বর" : "01XXXXXXXXX"} required />
           </div>
-          <button type="submit" disabled={saveInfo.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+          <button type="submit" disabled={saveInfo.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
             {saveInfo.isPending ? "সংরক্ষণ হচ্ছে…" : "তথ্য সংরক্ষণ"}
           </button>
         </form>
         {infoErr && <div className="mt-3"><ErrorBox message={infoErr} /></div>}
-        {infoMsg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{infoMsg}</p>}
+        {infoMsg && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">{infoMsg}</p>}
 
         <form
-          className="mt-5 grid sm:grid-cols-[1fr_auto] gap-3 items-end border-t border-[#E5EAE5] pt-5"
+          className="mt-5 grid sm:grid-cols-[1fr_auto] gap-3 items-end border-t border-[#E1E9E4] pt-5"
           onSubmit={(e) => {
             e.preventDefault();
             setWdMsg("");
@@ -1881,33 +1881,33 @@ function ProEarningsTab({ token }: { token: string }) {
           <button
             type="submit"
             disabled={requestWd.isPending || !amtValid || !wallet.withdrawalMethod}
-            className="bg-[#FF8A00] hover:bg-[#E67A00] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+            className="bg-[#FF8500] hover:bg-[#E67600] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
           >
             {requestWd.isPending ? "পাঠানো হচ্ছে…" : "উইথড্র অনুরোধ করুন"}
           </button>
         </form>
-        {!wallet.withdrawalMethod && <p className="mt-2 text-sm text-[#737B73]">অনুরোধ করতে আগে উপরে মাধ্যম ও নম্বর সংরক্ষণ করুন।</p>}
+        {!wallet.withdrawalMethod && <p className="mt-2 text-sm text-[#5C6B76]">অনুরোধ করতে আগে উপরে মাধ্যম ও নম্বর সংরক্ষণ করুন।</p>}
         {amount !== "" && !amtValid && wallet.availableBalance >= 0 && (
           <p className="mt-2 text-sm text-red-700">পরিমাণটি উত্তোলনযোগ্য ব্যালেন্সের মধ্যে হতে হবে।</p>
         )}
         {wdErr && <div className="mt-3"><ErrorBox message={wdErr} /></div>}
-        {wdMsg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{wdMsg}</p>}
+        {wdMsg && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">{wdMsg}</p>}
 
-        <h3 className="mt-6 font-bold text-[#064B27]">আগের অনুরোধসমূহ</h3>
+        <h3 className="mt-6 font-bold text-[#054A2B]">আগের অনুরোধসমূহ</h3>
         {wallet.requests.length === 0 ? (
-          <p className="mt-2 text-sm text-[#737B73]">এখনো কোনো উইথড্র অনুরোধ করেননি।</p>
+          <p className="mt-2 text-sm text-[#5C6B76]">এখনো কোনো উইথড্র অনুরোধ করেননি।</p>
         ) : (
-          <ul className="mt-2 divide-y divide-[#F0F4F0]">
+          <ul className="mt-2 divide-y divide-[#EEF3F0]">
             {wallet.requests.map((r) => {
               const st = WITHDRAWAL_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
               return (
                 <li key={r.id} className="py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-en font-bold">{bdt(r.amount)}</span>
-                  <span className="text-sm text-[#4c584c]">{WITHDRAWAL_METHOD_BN[r.method] ?? providerEn(r.method)} • <span className="font-en">{r.number}</span></span>
+                  <span className="text-sm text-[#43534B]">{WITHDRAWAL_METHOD_BN[r.method] ?? providerEn(r.method)} • <span className="font-en">{r.number}</span></span>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
-                  <span className="text-[13px] text-[#737B73] ml-auto">{fmtDate(r.createdAt)}</span>
+                  <span className="text-[13px] text-[#5C6B76] ml-auto">{fmtDate(r.createdAt)}</span>
                   {r.status === "paid" && r.transactionReference && (
-                    <span className="w-full text-[13px] text-[#737B73]">লেনদেন রেফারেন্স: <span className="font-en">{r.transactionReference}</span></span>
+                    <span className="w-full text-[13px] text-[#5C6B76]">লেনদেন রেফারেন্স: <span className="font-en">{r.transactionReference}</span></span>
                   )}
                   {r.status === "held" && r.holdReason && (
                     <span className="w-full text-[13px] text-red-700">হোল্ডের কারণ: {r.holdReason} — হোল্ড ছাড়া না হলে এই টাকা পাঠানো হবে না।</span>
@@ -1942,14 +1942,14 @@ function ProReviewsTab({ token }: { token: string }) {
   return (
     <div className="grid md:grid-cols-2 gap-3.5">
       {reviews.map((r) => (
-        <article key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+        <article key={r.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
           <div className="flex items-center gap-2">
             <Stars value={r.rating} />
             <span className="font-en font-bold text-[14px]">{r.rating}/5</span>
-            <span className="ml-auto text-[13px] text-[#737B73]">{fmtDate(r.createdAt)}</span>
+            <span className="ml-auto text-[13px] text-[#5C6B76]">{fmtDate(r.createdAt)}</span>
           </div>
-          <p className="mt-2 text-[15px] text-[#202820]">{r.text}</p>
-          <p className="mt-2 text-[13.5px] text-[#737B73]">
+          <p className="mt-2 text-[15px] text-[#172B3A]">{r.text}</p>
+          <p className="mt-2 text-[13.5px] text-[#5C6B76]">
             {r.customerName} • {r.serviceName}
           </p>
         </article>
@@ -2008,7 +2008,7 @@ function ProVerificationTab({ token, proId, status }: { token: string; proId: nu
       <div
         className={`rounded-2xl border px-4 py-3.5 text-[15px] ${
           v.status === "verified"
-            ? "bg-[#F0FAF2] border-[#cfe3d3] text-[#064B27]"
+            ? "bg-[#F3F8F4] border-[#C9DFD2] text-[#054A2B]"
             : v.status === "pending"
               ? "bg-amber-50 border-amber-200 text-amber-900"
               : "bg-red-50 border-red-200 text-red-800"
@@ -2023,35 +2023,35 @@ function ProVerificationTab({ token, proId, status }: { token: string; proId: nu
       </div>
 
       {v.verificationNote && (
-        <div className="rounded-2xl border border-[#E5EAE5] bg-white px-4 py-3.5">
-          <p className="font-bold text-[15px] text-[#064B27]">অ্যাডমিনের নোট</p>
-          <p className="mt-1 text-[15px] text-[#202820]">{v.verificationNote}</p>
+        <div className="rounded-2xl border border-[#E1E9E4] bg-white px-4 py-3.5">
+          <p className="font-bold text-[15px] text-[#054A2B]">অ্যাডমিনের নোট</p>
+          <p className="mt-1 text-[15px] text-[#172B3A]">{v.verificationNote}</p>
         </div>
       )}
 
-      <div className="rounded-2xl border border-[#E5EAE5] bg-white px-4 py-3.5">
-        <p className="font-bold text-[15px] text-[#064B27]">যাচাইয়ের জন্য যা লাগে</p>
+      <div className="rounded-2xl border border-[#E1E9E4] bg-white px-4 py-3.5">
+        <p className="font-bold text-[15px] text-[#054A2B]">যাচাইয়ের জন্য যা লাগে</p>
         <ul className="mt-2 space-y-1.5">
           {items.map((it) => (
             <li key={it.key} className="flex items-center gap-2 text-[15px]">
-              <span className={it.done ? "text-[#087A35]" : "text-red-600"}>{it.done ? Icon.checkCircle("w-5 h-5") : Icon.clock("w-5 h-5")}</span>
+              <span className={it.done ? "text-[#075B35]" : "text-red-600"}>{it.done ? Icon.checkCircle("w-5 h-5") : Icon.clock("w-5 h-5")}</span>
               <span>{it.label}</span>
-              <span className={`ml-auto text-[13px] font-semibold ${it.done ? "text-[#087A35]" : "text-red-600"}`}>
+              <span className={`ml-auto text-[13px] font-semibold ${it.done ? "text-[#075B35]" : "text-red-600"}`}>
                 {it.done ? "জমা হয়েছে" : "বাকি আছে"}
               </span>
             </li>
           ))}
         </ul>
-        <div className="mt-3 border-t border-[#E5EAE5] pt-3">
+        <div className="mt-3 border-t border-[#E1E9E4] pt-3">
           <span className={labelCls}>আমার জমা দেওয়া ডকুমেন্ট</span>
           <IdentityDocViewer token={token} professionalId={proId} documents={v.documents} />
-          <p className="mt-1 text-[13px] text-[#737B73]">এই ডকুমেন্টগুলো শুধু আপনি ও যাচাইকারী অ্যাডমিন দেখতে পারবেন — কোনো পাবলিক লিংক নেই।</p>
+          <p className="mt-1 text-[13px] text-[#5C6B76]">এই ডকুমেন্টগুলো শুধু আপনি ও যাচাইকারী অ্যাডমিন দেখতে পারবেন — কোনো পাবলিক লিংক নেই।</p>
         </div>
       </div>
 
       {status === "rejected" && (
         <form
-          className="rounded-2xl border border-[#E5EAE5] bg-white px-4 py-4 sm:px-5"
+          className="rounded-2xl border border-[#E1E9E4] bg-white px-4 py-4 sm:px-5"
           onSubmit={(e) => {
             e.preventDefault();
             setMsg("");
@@ -2060,8 +2060,8 @@ function ProVerificationTab({ token, proId, status }: { token: string; proId: nu
             resubmit.mutate();
           }}
         >
-          <p className="font-bold text-[15px] text-[#064B27]">সংশোধিত ডকুমেন্ট আবার জমা দিন</p>
-          <p className="mt-1 text-sm text-[#737B73]">আগের ছবিগুলো বদলে নতুন ছবি বসবে এবং আবেদনটি আবার যাচাইয়ের অপেক্ষায় যাবে।</p>
+          <p className="font-bold text-[15px] text-[#054A2B]">সংশোধিত ডকুমেন্ট আবার জমা দিন</p>
+          <p className="mt-1 text-sm text-[#5C6B76]">আগের ছবিগুলো বদলে নতুন ছবি বসবে এবং আবেদনটি আবার যাচাইয়ের অপেক্ষায় যাবে।</p>
           <div className="mt-3">
             <label className={labelCls} htmlFor="rs-nid">NID নম্বর (শুধু বদলাতে চাইলে)</label>
             <input id="rs-nid" className={`${inputCls} font-en`} {...FIELDS.resubmitIdentityDocuments.nidNumber} value={nidNumber} onChange={(e) => setNidNumber(e.target.value)} placeholder="আগের নম্বরই থাকবে" />
@@ -2085,8 +2085,8 @@ function ProVerificationTab({ token, proId, status }: { token: string; proId: nu
             />
           </div>
           {err && <div className="mt-3"><ErrorBox message={err} /></div>}
-          {msg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">{msg}</p>}
-          <button type="submit" disabled={resubmit.isPending} className="mt-4 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+          {msg && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">{msg}</p>}
+          <button type="submit" disabled={resubmit.isPending} className="mt-4 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
             {resubmit.isPending ? "জমা দেওয়া হচ্ছে…" : "আবার জমা দিন"}
           </button>
         </form>
@@ -2140,12 +2140,12 @@ function IdentityDocViewer({
               type="button"
               disabled={busy === kind}
               onClick={() => open(kind)}
-              className="border border-[#E5EAE5] font-semibold text-[13px] px-3 py-1.5 rounded-lg hover:bg-[#F0FAF2] disabled:opacity-60"
+              className="border border-[#E1E9E4] font-semibold text-[13px] px-3 py-1.5 rounded-lg hover:bg-[#F3F8F4] disabled:opacity-60"
             >
               {busy === kind ? "লোড হচ্ছে…" : label}
             </button>
           ) : (
-            <span key={kind} className="text-[13px] text-[#737B73] border border-dashed border-[#E5EAE5] px-3 py-1.5 rounded-lg">
+            <span key={kind} className="text-[13px] text-[#5C6B76] border border-dashed border-[#E1E9E4] px-3 py-1.5 rounded-lg">
               {label}: জমা হয়নি
             </span>
           ),
@@ -2157,10 +2157,10 @@ function IdentityDocViewer({
           <img
             src={view.url}
             alt={DOC_KIND_BN.find((d) => d.kind === view.kind)?.label ?? "পরিচয় ডকুমেন্ট"}
-            className="max-h-72 w-auto rounded-xl border border-[#E5EAE5] object-contain"
+            className="max-h-72 w-auto rounded-xl border border-[#E1E9E4] object-contain"
           />
           <div>
-            <button type="button" onClick={() => setView(null)} className="mt-2 text-[13px] font-semibold text-[#087A35] hover:underline">
+            <button type="button" onClick={() => setView(null)} className="mt-2 text-[13px] font-semibold text-[#075B35] hover:underline">
               ছবি বন্ধ করুন
             </button>
           </div>
@@ -2222,7 +2222,7 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
     setAreas((prev) => (prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]));
   return (
     <form
-      className="max-w-2xl rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 grid sm:grid-cols-2 gap-4"
+      className="max-w-2xl rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 grid sm:grid-cols-2 gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         setError("");
@@ -2255,7 +2255,7 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
                 type="button"
                 onClick={() => toggleArea(l.nameBn)}
                 aria-pressed={on}
-                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${on ? "bg-[#087A35] text-white border-[#087A35]" : "bg-white text-[#4c584c] border-[#E5EAE5]"}`}
+                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${on ? "bg-[#075B35] text-white border-[#075B35]" : "bg-white text-[#43534B] border-[#E1E9E4]"}`}
               >
                 {l.nameBn}
               </button>
@@ -2271,11 +2271,11 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
         <label className={labelCls} htmlFor="pp-bio">পরিচিতি</label>
         <textarea id="pp-bio" className={inputCls} rows={3} {...FIELDS.updateProProfile.bio} value={bio} onChange={(e) => setBio(e.target.value)} />
       </div>
-      <label className="sm:col-span-2 flex items-center justify-between gap-3 rounded-xl bg-[#F0FAF2] px-4 py-3 cursor-pointer">
+      <label className="sm:col-span-2 flex items-center justify-between gap-3 rounded-xl bg-[#F3F8F4] px-4 py-3 cursor-pointer">
         <span className="font-semibold text-[15px]">এখন কাজ নেওয়ার জন্য উপলব্ধ</span>
         <input
           type="checkbox"
-          className="w-5 h-5 accent-[#087A35]"
+          className="w-5 h-5 accent-[#075B35]"
           checked={available}
           onChange={(e) => setAvailable(e.target.checked)}
           aria-label="উপলব্ধতা"
@@ -2294,19 +2294,19 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
                   setAvailableDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => a - b)))
                 }
                 aria-pressed={on}
-                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${on ? "bg-[#087A35] text-white border-[#087A35]" : "bg-white text-[#4c584c] border-[#E5EAE5]"}`}
+                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${on ? "bg-[#075B35] text-white border-[#075B35]" : "bg-white text-[#43534B] border-[#E1E9E4]"}`}
               >
                 {label}
               </button>
             );
           })}
         </div>
-        <p className="mt-1.5 text-[13px] text-[#737B73]">সব দিন বেছে রাখলে প্রতিদিনই কাজের জন্য উপলব্ধ থাকবেন।</p>
+        <p className="mt-1.5 text-[13px] text-[#5C6B76]">সব দিন বেছে রাখলে প্রতিদিনই কাজের জন্য উপলব্ধ থাকবেন।</p>
       </fieldset>
       <div className="sm:col-span-2">
         <span className={labelCls}>আমার পরিচয় ডকুমেন্ট</span>
         <IdentityDocViewer token={token} professionalId={pro.id} />
-        <p className="mt-1 text-[13px] text-[#737B73]">এই ডকুমেন্টগুলো শুধু আপনি ও অ্যাডমিন দেখতে পারবেন — কোনো পাবলিক লিংক নেই।</p>
+        <p className="mt-1 text-[13px] text-[#5C6B76]">এই ডকুমেন্টগুলো শুধু আপনি ও অ্যাডমিন দেখতে পারবেন — কোনো পাবলিক লিংক নেই।</p>
       </div>
       <div className="sm:col-span-2">
         <PhotoField
@@ -2323,8 +2323,8 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
           <ErrorBox message={error} />
         </div>
       )}
-      {ok && <p className="sm:col-span-2 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">প্রোফাইল সংরক্ষিত হয়েছে।</p>}
-      <button type="submit" disabled={save.isPending} className="sm:col-span-2 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+      {ok && <p className="sm:col-span-2 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">প্রোফাইল সংরক্ষিত হয়েছে।</p>}
+      <button type="submit" disabled={save.isPending} className="sm:col-span-2 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
         {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
       </button>
     </form>
@@ -2359,7 +2359,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
         <EmptyState
           title="অনুমতি নেই"
           body="অ্যাডমিন প্যানেল শুধুমাত্র প্ল্যাটফর্ম অ্যাডমিনের জন্য। এই পেজের সব ডেটা সার্ভার থেকেও সুরক্ষিত — অন্য কোনো ভূমিকা দিয়ে এখানকার তথ্য পাওয়া যাবে না।"
-          action={<a href="#/" className="inline-flex bg-[#087A35] text-white font-semibold px-5 py-2.5 rounded-xl">হোমে ফিরুন</a>}
+          action={<a href="#/" className="inline-flex bg-[#075B35] text-white font-semibold px-5 py-2.5 rounded-xl">হোমে ফিরুন</a>}
         />
       </div>
     );
@@ -2456,7 +2456,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
     <nav aria-label="অ্যাডমিন নেভিগেশন" className="space-y-5">
       {groups.map((g) => (
         <div key={g.title}>
-          {!collapsed && <p className="px-3 mb-1.5 text-[11.5px] font-bold tracking-wide text-[#737B73]">{g.title}</p>}
+          {!collapsed && <p className="px-3 mb-1.5 text-[11.5px] font-bold tracking-wide text-[#5C6B76]">{g.title}</p>}
           <ul className="space-y-0.5">
             {g.tabs.map((t) => {
               const active = shownTab === t.key;
@@ -2468,13 +2468,13 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
                     aria-current={active ? "page" : undefined}
                     title={collapsed ? t.label : undefined}
                     className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[14.5px] font-semibold ${
-                      active ? "bg-[#087A35] text-white" : "text-[#064B27] hover:bg-[#F0FAF2]"
+                      active ? "bg-[#075B35] text-white" : "text-[#054A2B] hover:bg-[#F3F8F4]"
                     } ${collapsed ? "justify-center" : ""}`}
                   >
                     <span className="shrink-0">{t.icon}</span>
                     {!collapsed && <span className="flex-1 truncate">{t.label}</span>}
                     {!collapsed && t.badge != null && t.badge > 0 && (
-                      <span className={`min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold grid place-items-center ${active ? "bg-white text-[#087A35]" : "bg-[#FF8A00] text-white"}`}>
+                      <span className={`min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold grid place-items-center ${active ? "bg-white text-[#075B35]" : "bg-[#FF8500] text-white"}`}>
                         {t.badge}
                       </span>
                     )}
@@ -2504,25 +2504,25 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
           type="button"
           onClick={() => setDrawerOpen(true)}
           aria-label="অ্যাডমিন মেনু খুলুন"
-          className="grid place-items-center w-11 h-11 rounded-xl border border-[#E5EAE5] bg-white text-[#064B27]"
+          className="grid place-items-center w-11 h-11 rounded-xl border border-[#E1E9E4] bg-white text-[#054A2B]"
         >
           {Icon.menu("w-5 h-5")}
         </button>
         <div className="min-w-0">
-          <h1 className="text-[19px] font-bold text-[#064B27] leading-tight truncate">{activeLabel}</h1>
-          <p className="text-[12.5px] text-[#737B73] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
+          <h1 className="text-[19px] font-bold text-[#054A2B] leading-tight truncate">{activeLabel}</h1>
+          <p className="text-[12.5px] text-[#5C6B76] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
         </div>
       </div>
 
       <div className="lg:flex lg:gap-6 lg:items-start">
         {/* Desktop sidebar (collapsible) */}
-        <aside className={`hidden lg:block shrink-0 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-[#E5EAE5] bg-white p-3 ${collapsed ? "w-[76px]" : "w-64"}`}>
+        <aside className={`hidden lg:block shrink-0 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-[#E1E9E4] bg-white p-3 ${collapsed ? "w-[76px]" : "w-64"}`}>
           <div className={`flex items-center gap-2.5 px-2 pb-3 ${collapsed ? "justify-center" : ""}`}>
-            <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#064B27] text-white shrink-0">{Icon.settings("w-5 h-5")}</span>
+            <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#054A2B] text-white shrink-0">{Icon.settings("w-5 h-5")}</span>
             {!collapsed && (
               <div className="min-w-0">
-                <p className="font-bold text-[#064B27] leading-tight">অ্যাডমিন প্যানেল</p>
-                <p className="text-[12px] text-[#737B73] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
+                <p className="font-bold text-[#054A2B] leading-tight">অ্যাডমিন প্যানেল</p>
+                <p className="text-[12px] text-[#5C6B76] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
               </div>
             )}
           </div>
@@ -2531,7 +2531,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-expanded={!collapsed}
-            className="mt-5 w-full inline-flex items-center justify-center gap-1.5 border border-[#E5EAE5] rounded-xl px-3 py-2 text-[13px] font-semibold text-[#064B27] hover:bg-[#F0FAF2]"
+            className="mt-5 w-full inline-flex items-center justify-center gap-1.5 border border-[#E1E9E4] rounded-xl px-3 py-2 text-[13px] font-semibold text-[#054A2B] hover:bg-[#F3F8F4]"
           >
             {collapsed ? Icon.chevronRight("w-4 h-4") : (<>{Icon.chevronLeft("w-4 h-4")} ছোট করুন</>)}
           </button>
@@ -2543,12 +2543,12 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
             <button type="button" aria-label="মেনু বন্ধ করুন" className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
             <div className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] bg-white shadow-xl overflow-y-auto p-4 pb-safe">
               <div className="flex items-center gap-2.5 pb-3">
-                <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#064B27] text-white">{Icon.settings("w-5 h-5")}</span>
+                <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#054A2B] text-white">{Icon.settings("w-5 h-5")}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-[#064B27] leading-tight">অ্যাডমিন প্যানেল</p>
-                  <p className="text-[12px] text-[#737B73] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
+                  <p className="font-bold text-[#054A2B] leading-tight">অ্যাডমিন প্যানেল</p>
+                  <p className="text-[12px] text-[#5C6B76] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
                 </div>
-                <button type="button" onClick={() => setDrawerOpen(false)} aria-label="বন্ধ করুন" className="grid place-items-center w-9 h-9 rounded-lg border border-[#E5EAE5] text-[#064B27]">
+                <button type="button" onClick={() => setDrawerOpen(false)} aria-label="বন্ধ করুন" className="grid place-items-center w-9 h-9 rounded-lg border border-[#E1E9E4] text-[#054A2B]">
                   {Icon.x("w-4 h-4")}
                 </button>
               </div>
@@ -2558,7 +2558,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
         )}
 
         <div className="flex-1 min-w-0 pb-20 lg:pb-0">
-          <h1 className="hidden lg:block text-[24px] font-bold text-[#064B27] leading-tight mb-5">{activeLabel}</h1>
+          <h1 className="hidden lg:block text-[24px] font-bold text-[#054A2B] leading-tight mb-5">{activeLabel}</h1>
           {shownTab === "overview" && <AdminOverview token={token} />}
           {shownTab === "overview" && level === "super" && <FullBackupCard token={token} />}
           {shownTab === "analytics" && <AdminAnalytics token={token} />}
@@ -2582,14 +2582,14 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
 
       {/* Admin mobile bottom navigation (replaces the customer one,
           which App.tsx hides on admin pages) */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-[#E5EAE5] pb-safe shadow-[0_-2px_12px_rgba(6,75,39,0.06)]" aria-label="অ্যাডমিন মোবাইল নেভিগেশন">
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-[#E1E9E4] pb-safe shadow-[0_-2px_12px_rgba(5,74,43,0.06)]" aria-label="অ্যাডমিন মোবাইল নেভিগেশন">
         <div className={`grid ${bottomItems.length >= 4 ? "grid-cols-5" : "grid-cols-4"}`}>
           {bottomItems.map((item) => (
             <a
               key={item.key}
               href={item.href}
               aria-current={shownTab === item.key ? "page" : undefined}
-              className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${shownTab === item.key ? "text-[#087A35]" : "text-[#737B73]"}`}
+              className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${shownTab === item.key ? "text-[#075B35]" : "text-[#5C6B76]"}`}
             >
               {item.icon}
               {item.label}
@@ -2599,7 +2599,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
             type="button"
             onClick={() => setDrawerOpen(true)}
             aria-label="আরও মেনু খুলুন"
-            className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-[#737B73]"
+            className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-[#5C6B76]"
           >
             {Icon.menu("w-5 h-5")}
             আরও
@@ -2647,16 +2647,16 @@ function FullBackupCard({ token }: { token: string }) {
     }
   }
   return (
-    <div className="mt-6 rounded-2xl border border-[#E5EAE5] bg-white p-5">
-      <h2 className="font-bold text-[#064B27]">ডাটাবেস ব্যাকআপ</h2>
-      <p className="mt-1 text-sm text-[#737B73]">
+    <div className="mt-6 rounded-2xl border border-[#E1E9E4] bg-white p-5">
+      <h2 className="font-bold text-[#054A2B]">ডাটাবেস ব্যাকআপ</h2>
+      <p className="mt-1 text-sm text-[#5C6B76]">
         পুরো ডাটাবেসের একটি সম্পূর্ণ ব্যাকআপ (সব টেবিল ও সব রো) gzip-compressed JSON ফাইল হিসেবে ডাউনলোড করুন। লগইন সেশন টোকেন ব্যাকআপে থাকে না। শুধুমাত্র সুপার অ্যাডমিন এই ডাউনলোড করতে পারবেন।
       </p>
       <button
         type="button"
         onClick={download}
         disabled={busy}
-        className="mt-3 inline-flex items-center gap-2 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+        className="mt-3 inline-flex items-center gap-2 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
       >
         {Icon.download("w-4 h-4")}
         {busy ? "ব্যাকআপ তৈরি হচ্ছে…" : "Full backup download"}
@@ -2666,7 +2666,7 @@ function FullBackupCard({ token }: { token: string }) {
           <ErrorBox message={error} />
         </div>
       )}
-      {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+      {done && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-2.5">{done}</p>}
     </div>
   );
 }
@@ -2680,7 +2680,7 @@ function AdminOverview({ token }: { token: string }) {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <p className="text-sm text-[#737B73]">সব সংখ্যা সার্ভারের আসল রেকর্ড থেকে — প্রতিটি ডিভাইসে একই হিসাব দেখা যাবে।</p>
+        <p className="text-sm text-[#5C6B76]">সব সংখ্যা সার্ভারের আসল রেকর্ড থেকে — প্রতিটি ডিভাইসে একই হিসাব দেখা যাবে।</p>
         <FreshnessBar dataUpdatedAt={ov.dataUpdatedAt} isFetching={ov.isFetching} onRefresh={() => void ov.refetch()} />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -2694,9 +2694,9 @@ function AdminOverview({ token }: { token: string }) {
         <StatCard label="খোলা অভিযোগ" value={d.openComplaints} icon={Icon.message("w-5 h-5")} />
         <StatCard label="খোলা সাপোর্ট টিকিট" value={d.openTickets} icon={Icon.message("w-5 h-5")} />
       </div>
-      <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
-        <h2 className="font-bold text-[#064B27] mb-1">টাকার হিসাব (যাচাইকৃত পেমেন্ট ও লেজার থেকে)</h2>
-        <p className="text-[12.5px] text-[#737B73] mb-3">
+      <div className="mt-4 rounded-2xl border border-[#E1E9E4] bg-[#F3F8F4] p-5">
+        <h2 className="font-bold text-[#054A2B] mb-1">টাকার হিসাব (যাচাইকৃত পেমেন্ট ও লেজার থেকে)</h2>
+        <p className="text-[12.5px] text-[#5C6B76] mb-3">
           কমিশনের এই হিসাব লাইভ লেজার থেকে — প্রফেশনালের আয়ের পেজে প্রতিটি বুকিংয়ের কোটেশনের সময় স্থির (স্ন্যাপশট) কমিশন দেখানো হয়, তাই দুটি সংখ্যা সবসময় হুবহু মিলবে না; দুটোই নিজ নিজ জায়গায় সঠিক।
         </p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
@@ -2716,7 +2716,7 @@ function AdminOverview({ token }: { token: string }) {
           </p>
         )}
       </div>
-      <h2 className="font-bold text-[#064B27] mt-7 mb-3">নতুন অপেক্ষমাণ বুকিং</h2>
+      <h2 className="font-bold text-[#054A2B] mt-7 mb-3">নতুন অপেক্ষমাণ বুকিং</h2>
       {recent.isPending ? (
         <Spinner />
       ) : (recent.data?.bookings.length ?? 0) === 0 ? (
@@ -2733,7 +2733,7 @@ function AdminOverview({ token }: { token: string }) {
 const CANCEL_REQUEST_STATUS_BN: Record<string, { label: string; cls: string }> = {
   requested: { label: "সিদ্ধান্তের অপেক্ষায়", cls: "bg-amber-100 text-amber-800" },
   under_review: { label: "যাচাই চলছে (Waiting)", cls: "bg-sky-100 text-sky-800" },
-  approved: { label: "অনুমোদিত — বুকিং বাতিল হয়েছে", cls: "bg-[#087A35] text-white" },
+  approved: { label: "অনুমোদিত — বুকিং বাতিল হয়েছে", cls: "bg-[#075B35] text-white" },
   rejected: { label: "গৃহীত হয়নি — বুকিং চলমান", cls: "bg-red-100 text-red-700" },
 };
 
@@ -2766,14 +2766,14 @@ function CancelRequestsPanel({ token }: { token: string }) {
   const decided = (q.data?.requests ?? []).filter((r) => r.status === "approved" || r.status === "rejected").slice(0, 5);
   return (
     <section aria-label="বাতিলের অনুরোধ" className="mb-6">
-      <h2 className="text-lg font-bold text-[#064B27]">বাতিলের অনুরোধ ({open.length}টি সিদ্ধান্তের অপেক্ষায়)</h2>
-      <p className="mt-1 text-sm text-[#737B73]">
+      <h2 className="text-lg font-bold text-[#054A2B]">বাতিলের অনুরোধ ({open.length}টি সিদ্ধান্তের অপেক্ষায়)</h2>
+      <p className="mt-1 text-sm text-[#5C6B76]">
         গ্রাহকের বাতিলের অনুরোধে বুকিং সাথে সাথে বাতিল হয় না — আপনি যাচাই করে সিদ্ধান্ত দিলেই কেবল বাতিল হবে।
         অনুমোদিত হলে অপেক্ষমাণ অনলাইন পেমেন্ট আপনা-আপনি ব্যর্থ হবে; যাচাইকৃত পেমেন্ট থাকলে রিফান্ডের সিদ্ধান্ত ফাইন্যান্স অ্যাডমিন কেস অনুযায়ী নেবেন (কোনো নির্দিষ্ট হার নেই)।
       </p>
       {error && <div className="mt-3"><ErrorBox message={error} /></div>}
       {open.length === 0 ? (
-        <p className="mt-3 text-sm text-[#737B73]">কোনো খোলা বাতিলের অনুরোধ নেই।</p>
+        <p className="mt-3 text-sm text-[#5C6B76]">কোনো খোলা বাতিলের অনুরোধ নেই।</p>
       ) : (
         <div className="mt-3 space-y-3">
           {open.map((r) => {
@@ -2785,9 +2785,9 @@ function CancelRequestsPanel({ token }: { token: string }) {
                     {r.customerName} — বুকিং <span className="font-en">{r.bookingCode}</span>
                   </p>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
-                  <span className="text-[12.5px] text-[#737B73]">{fmtDateTime(r.createdAt)}</span>
+                  <span className="text-[12.5px] text-[#5C6B76]">{fmtDateTime(r.createdAt)}</span>
                 </div>
-                {r.reason && <p className="mt-1 text-sm text-[#4c584c]">গ্রাহকের কারণ: {r.reason}</p>}
+                {r.reason && <p className="mt-1 text-sm text-[#43534B]">গ্রাহকের কারণ: {r.reason}</p>}
                 <div className="mt-3">
                   <label className={labelCls} htmlFor={`cancel-note-${r.id}`}>অ্যাডমিন নোট (ঐচ্ছিক)</label>
                   <input
@@ -2814,7 +2814,7 @@ function CancelRequestsPanel({ token }: { token: string }) {
                     type="button"
                     disabled={decide.isPending}
                     onClick={() => { setError(""); decide.mutate({ id: r.id, decision: "approve" }); }}
-                    className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+                    className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
                   >
                     অনুমোদন করুন — বুকিং বাতিল হবে (Complete)
                   </button>
@@ -2827,7 +2827,7 @@ function CancelRequestsPanel({ token }: { token: string }) {
                     গৃহীত হয়নি — বুকিং চলবে (Rejected)
                   </button>
                 </div>
-                {doneId === r.id && <p className="mt-2 text-sm text-[#064B27] font-semibold">সিদ্ধান্ত সংরক্ষিত হয়েছে।</p>}
+                {doneId === r.id && <p className="mt-2 text-sm text-[#054A2B] font-semibold">সিদ্ধান্ত সংরক্ষিত হয়েছে।</p>}
               </div>
             );
           })}
@@ -2835,15 +2835,15 @@ function CancelRequestsPanel({ token }: { token: string }) {
       )}
       {decided.length > 0 && (
         <div className="mt-4 space-y-2">
-          <h3 className="font-semibold text-[#064B27] text-[15px]">সাম্প্রতিক সিদ্ধান্ত</h3>
+          <h3 className="font-semibold text-[#054A2B] text-[15px]">সাম্প্রতিক সিদ্ধান্ত</h3>
           {decided.map((r) => {
             const st = CANCEL_REQUEST_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
             return (
-              <div key={r.id} className="rounded-xl border border-[#E5EAE5] bg-white px-4 py-2.5 flex flex-wrap items-center gap-2">
+              <div key={r.id} className="rounded-xl border border-[#E1E9E4] bg-white px-4 py-2.5 flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-sm">{r.customerName} — <span className="font-en">{r.bookingCode}</span></span>
                 <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
-                {r.adminNote && <span className="text-[13px] text-[#737B73]">{r.adminNote}</span>}
-                {r.decidedAt && <span className="text-[12.5px] text-[#737B73] ml-auto">{fmtDateTime(r.decidedAt)}</span>}
+                {r.adminNote && <span className="text-[13px] text-[#5C6B76]">{r.adminNote}</span>}
+                {r.decidedAt && <span className="text-[12.5px] text-[#5C6B76] ml-auto">{fmtDateTime(r.decidedAt)}</span>}
               </div>
             );
           })}
@@ -2909,7 +2909,7 @@ function AdminAnalytics({ token }: { token: string }) {
                 setFrom(f);
                 setTo(t);
               }}
-              className={`px-3 py-2 rounded-full text-[13px] font-semibold ${from === f && to === t ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+              className={`px-3 py-2 rounded-full text-[13px] font-semibold ${from === f && to === t ? "bg-[#054A2B] text-white" : "bg-white border border-[#E1E9E4] text-[#43534B]"}`}
             >
               {label}
             </button>
@@ -2926,9 +2926,9 @@ function AdminAnalytics({ token }: { token: string }) {
         <ErrorBox message={errMsg(q.error)} />
       ) : d ? (
         <>
-          <section aria-label="অনলাইন সংগ্রহ" className="rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
-            <h2 className="font-bold text-[#064B27]">অনলাইন সংগ্রহ (যাচাইকৃত)</h2>
-            <p className="mt-0.5 text-[12.5px] text-[#737B73]">শুধু অ্যাডমিন-যাচাইকৃত অনলাইন পেমেন্ট — {d.verifiedPaymentsInRange}টি যাচাইকৃত পেমেন্ট এই সময়ে।</p>
+          <section aria-label="অনলাইন সংগ্রহ" className="rounded-2xl border border-[#E1E9E4] bg-[#F3F8F4] p-5">
+            <h2 className="font-bold text-[#054A2B]">অনলাইন সংগ্রহ (যাচাইকৃত)</h2>
+            <p className="mt-0.5 text-[12.5px] text-[#5C6B76]">শুধু অ্যাডমিন-যাচাইকৃত অনলাইন পেমেন্ট — {d.verifiedPaymentsInRange}টি যাচাইকৃত পেমেন্ট এই সময়ে।</p>
             <div className="mt-3 grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
               <MoneyStat label="মোট অনলাইন সংগ্রহ" value={d.onlineCollected} />
               <MoneyStat label="সম্পূর্ণ অনলাইন পেমেন্ট" value={d.onlineFullOnline} />
@@ -2936,21 +2936,21 @@ function AdminAnalytics({ token }: { token: string }) {
             </div>
           </section>
 
-          <section aria-label="ফি, কমিশন ও রাজস্ব" className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-            <h2 className="font-bold text-[#064B27]">ফি, কমিশন ও ঘরসেবার রাজস্ব</h2>
+          <section aria-label="ফি, কমিশন ও রাজস্ব" className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+            <h2 className="font-bold text-[#054A2B]">ফি, কমিশন ও মিস্ত্রি ডাকোর রাজস্ব</h2>
             <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
               <MoneyStat label="গ্রাহক সার্ভিস ফি সংগৃহীত" value={d.customerFeesCollected} />
               <MoneyStat label="প্রফেশনাল কমিশন অর্জিত (পাওনা)" value={d.commissionEarned} />
               <MoneyStat label="প্রফেশনাল কমিশন সংগৃহীত" value={d.commissionCollected} />
-              <MoneyStat label="ঘরসেবার রাজস্ব (ফি + সংগৃহীত কমিশন)" value={d.revenue} />
+              <MoneyStat label="মিস্ত্রি ডাকোর রাজস্ব (ফি + সংগৃহীত কমিশন)" value={d.revenue} />
             </div>
-            <p className="mt-3 text-[12.5px] text-[#737B73]">
+            <p className="mt-3 text-[12.5px] text-[#5C6B76]">
               কমিশন অর্জিত হয় যাচাইকৃত পেমেন্টের সময়। অর্জিত ও সংগৃহীতের পার্থক্য হলো সেই কমিশন, যা এখনো হেল্ড ব্যালেন্সে জমা আছে (পেআউটের সময় কমিশনের অংশ হেল্ড ব্যালেন্সেই থেকে যায়)।
             </p>
           </section>
 
-          <section aria-label="পেআউট, রিফান্ড ও ক্যাশ" className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-            <h2 className="font-bold text-[#064B27]">পেআউট, রিফান্ড, ব্যর্থ ও ক্যাশ</h2>
+          <section aria-label="পেআউট, রিফান্ড ও ক্যাশ" className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+            <h2 className="font-bold text-[#054A2B]">পেআউট, রিফান্ড, ব্যর্থ ও ক্যাশ</h2>
             <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
               <MoneyStat label="পেআউট সম্পন্ন হয়েছে" value={d.payoutsCompleted} />
               <MoneyStat label="পেআউটের অপেক্ষায় (বর্তমান)" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
@@ -2959,20 +2959,20 @@ function AdminAnalytics({ token }: { token: string }) {
               <MoneyStat label="ব্যর্থ লেনদেন" value={d.failedAmount} sub={`${d.failedCount}টি পেমেন্ট`} />
               <MoneyStat label="ক্যাশ — প্রফেশনালকে সরাসরি" value={d.cashToProfessionals} />
             </div>
-            <p className="mt-3 text-[12.5px] text-[#737B73]">
-              ক্যাশের টাকা গ্রাহক সরাসরি প্রফেশনালকে দেন — এটি বুকিং রেকর্ডে লিপিবদ্ধ হিসাব, ঘরসেবার যাচাইকৃত সংগ্রহ নয়; তাই অনলাইন সংগ্রহের সাথে এটি যোগ করা হয়নি।
+            <p className="mt-3 text-[12.5px] text-[#5C6B76]">
+              ক্যাশের টাকা গ্রাহক সরাসরি প্রফেশনালকে দেন — এটি বুকিং রেকর্ডে লিপিবদ্ধ হিসাব, মিস্ত্রি ডাকোর যাচাইকৃত সংগ্রহ নয়; তাই অনলাইন সংগ্রহের সাথে এটি যোগ করা হয়নি।
             </p>
           </section>
 
           <section aria-label="লেজার ইতিহাস">
-            <h2 className="font-bold text-[#064B27] mb-3">লেজার ইতিহাস (সাম্প্রতিক ১০০টি)</h2>
+            <h2 className="font-bold text-[#054A2B] mb-3">লেজার ইতিহাস (সাম্প্রতিক ১০০টি)</h2>
             {d.ledger.length === 0 ? (
               <EmptyState title="এই সময়ে কোনো লেজার এন্ট্রি নেই" />
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-[#E5EAE5] bg-white">
+              <div className="overflow-x-auto rounded-2xl border border-[#E1E9E4] bg-white">
                 <table className="w-full min-w-[560px] text-sm">
                   <thead>
-                    <tr className="text-left text-[#737B73] border-b border-[#E5EAE5]">
+                    <tr className="text-left text-[#5C6B76] border-b border-[#E1E9E4]">
                       <th className="px-4 py-2.5 font-semibold">তারিখ</th>
                       <th className="px-4 py-2.5 font-semibold">বুকিং</th>
                       <th className="px-4 py-2.5 font-semibold">ধরন</th>
@@ -2981,16 +2981,16 @@ function AdminAnalytics({ token }: { token: string }) {
                   </thead>
                   <tbody>
                     {d.ledger.map((e) => (
-                      <tr key={e.id} className="border-b border-[#F0F4F0] last:border-0">
+                      <tr key={e.id} className="border-b border-[#EEF3F0] last:border-0">
                         <td className="px-4 py-2.5 whitespace-nowrap">{fmtDateTime(e.createdAt)}</td>
                         <td className="px-4 py-2.5">
                           {e.bookingCode ? (
-                            <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${e.bookingCode}`}>{e.bookingCode}</a>
+                            <a className="font-en font-semibold text-[#075B35] hover:underline" href={`#/booking/${e.bookingCode}`}>{e.bookingCode}</a>
                           ) : (
                             "—"
                           )}
                         </td>
-                        <td className="px-4 py-2.5">{LEDGER_TYPE_BN[e.entryType] ?? e.entryType}{e.note ? <span className="block text-[12px] text-[#737B73]">{e.note}</span> : null}</td>
+                        <td className="px-4 py-2.5">{LEDGER_TYPE_BN[e.entryType] ?? e.entryType}{e.note ? <span className="block text-[12px] text-[#5C6B76]">{e.note}</span> : null}</td>
                         <td className="px-4 py-2.5 text-right font-en font-bold whitespace-nowrap">{bdt(e.amount)}</td>
                       </tr>
                     ))}
@@ -3001,20 +3001,20 @@ function AdminAnalytics({ token }: { token: string }) {
           </section>
 
           <section aria-label="পেমেন্ট ইতিহাস">
-            <h2 className="font-bold text-[#064B27] mb-3">পেমেন্ট ইতিহাস (সাম্প্রতিক ১০০টি)</h2>
+            <h2 className="font-bold text-[#054A2B] mb-3">পেমেন্ট ইতিহাস (সাম্প্রতিক ১০০টি)</h2>
             {d.payments.length === 0 ? (
               <EmptyState title="এই সময়ে কোনো পেমেন্ট নেই" />
             ) : (
               <div className="space-y-2.5">
                 {d.payments.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-[#E5EAE5] bg-white px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <div key={p.id} className="rounded-xl border border-[#E1E9E4] bg-white px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     <span className="font-en font-bold">{bdt(p.amount)}</span>
                     <span className="font-semibold">{PROVIDER_BN[p.provider] ?? providerEn(p.provider)}</span>
-                    <span className="font-en text-[13px] text-[#737B73]">{p.providerTrxId}</span>
+                    <span className="font-en text-[13px] text-[#5C6B76]">{p.providerTrxId}</span>
                     <PaymentStatusChip status={p.status} />
-                    <span className="text-[13px] text-[#737B73]">
+                    <span className="text-[13px] text-[#5C6B76]">
                       {PAYMENT_MODEL_BN[p.paymentModel] ?? p.paymentModel} • {p.customerName} •{" "}
-                      <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a> • {fmtDateTime(p.createdAt)}
+                      <a className="font-en font-semibold text-[#075B35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a> • {fmtDateTime(p.createdAt)}
                     </span>
                   </div>
                 ))}
@@ -3069,7 +3069,7 @@ function AdminBookings({ token }: { token: string }) {
             type="button"
             onClick={() => setStatus(k)}
             aria-pressed={status === k}
-            className={`px-3.5 py-2 rounded-full text-sm font-semibold ${status === k ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+            className={`px-3.5 py-2 rounded-full text-sm font-semibold ${status === k ? "bg-[#054A2B] text-white" : "bg-white border border-[#E1E9E4] text-[#43534B]"}`}
           >
             {label}
           </button>
@@ -3161,20 +3161,20 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
     onError: (e) => setError(errMsg(e)),
   });
   return (
-    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+    <div className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-bold truncate">
             {b.serviceName} — {b.customerName}
           </p>
-          <p className="text-[13px] text-[#737B73]">
+          <p className="text-[13px] text-[#5C6B76]">
             <span className="font-en">{b.code}</span> • {b.upazila} • {fmtDate(b.preferredDate)} • {b.preferredTime}
           </p>
-          <p className="text-[13px] text-[#737B73] font-en">{b.phone}</p>
+          <p className="text-[13px] text-[#5C6B76] font-en">{b.phone}</p>
         </div>
         <BookingStatusChip status={b.status} stage={b.stage} />
       </div>
-      <p className="mt-2 text-sm text-[#4c584c] line-clamp-2">{b.description}</p>
+      <p className="mt-2 text-sm text-[#43534B] line-clamp-2">{b.description}</p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
@@ -3193,11 +3193,11 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
             setOpen((v) => !v);
           }}
           aria-expanded={open}
-          className="bg-[#F0FAF2] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E2F4E7]"
+          className="bg-[#F3F8F4] text-[#054A2B] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E4F1E8]"
         >
           {open ? "বন্ধ করুন" : "পরিচালনা করুন"}
         </button>
-        <a href={`#/booking/${b.code}`} className="border border-[#E5EAE5] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F8FAF8]">
+        <a href={`#/booking/${b.code}`} className="border border-[#E1E9E4] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F6FAF7]">
           বিস্তারিত দেখুন
         </a>
         <button
@@ -3210,14 +3210,14 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
         </button>
       </div>
       {payOpen && (
-        <div className="mt-4 border-t border-[#F0F3F0] pt-4">
+        <div className="mt-4 border-t border-[#EEF3F0] pt-4">
           <BookingPaymentDetail token={token} bookingId={b.id} />
         </div>
       )}
       {open && (
         <>
         <form
-          className="mt-4 border-t border-[#F0F3F0] pt-4 grid sm:grid-cols-2 gap-3.5"
+          className="mt-4 border-t border-[#EEF3F0] pt-4 grid sm:grid-cols-2 gap-3.5"
           onSubmit={(e) => {
             e.preventDefault();
             setError("");
@@ -3240,7 +3240,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
               ))}
             </select>
             {(b.stage === "disputed" || b.stage === "rescheduled") && (
-              <p className="text-xs text-[#737B73] mt-1">
+              <p className="text-xs text-[#5C6B76] mt-1">
                 {b.stage === "disputed"
                   ? "বিরোধ নিষ্পত্তি না হলে স্ট্যাটাস বদলানো যাবে না — নিচের বোতামে নিষ্পত্তি করুন।"
                   : "পুনঃনির্ধারণ নিশ্চিত না হলে স্ট্যাটাস বদলানো যাবে না — নিচের বোতামে নিশ্চিত করুন।"}
@@ -3269,7 +3269,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
                 </option>
               ))}
             </select>
-            {pros.isPending && <p className="text-xs text-[#737B73] mt-1">প্রফেশনাল লোড হচ্ছে…</p>}
+            {pros.isPending && <p className="text-xs text-[#5C6B76] mt-1">প্রফেশনাল লোড হচ্ছে…</p>}
             {pros.data && pros.data.professionals.length === 0 && (
               <p className="text-xs text-amber-700 mt-1">এই ক্যাটাগরিতে কোনো যাচাইকৃত প্রফেশনাল নেই।</p>
             )}
@@ -3279,12 +3279,12 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
             {b.finalPrice == null ? (
               <>
                 <input id={`ab-price-${b.id}`} type="number" className={inputCls} value="" disabled placeholder="এখনো নির্ধারিত হয়নি" />
-                <p className="text-xs text-[#737B73] mt-1">মূল্য এখানে বসানো যায় না — নিচে কোটেশন তৈরি করুন; গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে।</p>
+                <p className="text-xs text-[#5C6B76] mt-1">মূল্য এখানে বসানো যায় না — নিচে কোটেশন তৈরি করুন; গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে।</p>
               </>
             ) : b.priceFinalizedVia === "quotation" ? (
               <>
                 <input id={`ab-price-${b.id}`} type="number" {...FIELDS.adminUpdateBooking.finalPrice} className={inputCls} value={price} disabled />
-                <p className="text-xs text-[#737B73] mt-1">গ্রাহক-অনুমোদিত কোটেশনে নির্ধারিত — বদলাতে হলে নতুন অতিরিক্ত কোটেশন লাগবে।</p>
+                <p className="text-xs text-[#5C6B76] mt-1">গ্রাহক-অনুমোদিত কোটেশনে নির্ধারিত — বদলাতে হলে নতুন অতিরিক্ত কোটেশন লাগবে।</p>
               </>
             ) : (
               <input id={`ab-price-${b.id}`} type="number" {...FIELDS.adminUpdateBooking.finalPrice} className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="চূড়ান্ত মূল্য" />
@@ -3306,12 +3306,12 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
               <ErrorBox message={error} />
             </div>
           )}
-          {saved && <p className="sm:col-span-2 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">সংরক্ষিত হয়েছে — গ্রাহক নোটিফিকেশন পেয়েছেন।</p>}
-          <button type="submit" disabled={save.isPending} className="sm:col-span-2 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold py-2.5 rounded-xl">
+          {saved && <p className="sm:col-span-2 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-2.5">সংরক্ষিত হয়েছে — গ্রাহক নোটিফিকেশন পেয়েছেন।</p>}
+          <button type="submit" disabled={save.isPending} className="sm:col-span-2 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold py-2.5 rounded-xl">
             {save.isPending ? "সংরক্ষণ হচ্ছে…" : "পরিবর্তন সংরক্ষণ করুন"}
           </button>
         </form>
-        <div className="mt-5 border-t border-[#F0F3F0] pt-4">
+        <div className="mt-5 border-t border-[#EEF3F0] pt-4">
           <QuotationPanel token={token} booking={b} viewerRole="admin" isOwnerCustomer={false} isAssignedPro={false} />
         </div>
         <AdminBookingFlowControls b={b} token={token} />
@@ -3366,14 +3366,14 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
     return null;
   }
   return (
-    <div className="mt-5 border-t border-[#F0F3F0] pt-4">
-      <h3 className="font-bold text-[#064B27] text-[15px]">সময় পুনঃনির্ধারণ ও বিরোধ</h3>
+    <div className="mt-5 border-t border-[#EEF3F0] pt-4">
+      <h3 className="font-bold text-[#054A2B] text-[15px]">সময় পুনঃনির্ধারণ ও বিরোধ</h3>
       {error && (
         <div className="mt-3">
           <ErrorBox message={error} />
         </div>
       )}
-      {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+      {done && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-2.5">{done}</p>}
       {b.stage === "disputed" && (
         <div className="mt-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
           <p className="text-sm text-red-800 font-semibold">এই বুকিংয়ে বিরোধ চলমান — সেটেলমেন্ট স্থগিত আছে।</p>
@@ -3414,7 +3414,7 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
           <p className="text-sm text-sky-900">
             নতুন সময়: <b>{fmtDate(b.preferredDate)} • {b.preferredTime}</b> — নিশ্চিত করলে বুকিং আগের ধাপে ফিরে যাবে।
           </p>
-          <button type="button" disabled={busy} onClick={() => confirmResched.mutate()} className="mt-2.5 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
+          <button type="button" disabled={busy} onClick={() => confirmResched.mutate()} className="mt-2.5 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
             পুনঃনির্ধারণ নিশ্চিত করুন
           </button>
         </div>
@@ -3425,7 +3425,7 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
             গ্রাহক সময় বদলের অনুরোধ করেছেন: <b>{fmtDate(b.rescheduleRequestedDate)} • {b.rescheduleRequestedTime}</b>
           </p>
           <div className="mt-2.5 flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={() => applyResched.mutate({})} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
+            <button type="button" disabled={busy} onClick={() => applyResched.mutate({})} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl">
               অনুরোধ অনুযায়ী পুনঃনির্ধারণ করুন
             </button>
             <button type="button" disabled={busy} onClick={() => declineResched.mutate()} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
@@ -3452,7 +3452,7 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
             <label className={labelCls} htmlFor={`rs-time-${b.id}`}>নতুন সময়</label>
             <input id={`rs-time-${b.id}`} type="text" required className={inputCls} {...FIELDS.adminRescheduleBooking.time} value={time} onChange={(e) => setTime(e.target.value)} placeholder="যেমন: সকাল ১০টা" />
           </div>
-          <button type="submit" disabled={busy} className="col-span-2 border-[1.5px] border-[#087A35] text-[#087A35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
+          <button type="submit" disabled={busy} className="col-span-2 border-[1.5px] border-[#075B35] text-[#075B35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F3F8F4] disabled:opacity-60">
             এই সময়ে পুনঃনির্ধারণ করুন
           </button>
         </form>
@@ -3507,7 +3507,7 @@ function AdminProfessionals({ token }: { token: string }) {
             type="button"
             onClick={() => setFilter(k)}
             aria-pressed={filter === k}
-            className={`px-3.5 py-2 rounded-full text-sm font-semibold ${filter === k ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+            className={`px-3.5 py-2 rounded-full text-sm font-semibold ${filter === k ? "bg-[#054A2B] text-white" : "bg-white border border-[#E1E9E4] text-[#43534B]"}`}
           >
             {label} ({k ? all.filter((p) => p.status === k).length : all.length})
           </button>
@@ -3570,34 +3570,34 @@ function AdminProCard({
 }) {
   const [note, setNote] = useState("");
   return (
-    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+    <div className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
       <div className="flex items-start gap-3.5">
         <Avatar name={p.name} photoUrl={p.photoUrl} size="w-14 h-14" />
         <div className="min-w-0 flex-1">
           <p className="font-bold">
             {p.name}{" "}
-            <span className={`ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle ${p.status === "verified" ? "bg-[#087A35] text-white" : p.status === "pending" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>
+            <span className={`ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle ${p.status === "verified" ? "bg-[#075B35] text-white" : p.status === "pending" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>
               {PRO_STATUS_BN[p.status]}
             </span>
           </p>
-          <p className="text-[13.5px] text-[#737B73]">
+          <p className="text-[13.5px] text-[#5C6B76]">
             {p.categoryName} • {p.experienceYears} বছর অভিজ্ঞতা • <span className="font-en">{p.phone}</span>
             {p.email ? <span className="font-en"> • {p.email}</span> : ""}
           </p>
-          <p className="text-[13.5px] text-[#737B73]">এলাকা: {p.areas.join(", ") || "—"}</p>
-          {p.skills && <p className="text-[13.5px] text-[#4c584c]">দক্ষতা: {p.skills}</p>}
+          <p className="text-[13.5px] text-[#5C6B76]">এলাকা: {p.areas.join(", ") || "—"}</p>
+          {p.skills && <p className="text-[13.5px] text-[#43534B]">দক্ষতা: {p.skills}</p>}
           {p.nidNumber && (
-            <p className="text-[13.5px] text-[#4c584c]">
+            <p className="text-[13.5px] text-[#43534B]">
               NID (শুধু যাচাইয়ের জন্য): <span className="font-en font-semibold">{p.nidNumber}</span>
             </p>
           )}
           <IdentityDocViewer token={token} professionalId={p.id} documents={p.documents} />
-          <p className="text-[13.5px] text-[#737B73]">
+          <p className="text-[13.5px] text-[#5C6B76]">
             সম্পন্ন কাজ: {p.completedJobs} • রেটিং: {p.avgRating != null ? `${p.avgRating} (${p.reviewCount}টি রিভিউ)` : "এখনো নেই"}
             {p.userStatus === "suspended" ? " • অ্যাকাউন্ট স্থগিত" : ""}
           </p>
           {p.verificationNote && (
-            <p className="text-[13.5px] text-[#4c584c]">সর্বশেষ যাচাই নোট: {p.verificationNote}</p>
+            <p className="text-[13.5px] text-[#43534B]">সর্বশেষ যাচাই নোট: {p.verificationNote}</p>
           )}
         </div>
       </div>
@@ -3616,7 +3616,7 @@ function AdminProCard({
       )}
       <div className="mt-3.5 flex flex-wrap gap-2">
         {p.status !== "verified" && (
-          <button type="button" disabled={busy} onClick={() => onStatus("verified")} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
+          <button type="button" disabled={busy} onClick={() => onStatus("verified")} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
             যাচাই করে অনুমোদন দিন
           </button>
         )}
@@ -3631,20 +3631,20 @@ function AdminProCard({
           </button>
         )}
         {(p.status === "suspended" || p.status === "rejected") && (
-          <button type="button" disabled={busy} onClick={() => onStatus("pending")} className="border-[1.5px] border-[#087A35] text-[#087A35] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
+          <button type="button" disabled={busy} onClick={() => onStatus("pending")} className="border-[1.5px] border-[#075B35] text-[#075B35] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F3F8F4] disabled:opacity-60">
             আবার যাচাইয়ের অপেক্ষায় রাখুন
           </button>
         )}
         {p.userStatus === "active" ? (
-          <button type="button" disabled={busy} onClick={() => onUserStatus("suspended")} className="border border-[#E5EAE5] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 hover:text-red-700 disabled:opacity-60">
+          <button type="button" disabled={busy} onClick={() => onUserStatus("suspended")} className="border border-[#E1E9E4] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 hover:text-red-700 disabled:opacity-60">
             অ্যাকাউন্ট স্থগিত
           </button>
         ) : (
-          <button type="button" disabled={busy} onClick={() => onUserStatus("active")} className="border border-[#E5EAE5] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
+          <button type="button" disabled={busy} onClick={() => onUserStatus("active")} className="border border-[#E1E9E4] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F3F8F4] disabled:opacity-60">
             অ্যাকাউন্ট সক্রিয় করুন
           </button>
         )}
-        <a href={`tel:${p.phone}`} className="border border-[#E5EAE5] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2] inline-flex items-center gap-1.5">
+        <a href={`tel:${p.phone}`} className="border border-[#E1E9E4] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F3F8F4] inline-flex items-center gap-1.5">
           {Icon.phone("w-4 h-4")} কল
         </a>
       </div>
@@ -3694,28 +3694,28 @@ function AdminCustomers({ token }: { token: string }) {
       ) : (
         <div className="grid md:grid-cols-2 gap-3.5">
           {ctl.pageRows.map((c) => (
-        <div key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4 flex items-start gap-3.5">
+        <div key={c.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4 flex items-start gap-3.5">
           <Avatar name={c.name} photoUrl={c.photoUrl} size="w-12 h-12" textSize="text-base" />
           <div className="min-w-0 flex-1">
             <p className="font-bold truncate">
               {c.name}
               {c.status === "suspended" && <span className="ml-2 text-[11px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full align-middle">স্থগিত</span>}
             </p>
-            <p className="text-[13.5px] text-[#737B73]">
+            <p className="text-[13.5px] text-[#5C6B76]">
               <span className="font-en">{c.phone}</span> • {c.location ?? "টাঙ্গাইল"}
             </p>
-            <p className="text-[13.5px] text-[#737B73]">বুকিং: {c.bookingCount} • অভিযোগ: {c.complaintCount} • যোগ দিয়েছেন {fmtDate(c.createdAt)}</p>
+            <p className="text-[13.5px] text-[#5C6B76]">বুকিং: {c.bookingCount} • অভিযোগ: {c.complaintCount} • যোগ দিয়েছেন {fmtDate(c.createdAt)}</p>
             <div className="mt-2.5 flex gap-2">
               {c.status === "active" ? (
                 <button type="button" disabled={setUserStatus.isPending} onClick={() => setUserStatus.mutate({ userId: c.id, status: "suspended" })} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-[13px] px-3.5 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-60">
                   স্থগিত করুন
                 </button>
               ) : (
-                <button type="button" disabled={setUserStatus.isPending} onClick={() => setUserStatus.mutate({ userId: c.id, status: "active" })} className="border-[1.5px] border-[#087A35] text-[#087A35] font-semibold text-[13px] px-3.5 py-1.5 rounded-lg hover:bg-[#F0FAF2] disabled:opacity-60">
+                <button type="button" disabled={setUserStatus.isPending} onClick={() => setUserStatus.mutate({ userId: c.id, status: "active" })} className="border-[1.5px] border-[#075B35] text-[#075B35] font-semibold text-[13px] px-3.5 py-1.5 rounded-lg hover:bg-[#F3F8F4] disabled:opacity-60">
                   সক্রিয় করুন
                 </button>
               )}
-              <a href={`tel:${c.phone}`} className="border border-[#E5EAE5] font-semibold text-[13px] px-3.5 py-1.5 rounded-lg hover:bg-[#F0FAF2] inline-flex items-center gap-1">
+              <a href={`tel:${c.phone}`} className="border border-[#E1E9E4] font-semibold text-[13px] px-3.5 py-1.5 rounded-lg hover:bg-[#F3F8F4] inline-flex items-center gap-1">
                 {Icon.phone("w-3.5 h-3.5")} কল
               </a>
             </div>
@@ -3736,7 +3736,7 @@ function AdminServices({ token }: { token: string }) {
   return (
     <div>
       <div className="flex justify-end mb-4">
-        <button type="button" onClick={() => setAdding((v) => !v)} className="bg-[#087A35] hover:bg-[#064B27] text-white font-semibold text-sm px-4 py-2.5 rounded-xl">
+        <button type="button" onClick={() => setAdding((v) => !v)} className="bg-[#075B35] hover:bg-[#054A2B] text-white font-semibold text-sm px-4 py-2.5 rounded-xl">
           {adding ? "বন্ধ করুন" : "+ নতুন সার্ভিস যোগ করুন"}
         </button>
       </div>
@@ -3747,14 +3747,14 @@ function AdminServices({ token }: { token: string }) {
       )}
       <div className="space-y-3.5">
         {(list.data?.services ?? []).map((s) => (
-          <div key={s.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+          <div key={s.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-bold">
-                  {s.nameBn} <span className="text-[#737B73] font-en font-medium text-sm">{s.nameEn}</span>
+                  {s.nameBn} <span className="text-[#5C6B76] font-en font-medium text-sm">{s.nameEn}</span>
                   {!s.active && <span className="ml-2 text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full align-middle">বন্ধ আছে</span>}
                 </p>
-                <p className="text-[13.5px] text-[#737B73] mt-0.5">
+                <p className="text-[13.5px] text-[#5C6B76] mt-0.5">
                   {s.startingPrice != null ? `শুরু ৳${s.startingPrice.toLocaleString("bn-BD")} • ` : ""}
                   {s.hourlyRate != null ? `ঘণ্টা ৳${s.hourlyRate.toLocaleString("bn-BD")} • ` : ""}
                   {s.dailyRate != null ? `দিন ৳${s.dailyRate.toLocaleString("bn-BD")} • ` : ""}
@@ -3769,7 +3769,7 @@ function AdminServices({ token }: { token: string }) {
                 type="button"
                 onClick={() => setEditing(editing === s.id ? null : s.id)}
                 aria-expanded={editing === s.id}
-                className="shrink-0 bg-[#F0FAF2] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E2F4E7]"
+                className="shrink-0 bg-[#F3F8F4] text-[#054A2B] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E4F1E8]"
               >
                 {editing === s.id ? "বন্ধ করুন" : "সম্পাদনা"}
               </button>
@@ -3831,7 +3831,7 @@ function ServiceForm({ token, service, onDone }: { token: string; service?: Admi
   });
   return (
     <form
-      className="rounded-2xl border border-[#cfe3d3] bg-[#FBFDFB] p-4 grid sm:grid-cols-3 gap-3.5"
+      className="rounded-2xl border border-[#C9DFD2] bg-[#FAFCFB] p-4 grid sm:grid-cols-3 gap-3.5"
       onSubmit={(e) => {
         e.preventDefault();
         setError("");
@@ -3883,7 +3883,7 @@ function ServiceForm({ token, service, onDone }: { token: string; service?: Admi
         <input id={`sf-note-${service?.id ?? "new"}`} className={inputCls} {...FIELDS.adminSaveService.priceNote} value={priceNote} onChange={(e) => setPriceNote(e.target.value)} placeholder="মূল্য সংক্রান্ত বিশেষ শর্ত থাকলে" />
       </div>
       <label className="sm:col-span-3 flex items-center gap-2.5 cursor-pointer">
-        <input type="checkbox" className="w-5 h-5 accent-[#087A35]" checked={active} onChange={(e) => setActive(e.target.checked)} aria-label="সার্ভিস সক্রিয়" />
+        <input type="checkbox" className="w-5 h-5 accent-[#075B35]" checked={active} onChange={(e) => setActive(e.target.checked)} aria-label="সার্ভিস সক্রিয়" />
         <span className="font-medium text-[15px]">সার্ভিস সক্রিয় (গ্রাহকদের কাছে দৃশ্যমান)</span>
       </label>
       {error && (
@@ -3892,10 +3892,10 @@ function ServiceForm({ token, service, onDone }: { token: string; service?: Admi
         </div>
       )}
       <div className="sm:col-span-3 flex gap-2">
-        <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+        <button type="submit" disabled={save.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
           {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
         </button>
-        <button type="button" onClick={onDone} className="border border-[#E5EAE5] font-semibold px-4 py-2.5 rounded-xl">
+        <button type="button" onClick={onDone} className="border border-[#E1E9E4] font-semibold px-4 py-2.5 rounded-xl">
           বাতিল
         </button>
       </div>
@@ -3930,18 +3930,18 @@ function AdminLocations({ token }: { token: string }) {
   if (list.isPending) return <Spinner />;
   return (
     <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
-      <ul className="divide-y divide-[#F0F3F0] border border-[#E5EAE5] rounded-2xl bg-white overflow-hidden">
+      <ul className="divide-y divide-[#EEF3F0] border border-[#E1E9E4] rounded-2xl bg-white overflow-hidden">
         {(list.data?.locations ?? []).map((l) => (
           <li key={l.id} className="flex items-center gap-3 px-4 py-3">
-            <span className="text-[#087A35]">{Icon.pin("w-5 h-5")}</span>
+            <span className="text-[#075B35]">{Icon.pin("w-5 h-5")}</span>
             <span className="font-semibold">{l.nameBn}</span>
-            <span className="text-sm text-[#737B73] font-en">{l.nameEn}</span>
-            <span className="text-sm text-[#737B73]">• {l.district}</span>
+            <span className="text-sm text-[#5C6B76] font-en">{l.nameEn}</span>
+            <span className="text-sm text-[#5C6B76]">• {l.district}</span>
             <label className="ml-auto flex items-center gap-2 cursor-pointer">
-              <span className={`text-xs font-bold ${l.active ? "text-[#087A35]" : "text-[#737B73]"}`}>{l.active ? "চালু" : "বন্ধ"}</span>
+              <span className={`text-xs font-bold ${l.active ? "text-[#075B35]" : "text-[#5C6B76]"}`}>{l.active ? "চালু" : "বন্ধ"}</span>
               <input
                 type="checkbox"
-                className="w-5 h-5 accent-[#087A35]"
+                className="w-5 h-5 accent-[#075B35]"
                 checked={l.active}
                 disabled={toggle.isPending}
                 onChange={(e) => toggle.mutate({ id: l.id, active: e.target.checked })}
@@ -3952,14 +3952,14 @@ function AdminLocations({ token }: { token: string }) {
         ))}
       </ul>
       <form
-        className="rounded-2xl border border-[#E5EAE5] bg-white p-5 space-y-3.5"
+        className="rounded-2xl border border-[#E1E9E4] bg-white p-5 space-y-3.5"
         onSubmit={(e) => {
           e.preventDefault();
           setError("");
           add.mutate();
         }}
       >
-        <h2 className="font-bold text-[#064B27]">নতুন এলাকা যোগ করুন</h2>
+        <h2 className="font-bold text-[#054A2B]">নতুন এলাকা যোগ করুন</h2>
         <div>
           <label className={labelCls} htmlFor="loc-bn">নাম (বাংলা) *</label>
           <input id="loc-bn" className={inputCls} {...FIELDS.adminSaveLocation.nameBn} value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
@@ -3973,10 +3973,10 @@ function AdminLocations({ token }: { token: string }) {
           <input id="loc-dist" className={inputCls} {...FIELDS.adminSaveLocation.district} value={district} onChange={(e) => setDistrict(e.target.value)} />
         </div>
         {error && <ErrorBox message={error} />}
-        <button type="submit" disabled={add.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl w-full">
+        <button type="submit" disabled={add.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl w-full">
           {add.isPending ? "যোগ হচ্ছে…" : "এলাকা যোগ করুন"}
         </button>
-        <p className="text-[13px] text-[#737B73]">নতুন জেলার এলাকা যোগ করলেই সিস্টেম অন্য জেলাতেও সম্প্রসারণের জন্য প্রস্তুত থাকবে।</p>
+        <p className="text-[13px] text-[#5C6B76]">নতুন জেলার এলাকা যোগ করলেই সিস্টেম অন্য জেলাতেও সম্প্রসারণের জন্য প্রস্তুত থাকবে।</p>
       </form>
     </div>
   );
@@ -4017,7 +4017,7 @@ function AdminReviews({ token }: { token: string }) {
       type="button"
       onClick={() => setFilter(key)}
       aria-pressed={filter === key}
-      className={`text-[13px] font-semibold px-3.5 py-1.5 rounded-full border ${filter === key ? "bg-[#087A35] text-white border-[#087A35]" : "bg-white text-[#4c584c] border-[#E5EAE5] hover:border-[#087A35]"}`}
+      className={`text-[13px] font-semibold px-3.5 py-1.5 rounded-full border ${filter === key ? "bg-[#075B35] text-white border-[#075B35]" : "bg-white text-[#43534B] border-[#E1E9E4] hover:border-[#075B35]"}`}
     >
       {label} ({counts[key]})
     </button>
@@ -4040,31 +4040,31 @@ function AdminReviews({ token }: { token: string }) {
       ) : (
         <div className="space-y-3.5">
           {sorted.map((r) => (
-            <div key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+            <div key={r.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <Stars value={r.rating} />
                   <p className="mt-1.5 text-[15px]">“{r.text}”</p>
-                  <p className="mt-1.5 text-[13px] text-[#737B73]">
+                  <p className="mt-1.5 text-[13px] text-[#5C6B76]">
                     {r.customerName} • {r.serviceName}
                     {r.professionalName ? ` • প্রফেশনাল: ${r.professionalName}` : ""} • {fmtDate(r.createdAt)}
                     {r.bookingCode && (
                       <>
                         {" "}•{" "}
-                        <a href={`#/booking/${r.bookingCode}`} className="font-semibold text-[#087A35] hover:underline">
+                        <a href={`#/booking/${r.bookingCode}`} className="font-semibold text-[#075B35] hover:underline">
                           বুকিং {r.bookingCode}
                         </a>
                       </>
                     )}
                   </p>
                 </div>
-                <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#087A35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
+                <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#075B35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
                   {r.status === "approved" ? "প্রকাশিত" : r.status === "rejected" ? "বাতিল" : "মডারেশন বাকি"}
                 </span>
               </div>
               <div className="mt-3 flex gap-2">
                 {r.status !== "approved" && (
-                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "approved" })} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
+                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "approved" })} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
                     প্রকাশ করুন
                   </button>
                 )}
@@ -4074,7 +4074,7 @@ function AdminReviews({ token }: { token: string }) {
                   </button>
                 )}
                 {r.status !== "pending" && (
-                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "pending" })} className="border-[1.5px] border-[#E5EAE5] text-[#4c584c] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F8FAF8] disabled:opacity-60">
+                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "pending" })} className="border-[1.5px] border-[#E1E9E4] text-[#43534B] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F6FAF7] disabled:opacity-60">
                     মডারেশনে ফেরত পাঠান
                   </button>
                 )}
@@ -4163,9 +4163,9 @@ function AdminAnnouncements({ token }: { token: string }) {
   };
   return (
     <div>
-      <form onSubmit={submit} className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-        <h2 className="font-bold text-[#064B27]">নতুন ঘোষণা পাঠান</h2>
-        <p className="mt-1 text-sm text-[#737B73]">
+      <form onSubmit={submit} className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+        <h2 className="font-bold text-[#054A2B]">নতুন ঘোষণা পাঠান</h2>
+        <p className="mt-1 text-sm text-[#5C6B76]">
           ঘোষণাটি বেছে নেওয়া ব্যবহারকারীদের নোটিফিকেশন সেন্টারে যাবে। প্রতিটি পাঠানো ঘোষণা নিচে ইতিহাসে থেকে যায়।
         </p>
         <div className="mt-4">
@@ -4247,27 +4247,27 @@ function AdminAnnouncements({ token }: { token: string }) {
                   setFormError("");
                   searchUsers.mutate(search.trim());
                 }}
-                className="shrink-0 bg-[#F0FAF2] border-[1.5px] border-[#cfe3d3] text-[#064B27] font-semibold text-sm px-4 rounded-xl hover:bg-[#E2F4E7] disabled:opacity-60"
+                className="shrink-0 bg-[#F3F8F4] border-[1.5px] border-[#C9DFD2] text-[#054A2B] font-semibold text-sm px-4 rounded-xl hover:bg-[#E4F1E8] disabled:opacity-60"
               >
                 খুঁজুন
               </button>
             </div>
             {picked ? (
-              <p className="mt-2 text-sm rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] px-3.5 py-2">
+              <p className="mt-2 text-sm rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] px-3.5 py-2">
                 প্রাপক: <b>{picked.name}</b> • <span className="font-en">{picked.phone}</span> • {AUDIENCE_ROLE_BN[picked.role] ?? picked.role}
               </p>
             ) : (
               searchUsers.data &&
               (searchUsers.data.users.length === 0 ? (
-                <p className="mt-2 text-sm text-[#737B73]">এই নাম/নম্বরে কোনো ব্যবহারকারী পাওয়া যায়নি।</p>
+                <p className="mt-2 text-sm text-[#5C6B76]">এই নাম/নম্বরে কোনো ব্যবহারকারী পাওয়া যায়নি।</p>
               ) : (
-                <ul className="mt-2 divide-y divide-[#F0F3F0] rounded-xl border border-[#E5EAE5]">
+                <ul className="mt-2 divide-y divide-[#EEF3F0] rounded-xl border border-[#E1E9E4]">
                   {searchUsers.data.users.map((u) => (
                     <li key={u.id}>
                       <button
                         type="button"
                         onClick={() => setPicked(u)}
-                        className="w-full text-left px-3.5 py-2.5 text-sm hover:bg-[#F8FAF8]"
+                        className="w-full text-left px-3.5 py-2.5 text-sm hover:bg-[#F6FAF7]"
                         aria-label={`${u.name} কে প্রাপক হিসেবে বেছে নিন`}
                       >
                         <b>{u.name}</b> • <span className="font-en">{u.phone}</span> • {AUDIENCE_ROLE_BN[u.role] ?? u.role}
@@ -4284,17 +4284,17 @@ function AdminAnnouncements({ token }: { token: string }) {
             <ErrorBox message={formError} />
           </div>
         )}
-        {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+        {done && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-2.5">{done}</p>}
         <button
           type="submit"
           disabled={send.isPending}
-          className="mt-4 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+          className="mt-4 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
         >
           {send.isPending ? "পাঠানো হচ্ছে…" : "ঘোষণা পাঠান"}
         </button>
       </form>
 
-      <h2 className="mt-8 font-bold text-[#064B27]">পাঠানো ঘোষণার ইতিহাস</h2>
+      <h2 className="mt-8 font-bold text-[#054A2B]">পাঠানো ঘোষণার ইতিহাস</h2>
       {history.isPending ? (
         <Spinner />
       ) : history.isError ? (
@@ -4302,14 +4302,14 @@ function AdminAnnouncements({ token }: { token: string }) {
           <ErrorBox message={errMsg(history.error)} />
         </div>
       ) : (history.data?.announcements ?? []).length === 0 ? (
-        <p className="mt-2 text-sm text-[#737B73]">এখনো কোনো ঘোষণা পাঠানো হয়নি।</p>
+        <p className="mt-2 text-sm text-[#5C6B76]">এখনো কোনো ঘোষণা পাঠানো হয়নি।</p>
       ) : (
         <ul className="mt-3 space-y-2.5">
           {(history.data?.announcements ?? []).map((a) => (
-            <li key={a.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+            <li key={a.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
               <p className="font-semibold text-[15px]">{a.title}</p>
-              <p className="mt-1 text-sm text-[#4c584c]">{a.body}</p>
-              <p className="mt-1.5 text-[12.5px] text-[#737B73]">
+              <p className="mt-1 text-sm text-[#43534B]">{a.body}</p>
+              <p className="mt-1.5 text-[12.5px] text-[#5C6B76]">
                 {a.senderName} •{" "}
                 {a.audience === "all"
                   ? "সব ব্যবহারকারী"
@@ -4432,9 +4432,9 @@ function AdminCoupons({ token }: { token: string }) {
   const services = catalog.data?.services ?? [];
   return (
     <div>
-      <form onSubmit={submit} className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-        <h2 className="font-bold text-[#064B27]">{editingId ? "কুপন সম্পাদনা করুন" : "নতুন কুপন তৈরি করুন"}</h2>
-        <p className="mt-1 text-sm text-[#737B73]">
+      <form onSubmit={submit} className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+        <h2 className="font-bold text-[#054A2B]">{editingId ? "কুপন সম্পাদনা করুন" : "নতুন কুপন তৈরি করুন"}</h2>
+        <p className="mt-1 text-sm text-[#5C6B76]">
           ছাড়টি প্রযোজ্য হয় কোটেশন অনুমোদনের সময়, শুধু যোগ্য চার্জের (শ্রম + অতিরিক্ত) উপর — কমিশনও হিসাব হয় ছাড়ের পরের অঙ্কে। এখানে তৈরি না করা কোনো ছাড়ের প্রতিশ্রুতি সাইটে কোথাও দেওয়া হয় না।
         </p>
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
@@ -4526,10 +4526,10 @@ function AdminCoupons({ token }: { token: string }) {
             </select>
           </div>
           <div className="flex items-end pb-1">
-            <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#4c584c]">
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#43534B]">
               <input
                 type="checkbox"
-                className="w-4 h-4 accent-[#087A35]"
+                className="w-4 h-4 accent-[#075B35]"
                 checked={couponActive}
                 onChange={(e) => setCouponActive(e.target.checked)}
               />
@@ -4542,12 +4542,12 @@ function AdminCoupons({ token }: { token: string }) {
             <ErrorBox message={formError} />
           </div>
         )}
-        {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+        {done && <p className="mt-3 rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-2.5">{done}</p>}
         <div className="mt-4 flex gap-2">
           <button
             type="submit"
             disabled={save.isPending}
-            className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+            className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
           >
             {save.isPending ? "সংরক্ষণ হচ্ছে…" : editingId ? "আপডেট করুন" : "কুপন তৈরি করুন"}
           </button>
@@ -4559,7 +4559,7 @@ function AdminCoupons({ token }: { token: string }) {
                 setDone("");
                 setFormError("");
               }}
-              className="border-[1.5px] border-[#E5EAE5] text-[#4c584c] font-semibold px-4 py-2.5 rounded-xl hover:bg-[#F8FAF8]"
+              className="border-[1.5px] border-[#E1E9E4] text-[#43534B] font-semibold px-4 py-2.5 rounded-xl hover:bg-[#F6FAF7]"
             >
               বাতিল
             </button>
@@ -4567,7 +4567,7 @@ function AdminCoupons({ token }: { token: string }) {
         </div>
       </form>
 
-      <h2 className="mt-8 font-bold text-[#064B27]">সব কুপন</h2>
+      <h2 className="mt-8 font-bold text-[#054A2B]">সব কুপন</h2>
       {list.isPending ? (
         <Spinner />
       ) : list.isError ? (
@@ -4575,20 +4575,20 @@ function AdminCoupons({ token }: { token: string }) {
           <ErrorBox message={errMsg(list.error)} />
         </div>
       ) : (list.data?.coupons ?? []).length === 0 ? (
-        <p className="mt-2 text-sm text-[#737B73]">এখনো কোনো কুপন তৈরি হয়নি — কোনো ছাড়ও প্রযোজ্য নয়।</p>
+        <p className="mt-2 text-sm text-[#5C6B76]">এখনো কোনো কুপন তৈরি হয়নি — কোনো ছাড়ও প্রযোজ্য নয়।</p>
       ) : (
         <ul className="mt-3 space-y-2.5">
           {(list.data?.coupons ?? []).map((c) => (
-            <li key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+            <li key={c.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="font-bold text-[15px]">
                     <span className="font-en">{c.code}</span>{" "}
-                    <span className="text-[#087A35]">
+                    <span className="text-[#075B35]">
                       — {c.discountType === "percent" ? `${c.discountValue}% ছাড়` : `${bdt(c.discountValue)} ছাড়`}
                     </span>
                   </p>
-                  <p className="mt-1 text-[13px] text-[#737B73]">
+                  <p className="mt-1 text-[13px] text-[#5C6B76]">
                     {c.serviceName ? `শুধু: ${c.serviceName}` : "সব সার্ভিস"}
                     {c.minAmount != null ? ` • সর্বনিম্ন বিল ${bdt(c.minAmount)}` : ""}
                     {c.expiresOn ? ` • মেয়াদ: ${fmtDate(c.expiresOn)} পর্যন্ত` : " • মেয়াদ নেই"}
@@ -4596,7 +4596,7 @@ function AdminCoupons({ token }: { token: string }) {
                     {c.remaining != null ? ` • বাকি: ${c.remaining} বার` : " • সীমা নেই"}
                   </p>
                 </div>
-                <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${c.active ? "bg-[#087A35] text-white" : "bg-[#F0F3F0] text-[#737B73]"}`}>
+                <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${c.active ? "bg-[#075B35] text-white" : "bg-[#EEF3F0] text-[#5C6B76]"}`}>
                   {c.active ? "সক্রিয়" : "নিষ্ক্রিয়"}
                 </span>
               </div>
@@ -4604,7 +4604,7 @@ function AdminCoupons({ token }: { token: string }) {
                 <button
                   type="button"
                   onClick={() => startEdit(c)}
-                  className="border-[1.5px] border-[#cfe3d3] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2]"
+                  className="border-[1.5px] border-[#C9DFD2] text-[#054A2B] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F3F8F4]"
                 >
                   সম্পাদনা
                 </button>
@@ -4612,7 +4612,7 @@ function AdminCoupons({ token }: { token: string }) {
                   type="button"
                   disabled={toggle.isPending}
                   onClick={() => toggle.mutate({ id: c.id, active: !c.active })}
-                  className="border-[1.5px] border-[#E5EAE5] text-[#4c584c] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F8FAF8] disabled:opacity-60"
+                  className="border-[1.5px] border-[#E1E9E4] text-[#43534B] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F6FAF7] disabled:opacity-60"
                 >
                   {c.active ? "নিষ্ক্রিয় করুন" : "সক্রিয় করুন"}
                 </button>
@@ -4669,22 +4669,22 @@ function AdminComplaints({ token }: { token: string }) {
       ) : (
         <div className="space-y-3.5">
           {ctl.pageRows.map((c) => (
-        <div key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+        <div key={c.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-bold">{c.subject}</p>
-              <p className="text-[13.5px] text-[#737B73]">
+              <p className="text-[13.5px] text-[#5C6B76]">
                 {c.customerName} • <span className="font-en">{c.customerPhone}</span>
                 {c.bookingCode ? <span> • বুকিং <span className="font-en">{c.bookingCode}</span></span> : ""} • {fmtDateTime(c.createdAt)}
               </p>
             </div>
-            <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${c.status === "resolved" ? "bg-[#087A35] text-white" : "bg-amber-100 text-amber-800"}`}>
+            <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${c.status === "resolved" ? "bg-[#075B35] text-white" : "bg-amber-100 text-amber-800"}`}>
               {c.status === "resolved" ? "সমাধান হয়েছে" : "খোলা আছে"}
             </span>
           </div>
-          <p className="mt-2 text-[15px] text-[#4c584c]">{c.message}</p>
+          <p className="mt-2 text-[15px] text-[#43534B]">{c.message}</p>
           {c.status === "resolved" ? (
-            c.adminNote && <p className="mt-2 text-sm bg-[#F0FAF2] rounded-lg px-3 py-2">সমাধান নোট: {c.adminNote}</p>
+            c.adminNote && <p className="mt-2 text-sm bg-[#F3F8F4] rounded-lg px-3 py-2">সমাধান নোট: {c.adminNote}</p>
           ) : (
             <div className="mt-3 flex flex-col sm:flex-row gap-2">
               <label className="sr-only" htmlFor={`cmp-note-${c.id}`}>সমাধান নোট</label>
@@ -4700,11 +4700,11 @@ function AdminComplaints({ token }: { token: string }) {
                 type="button"
                 disabled={resolve.isPending}
                 onClick={() => resolve.mutate({ id: c.id, note: notes[c.id] || undefined })}
-                className="shrink-0 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2.5 rounded-xl"
+                className="shrink-0 bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2.5 rounded-xl"
               >
                 সমাধান হিসেবে চিহ্নিত করুন
               </button>
-              <a href={`tel:${c.customerPhone}`} className="shrink-0 border border-[#E5EAE5] font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F0FAF2] inline-flex items-center gap-1.5 justify-center">
+              <a href={`tel:${c.customerPhone}`} className="shrink-0 border border-[#E1E9E4] font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F3F8F4] inline-flex items-center gap-1.5 justify-center">
                 {Icon.phone("w-4 h-4")} কল
               </a>
             </div>
@@ -4751,11 +4751,11 @@ function AdminTickets({ token }: { token: string }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <h2 className="font-bold text-[#064B27]">সাপোর্ট টিকিট</h2>
+        <h2 className="font-bold text-[#054A2B]">সাপোর্ট টিকিট</h2>
         <label className="sr-only" htmlFor="admin-ticket-filter">অবস্থা অনুযায়ী ছাঁকুন</label>
         <select
           id="admin-ticket-filter"
-          className="border border-[#E5EAE5] rounded-xl px-3 py-2 bg-white text-sm"
+          className="border border-[#E1E9E4] rounded-xl px-3 py-2 bg-white text-sm"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         >
@@ -4790,7 +4790,7 @@ function AdminTickets({ token }: { token: string }) {
           ) : (
             <ul className="space-y-3">
               {ctl.pageRows.map((t) => (
-            <li key={t.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+            <li key={t.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
               <button
                 type="button"
                 className="w-full text-left"
@@ -4801,13 +4801,13 @@ function AdminTickets({ token }: { token: string }) {
                   <span className="font-semibold">{t.subject}</span>
                   <TicketStatusChip status={t.status} />
                 </span>
-                <span className="mt-1 block text-[12.5px] text-[#737B73]">
+                <span className="mt-1 block text-[12.5px] text-[#5C6B76]">
                   <span className="font-en">{t.code}</span> • {t.ownerName} (<span className="font-en">{t.ownerPhone}</span>) •{" "}
                   {t.ownerRole === "professional" ? "প্রফেশনাল" : "গ্রাহক"} • {t.messageCount}টি বার্তা • {fmtDateTime(t.updatedAt)}
                 </span>
               </button>
               {openId === t.id && (
-                <div className="mt-3 border-t border-[#E5EAE5] pt-3">
+                <div className="mt-3 border-t border-[#E1E9E4] pt-3">
                   <TicketThread token={token} ticketId={t.id} admin />
                 </div>
               )}
@@ -4883,7 +4883,7 @@ function SocialLinkEditor({
   const fid = link ? `sl-${link.id}` : "sl-new";
   return (
     <form
-      className="rounded-2xl border border-[#E5EAE5] bg-white p-4 space-y-3"
+      className="rounded-2xl border border-[#E1E9E4] bg-white p-4 space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         setError("");
@@ -4892,10 +4892,10 @@ function SocialLinkEditor({
       }}
     >
       <div className="flex items-center gap-2.5">
-        <span className="text-[#087A35]">{socialIcon(platform, "w-5 h-5")}</span>
+        <span className="text-[#075B35]">{socialIcon(platform, "w-5 h-5")}</span>
         <span className="font-semibold">{link ? (link.label ?? SOCIAL_PLATFORM_BN[link.platform] ?? link.platform) : "নতুন লিংক যোগ করুন"}</span>
         {link && (
-          <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ${link.enabled ? "bg-[#087A35] text-white" : "bg-[#E5EAE5] text-[#737B73]"}`}>
+          <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ${link.enabled ? "bg-[#075B35] text-white" : "bg-[#E1E9E4] text-[#5C6B76]"}`}>
             {link.enabled ? "চালু" : "বন্ধ"}
           </span>
         )}
@@ -4911,7 +4911,7 @@ function SocialLinkEditor({
         </div>
         <div>
           <label className={labelCls} htmlFor={`${fid}-label`}>নাম (ঐচ্ছিক)</label>
-          <input id={`${fid}-label`} className={inputCls} {...FIELDS.adminSaveSocialLink.label} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="যেমন: GhorSheba অফিসিয়াল পেজ" />
+          <input id={`${fid}-label`} className={inputCls} {...FIELDS.adminSaveSocialLink.label} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="যেমন: MistriDako অফিসিয়াল পেজ" />
         </div>
       </div>
       <div>
@@ -4925,7 +4925,7 @@ function SocialLinkEditor({
           required
           placeholder={platform === "whatsapp" ? "https://wa.me/8801XXXXXXXXX" : "https://…"}
         />
-        <p className="mt-1 text-[13px] text-[#737B73]">শুধু আসল অ্যাকাউন্ট/পেজের লিংক দিন — প্ল্যাটফর্মের নিজের ডোমেইন ছাড়া অন্য URL সার্ভার গ্রহণ করবে না।</p>
+        <p className="mt-1 text-[13px] text-[#5C6B76]">শুধু আসল অ্যাকাউন্ট/পেজের লিংক দিন — প্ল্যাটফর্মের নিজের ডোমেইন ছাড়া অন্য URL সার্ভার গ্রহণ করবে না।</p>
       </div>
       <div className="flex flex-wrap items-end gap-4">
         <div>
@@ -4933,7 +4933,7 @@ function SocialLinkEditor({
           <input id={`${fid}-order`} type="number" {...FIELDS.adminSaveSocialLink.sortOrder} className={`${inputCls} font-en w-24`} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
         </div>
         <label className="flex items-center gap-2 font-medium pb-2" htmlFor={`${fid}-enabled`}>
-          <input id={`${fid}-enabled`} type="checkbox" className="w-4.5 h-4.5 accent-[#087A35]" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <input id={`${fid}-enabled`} type="checkbox" className="w-4.5 h-4.5 accent-[#075B35]" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           সাইটে দেখান
         </label>
         <div className="ml-auto flex gap-2">
@@ -4950,13 +4950,13 @@ function SocialLinkEditor({
               {del.isPending ? "মোছা হচ্ছে…" : "মুছুন"}
             </button>
           )}
-          <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+          <button type="submit" disabled={save.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
             {save.isPending ? "সংরক্ষণ হচ্ছে…" : link ? "সংরক্ষণ করুন" : "যোগ করুন"}
           </button>
         </div>
       </div>
       {error && <ErrorBox message={error} />}
-      {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">সংরক্ষিত হয়েছে।</p>}
+      {ok && <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">সংরক্ষিত হয়েছে।</p>}
     </form>
   );
 }
@@ -4967,8 +4967,8 @@ function AdminSocialLinks({ token }: { token: string }) {
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h2 className="font-bold text-[#064B27]">সোশ্যাল মিডিয়া লিংক</h2>
-        <p className="mt-1 text-sm text-[#737B73]">
+        <h2 className="font-bold text-[#054A2B]">সোশ্যাল মিডিয়া লিংক</h2>
+        <p className="mt-1 text-sm text-[#5C6B76]">
           এখানে যোগ করা চালু লিংকগুলোই শুধু সাইটের ফুটার, যোগাযোগ পেজ ও মোবাইল মেনুতে দেখানো হবে।
           কোনো লিংক না থাকলে সাইটে কোনো সোশ্যাল আইকন দেখানো হবে না।
         </p>
@@ -5036,8 +5036,8 @@ const WITHDRAW_METHOD_BN: Record<string, string> = {
 function MoneyStat({ label, value, sub }: { label: string; value: number; sub?: string }) {
   return (
     <div>
-      <p className="text-[20px] font-bold text-[#064B27]">{bdt(value)}</p>
-      <p className="text-[13px] text-[#737B73]">
+      <p className="text-[20px] font-bold text-[#054A2B]">{bdt(value)}</p>
+      <p className="text-[13px] text-[#5C6B76]">
         {label}
         {sub ? ` (${sub})` : ""}
       </p>
@@ -5064,15 +5064,15 @@ function PaymentVerifyBox({ token, p }: { token: string; p: PaymentView }) {
   });
   const pending = p.status === "pending" || p.status === "initiated";
   return (
-    <div className="rounded-xl border border-[#E5EAE5] bg-white p-3.5">
+    <div className="rounded-xl border border-[#E1E9E4] bg-white p-3.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{PROVIDER_BN[p.provider] ?? providerEn(p.provider)}</span>
         <span className="font-en text-sm">{p.providerTrxId}</span>
         <span className="font-en font-bold">{bdt(p.amount)}</span>
         <PaymentStatusChip status={p.status} />
-        <span className="text-[12.5px] text-[#737B73]">{fmtDateTime(p.createdAt)}</span>
+        <span className="text-[12.5px] text-[#5C6B76]">{fmtDateTime(p.createdAt)}</span>
       </div>
-      <p className="mt-1 text-[13px] text-[#737B73]">
+      <p className="mt-1 text-[13px] text-[#5C6B76]">
         মডেল: {PAYMENT_MODEL_BN[p.paymentModel] ?? p.paymentModel}
         {p.senderNumber ? (
           <>
@@ -5105,7 +5105,7 @@ function PaymentVerifyBox({ token, p }: { token: string; p: PaymentView }) {
                 setError("");
                 verify.mutate({ decision: "verify" });
               }}
-              className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
+              className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
             >
               যাচাই করে অনুমোদন করুন
             </button>
@@ -5127,7 +5127,7 @@ function PaymentVerifyBox({ token, p }: { token: string; p: PaymentView }) {
           </div>
         </div>
       )}
-      {done && <p className="mt-2 rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-3 py-2">{done}</p>}
+      {done && <p className="mt-2 rounded-lg bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-3 py-2">{done}</p>}
     </div>
   );
 }
@@ -5144,28 +5144,28 @@ function BookingPaymentDetail({ token, bookingId }: { token: string; bookingId: 
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="font-bold text-[#064B27] mb-2">মূল্য ও পেমেন্ট স্ন্যাপশট</h3>
+        <h3 className="font-bold text-[#054A2B] mb-2">মূল্য ও পেমেন্ট স্ন্যাপশট</h3>
         {d.breakdown ? (
           <>
-            <p className="text-[13px] text-[#737B73] mb-2">
+            <p className="text-[13px] text-[#5C6B76] mb-2">
               মডেল: {PAYMENT_MODEL_BN[s.paymentModel ?? ""] ?? s.paymentModel} • অনলাইন পেমেন্টের অবস্থা:{" "}
               {EXTENDED_STATUS_BN[s.extendedPaymentStatus] ?? s.extendedPaymentStatus}
               {s.heldBalance != null && s.heldBalance > 0 ? ` • বর্তমান হেল্ড: ${bdt(s.heldBalance)}` : ""}
             </p>
             <BreakdownRows bd={d.breakdown} />
-            <p className="mt-2 text-[12.5px] text-[#737B73]">
+            <p className="mt-2 text-[12.5px] text-[#5C6B76]">
               এই হিসাব মূল্য নিশ্চিত করার সময়ের হার (গ্রাহক ফি {s.customerFeePercent}% • প্রফেশনাল কমিশন{" "}
               {s.proCommissionPercent}%) দিয়ে জমা করা স্ন্যাপশট — পরে হার বদলালেও এই বুকিংয়ের হিসাব বদলায় না।
             </p>
           </>
         ) : (
-          <p className="text-sm text-[#737B73]">এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি, তাই কোনো পেমেন্ট স্ন্যাপশট নেই।</p>
+          <p className="text-sm text-[#5C6B76]">এই বুকিংয়ের মূল্য এখনো নিশ্চিত হয়নি, তাই কোনো পেমেন্ট স্ন্যাপশট নেই।</p>
         )}
       </div>
       <div>
-        <h3 className="font-bold text-[#064B27] mb-2">TrxID জমা ও যাচাই</h3>
+        <h3 className="font-bold text-[#054A2B] mb-2">TrxID জমা ও যাচাই</h3>
         {d.payments.length === 0 ? (
-          <p className="text-sm text-[#737B73]">এই বুকিংয়ে কোনো অনলাইন পেমেন্ট জমা হয়নি।</p>
+          <p className="text-sm text-[#5C6B76]">এই বুকিংয়ে কোনো অনলাইন পেমেন্ট জমা হয়নি।</p>
         ) : (
           <div className="space-y-2.5">
             {d.payments.map((p) => (
@@ -5175,19 +5175,19 @@ function BookingPaymentDetail({ token, bookingId }: { token: string; bookingId: 
         )}
       </div>
       <div>
-        <h3 className="font-bold text-[#064B27] mb-2">লেজার এন্ট্রি</h3>
+        <h3 className="font-bold text-[#054A2B] mb-2">লেজার এন্ট্রি</h3>
         {d.ledger.length === 0 ? (
-          <p className="text-sm text-[#737B73]">এখনো কোনো লেজার এন্ট্রি নেই — পেমেন্ট যাচাই হলেই এন্ট্রি তৈরি হয়।</p>
+          <p className="text-sm text-[#5C6B76]">এখনো কোনো লেজার এন্ট্রি নেই — পেমেন্ট যাচাই হলেই এন্ট্রি তৈরি হয়।</p>
         ) : (
-          <ul className="divide-y divide-[#F0F3F0] border border-[#E5EAE5] rounded-xl overflow-hidden">
+          <ul className="divide-y divide-[#EEF3F0] border border-[#E1E9E4] rounded-xl overflow-hidden">
             {d.ledger.map((e) => (
               <li key={e.id} className="px-3.5 py-2.5 flex flex-wrap items-baseline gap-x-3 bg-white">
-                <span className="text-[13px] font-semibold bg-[#F0FAF2] text-[#064B27] px-2 py-0.5 rounded">
+                <span className="text-[13px] font-semibold bg-[#F3F8F4] text-[#054A2B] px-2 py-0.5 rounded">
                   {LEDGER_TYPE_BN[e.entryType] ?? e.entryType}
                 </span>
                 <span className="font-en font-semibold">{bdt(e.amount)}</span>
-                {e.note && <span className="text-[13px] text-[#4c584c]">{e.note}</span>}
-                <span className="ml-auto text-[12.5px] text-[#737B73]">{fmtDateTime(e.createdAt)}</span>
+                {e.note && <span className="text-[13px] text-[#43534B]">{e.note}</span>}
+                <span className="ml-auto text-[12.5px] text-[#5C6B76]">{fmtDateTime(e.createdAt)}</span>
               </li>
             ))}
           </ul>
@@ -5248,13 +5248,13 @@ function CommissionRatesCard({ token }: { token: string }) {
   );
   return (
     <section>
-      <h2 className="text-lg font-bold text-[#064B27]">কমিশন ও ফি-এর হার</h2>
-      <p className="mt-1 text-sm text-[#737B73]">
+      <h2 className="text-lg font-bold text-[#054A2B]">কমিশন ও ফি-এর হার</h2>
+      <p className="mt-1 text-sm text-[#5C6B76]">
         প্রতিটি পেমেন্ট মডেলের আলাদা হার। হার বদলালে তা শুধু এরপর মূল্য-নিশ্চিত হওয়া নতুন বুকিংয়ে প্রযোজ্য হবে —
         ইতিমধ্যে নিশ্চিত বা যাচাইকৃত বুকিংয়ের স্ন্যাপশট কখনো বদলায় না।
       </p>
       <form
-        className="mt-4 max-w-xl rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+        className="mt-4 max-w-xl rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           setError("");
@@ -5263,14 +5263,14 @@ function CommissionRatesCard({ token }: { token: string }) {
         }}
       >
         <fieldset>
-          <legend className="font-semibold text-[#064B27] mb-2">সম্পূর্ণ অনলাইন পেমেন্ট</legend>
+          <legend className="font-semibold text-[#054A2B] mb-2">সম্পূর্ণ অনলাইন পেমেন্ট</legend>
           <div className="grid grid-cols-2 gap-3">
             {rateField("cr-full-fee", "গ্রাহক ফি (%)", fullFee, setFullFee, FIELDS.adminSaveSettings.fullOnlineCustomerFeePercent)}
             {rateField("cr-full-comm", "প্রফেশনাল কমিশন (%)", fullComm, setFullComm, FIELDS.adminSaveSettings.fullOnlineProCommissionPercent)}
           </div>
         </fieldset>
         <fieldset>
-          <legend className="font-semibold text-[#064B27] mb-2">৫০% অনলাইন + ৫০% নগদ</legend>
+          <legend className="font-semibold text-[#054A2B] mb-2">৫০% অনলাইন + ৫০% নগদ</legend>
           <div className="grid grid-cols-2 gap-3">
             {rateField("cr-split-fee", "গ্রাহক ফি (%)", splitFee, setSplitFee, FIELDS.adminSaveSettings.splitCustomerFeePercent)}
             {rateField("cr-split-comm", "প্রফেশনাল কমিশন (%)", splitComm, setSplitComm, FIELDS.adminSaveSettings.splitProCommissionPercent)}
@@ -5278,11 +5278,11 @@ function CommissionRatesCard({ token }: { token: string }) {
         </fieldset>
         {error && <ErrorBox message={error} />}
         {ok && (
-          <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+          <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">
             হার সংরক্ষিত হয়েছে — এখন থেকে মূল্য-নিশ্চিত হওয়া বুকিংয়ে প্রযোজ্য।
           </p>
         )}
-        <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+        <button type="submit" disabled={save.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
           {save.isPending ? "সংরক্ষণ হচ্ছে…" : "হার সংরক্ষণ করুন"}
         </button>
       </form>
@@ -5323,14 +5323,14 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
   });
   const st = WITHDRAWAL_STATUS_BN[w.status] ?? { label: w.status, cls: "bg-gray-100 text-gray-700" };
   return (
-    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+    <div className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-bold">
           {w.professionalName} — {bdt(w.amount)}
         </p>
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
       </div>
-      <p className="mt-0.5 text-[13.5px] text-[#737B73]">
+      <p className="mt-0.5 text-[13.5px] text-[#5C6B76]">
         {WITHDRAW_METHOD_BN[w.method] ?? providerEn(w.method)} • <span className="font-en">{w.number}</span> •{" "}
         {fmtDateTime(w.requestedAt)}
         {w.bookingCode ? (
@@ -5343,7 +5343,7 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
         <p className="mt-1 text-[13px] text-red-700 font-semibold">হোল্ডের কারণ: {w.holdReason}</p>
       )}
       {done ? (
-        <p className="mt-2 rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-3 py-2">{done}</p>
+        <p className="mt-2 rounded-lg bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-3 py-2">{done}</p>
       ) : (
         <div className="mt-3 space-y-2.5">
           <div className="grid sm:grid-cols-2 gap-2.5">
@@ -5370,7 +5370,7 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
               />
             </div>
           </div>
-          <p className="text-[12.5px] text-[#737B73]">
+          <p className="text-[12.5px] text-[#5C6B76]">
             শুধু স্ক্রিনশট প্রমাণ নয় — টাকা সত্যিই পাঠিয়ে তার লেনদেন রেফারেন্স লিখলেই কেবল "পরিশোধিত" হবে। একবার পরিশোধ হলে আবার পরিশোধ করা যাবে না।
             {w.status === "held" && " এই অনুরোধ হোল্ডে আছে — পরিশোধের আগে হোল্ড ছাড়তে হবে।"}
           </p>
@@ -5388,7 +5388,7 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
                   }
                   decide.mutate({ decision: "pay", transactionReference: reference.trim() });
                 }}
-                className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+                className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
               >
                 টাকা পাঠিয়ে পরিশোধ করুন
               </button>
@@ -5448,8 +5448,8 @@ function SettlementQueue({ token }: { token: string }) {
   const q = useQuery({ queryKey: ["admin-settlement"], queryFn: () => api.adminListSettlementQueue({ token }) });
   return (
     <section>
-      <h2 className="text-lg font-bold text-[#064B27]">সেটলমেন্ট কিউ</h2>
-      <p className="mt-1 text-sm text-[#737B73]">
+      <h2 className="text-lg font-bold text-[#054A2B]">সেটলমেন্ট কিউ</h2>
+      <p className="mt-1 text-sm text-[#5C6B76]">
         হেল্ড ব্যালেন্সের তালিকা ও প্রফেশনালদের উইথড্র অনুরোধ। উইথড্রের সিদ্ধান্ত শুধু ফাইন্যান্স অ্যাডমিন (বা সুপার) দিতে
         পারেন; পরিশোধে আসল লেনদেনের রেফারেন্স বাধ্যতামূলক। বিরোধ বা বাতিল হওয়া বুকিংয়ের টাকা স্থগিত — সিদ্ধান্ত না
         হওয়া পর্যন্ত তা ছাড়া হয় না।
@@ -5461,7 +5461,7 @@ function SettlementQueue({ token }: { token: string }) {
       ) : (
         <div className="mt-4 space-y-5">
           <div>
-            <h3 className="font-semibold text-[#064B27] mb-2">
+            <h3 className="font-semibold text-[#054A2B] mb-2">
               হেল্ড ব্যালেন্স — ছাড়ের অপেক্ষায় (মোট {bdt(q.data!.totals.heldAwaitingRelease)})
               {q.data!.totals.frozenDisputedHeld > 0 && (
                 <span className="block text-[13px] font-semibold text-red-700">
@@ -5479,15 +5479,15 @@ function SettlementQueue({ token }: { token: string }) {
             ) : (
               <div className="space-y-2.5">
                 {q.data!.heldBookings.map((h) => (
-                  <div key={h.bookingId} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                  <div key={h.bookingId} className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
                     <p className="font-bold">
                       {h.serviceName} — <span className="font-en">{h.code}</span>
                     </p>
-                    <p className="text-[13.5px] text-[#737B73]">
+                    <p className="text-[13.5px] text-[#5C6B76]">
                       প্রফেশনাল: {h.professionalName ?? "—"} • হেল্ড {bdt(h.heldTotal)} • কমিশন {bdt(h.commissionDue)} •
                       পেআউট হয়েছে {bdt(h.paidOut)}
                     </p>
-                    <p className="text-[14px] font-semibold text-[#064B27]">
+                    <p className="text-[14px] font-semibold text-[#054A2B]">
                       ছাড়যোগ্য: {bdt(h.remainingHeld)}
                       {h.disputed && <span className="ml-2 text-red-700">• বিরোধ চলমান — সেটেলমেন্ট স্থগিত</span>}
                       {!h.disputed && h.frozen && <span className="ml-2 text-red-700">• বুকিং বাতিল/প্রত্যাখ্যাত — রিফান্ডের সিদ্ধান্ত বাকি, পেআউট হবে না</span>}
@@ -5498,7 +5498,7 @@ function SettlementQueue({ token }: { token: string }) {
             )}
           </div>
           <div>
-            <h3 className="font-semibold text-[#064B27] mb-2">
+            <h3 className="font-semibold text-[#054A2B] mb-2">
               উইথড্র অনুরোধ — সিদ্ধান্তের অপেক্ষায় ({q.data!.totals.openWithdrawalCount}টি, মোট{" "}
               {bdt(q.data!.totals.openWithdrawalAmount)})
             </h3>
@@ -5530,7 +5530,7 @@ const ADMIN_REFUND_STATUS_BN: Record<string, { label: string; cls: string }> = {
   requested: { label: "সিদ্ধান্তের অপেক্ষায়", cls: "bg-amber-100 text-amber-800" },
   approved: { label: "অনুমোদিত", cls: "bg-sky-100 text-sky-800" },
   rejected: { label: "গৃহীত হয়নি", cls: "bg-red-100 text-red-700" },
-  refunded: { label: "রিফান্ড সম্পন্ন", cls: "bg-[#087A35] text-white" },
+  refunded: { label: "রিফান্ড সম্পন্ন", cls: "bg-[#075B35] text-white" },
 };
 
 type AdminRefundRequest = ApiResponse<typeof api, "adminListRefundRequests">["requests"][number];
@@ -5558,24 +5558,24 @@ function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest 
   const st = ADMIN_REFUND_STATUS_BN[r.status] ?? { label: r.status, cls: "bg-gray-100 text-gray-700" };
   const open = r.status === "requested";
   return (
-    <div className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+    <div className="rounded-2xl border border-[#E1E9E4] bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-bold">
           {r.customerName} — বুকিং <span className="font-en">{r.bookingCode}</span>
         </p>
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
-        <span className="text-[12.5px] text-[#737B73]">{fmtDateTime(r.createdAt)}</span>
+        <span className="text-[12.5px] text-[#5C6B76]">{fmtDateTime(r.createdAt)}</span>
       </div>
-      <p className="mt-1 text-[13.5px] text-[#737B73]">
+      <p className="mt-1 text-[13.5px] text-[#5C6B76]">
         কারণ: {ADMIN_REFUND_REASON_BN[r.reason] ?? r.reason} — {r.detail}
       </p>
-      <p className="text-[13.5px] text-[#737B73]">
+      <p className="text-[13.5px] text-[#5C6B76]">
         অনলাইন পেমেন্ট: {r.paymentAmount != null ? bdt(r.paymentAmount) : "—"}
         {r.paymentProvider ? ` (${PROVIDER_BN[r.paymentProvider] ?? providerEn(r.paymentProvider)})` : ""}
         {r.paymentStatus ? ` • অবস্থা: ${r.paymentStatus === "verified" ? "যাচাইকৃত" : r.paymentStatus === "refunded" ? "রিফান্ড হয়েছে" : r.paymentStatus}` : ""}
       </p>
       {r.status === "refunded" && r.refundAmount != null && (
-        <p className="mt-1 text-[13.5px] font-semibold text-[#064B27]">
+        <p className="mt-1 text-[13.5px] font-semibold text-[#054A2B]">
           ফেরত দেওয়া হয়েছে: {bdt(r.refundAmount)}
           {r.refundReference ? (
             <>
@@ -5589,7 +5589,7 @@ function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest 
       )}
       {open && !done && (
         <div className="mt-3 space-y-2.5">
-          <p className="text-[12.5px] text-[#737B73]">
+          <p className="text-[12.5px] text-[#5C6B76]">
             রিফান্ডের পরিমাণ প্রকাশিত বাতিল নীতি অনুযায়ী প্রতিটি কেসে আপনি ঠিক করবেন — সিস্টেমে কোনো নির্দিষ্ট হার বসানো নেই।
             টাকা সত্যিই ফেরত পাঠিয়ে তার পরিমাণ ও রেফারেন্স লিখলেই কেবল "রিফান্ড সম্পন্ন" হবে।
           </p>
@@ -5625,7 +5625,7 @@ function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest 
                 }
                 decide.mutate({ decision: "refund", refundAmount: amt, refundReference: reference.trim(), note: note.trim() || undefined });
               }}
-              className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
+              className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold text-sm px-4 py-2 rounded-xl"
             >
               রিফান্ড সম্পন্ন করুন
             </button>
@@ -5647,7 +5647,7 @@ function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest 
           </div>
         </div>
       )}
-      {done && <p className="mt-2 rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-3 py-2">{done}</p>}
+      {done && <p className="mt-2 rounded-lg bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-3 py-2">{done}</p>}
     </div>
   );
 }
@@ -5658,8 +5658,8 @@ function RefundRequestsPanel({ token }: { token: string }) {
   const openCount = (q.data?.requests ?? []).filter((r) => r.status === "requested").length;
   return (
     <section>
-      <h2 className="text-lg font-bold text-[#064B27]">রিফান্ড অনুরোধ ({openCount}টি সিদ্ধান্তের অপেক্ষায়)</h2>
-      <p className="mt-1 text-sm text-[#737B73]">
+      <h2 className="text-lg font-bold text-[#054A2B]">রিফান্ড অনুরোধ ({openCount}টি সিদ্ধান্তের অপেক্ষায়)</h2>
+      <p className="mt-1 text-sm text-[#5C6B76]">
         গ্রাহকের রিফান্ড অনুরোধে কোনো টাকা নিজে থেকে নড়ে না — আপনি যাচাই করে আসল ফেরত লেনদেন রেকর্ড করলেই রিফান্ড সম্পন্ন হয়।
       </p>
       {q.isPending ? (
@@ -5712,8 +5712,8 @@ function AdminPayments({ token }: { token: string }) {
       <section>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="text-lg font-bold text-[#064B27]">ফাইন্যান্স ড্যাশবোর্ড</h2>
-            <p className="mt-1 text-sm text-[#737B73]">
+            <h2 className="text-lg font-bold text-[#054A2B]">ফাইন্যান্স ড্যাশবোর্ড</h2>
+            <p className="mt-1 text-sm text-[#5C6B76]">
               প্রতিটি সংখ্যা সার্ভারের যাচাইকৃত পেমেন্ট ও লেজার এন্ট্রি থেকে হিসাব করা — ক্লায়েন্টে কোনো হিসাব হয় না। কমিশনের এই হিসাব লাইভ লেজারের; প্রফেশনালের আয়ের পেজের স্ন্যাপশট কমিশনের সাথে এটি হুবহু মিলবে না।
             </p>
           </div>
@@ -5727,33 +5727,33 @@ function AdminPayments({ token }: { token: string }) {
           <ErrorBox message={errMsg(analytics.error)} />
         ) : d && a ? (
           <div className="mt-4 space-y-4">
-            <div className="rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
-              <h3 className="font-bold text-[#064B27]">অনলাইন সংগ্রহ</h3>
+            <div className="rounded-2xl border border-[#E1E9E4] bg-[#F3F8F4] p-5">
+              <h3 className="font-bold text-[#054A2B]">অনলাইন সংগ্রহ</h3>
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                 <MoneyStat label="মোট অনলাইন সংগ্রহ" value={a.onlineCollected} />
                 <MoneyStat label="সম্পূর্ণ অনলাইন পেমেন্ট" value={a.onlineFullOnline} />
                 <MoneyStat label="আংশিক অনলাইন পেমেন্ট" value={a.onlineSplit} />
               </div>
             </div>
-            <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-              <h3 className="font-bold text-[#064B27]">ফি, কমিশন ও রাজস্ব</h3>
+            <div className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+              <h3 className="font-bold text-[#054A2B]">ফি, কমিশন ও রাজস্ব</h3>
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                 <MoneyStat label="গ্রাহক সার্ভিস ফি সংগৃহীত" value={d.customerFeesCollected} />
                 <MoneyStat label="প্রফেশনাল কমিশন অর্জিত (পাওনা)" value={d.commissionEarned} />
                 <MoneyStat label="প্রফেশনাল কমিশন সংগৃহীত" value={d.commissionCollected} />
-                <MoneyStat label="ঘরসেবার রাজস্ব (ফি + সংগৃহীত কমিশন)" value={a.revenue} />
+                <MoneyStat label="মিস্ত্রি ডাকোর রাজস্ব (ফি + সংগৃহীত কমিশন)" value={a.revenue} />
               </div>
             </div>
-            <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-              <h3 className="font-bold text-[#064B27]">পেআউট ও হেল্ড ব্যালেন্স</h3>
+            <div className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+              <h3 className="font-bold text-[#054A2B]">পেআউট ও হেল্ড ব্যালেন্স</h3>
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
                 <MoneyStat label="প্রফেশনাল পেআউট সম্পন্ন" value={d.paidOutTotal} />
                 <MoneyStat label="পেআউটের অপেক্ষায়" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
                 <MoneyStat label="হেল্ড ব্যালেন্স (সেটলমেন্ট বাকি)" value={d.heldBalanceTotal} />
               </div>
             </div>
-            <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
-              <h3 className="font-bold text-[#064B27]">রিফান্ড, ব্যর্থ ও অন্যান্য</h3>
+            <div className="rounded-2xl border border-[#E1E9E4] bg-white p-5">
+              <h3 className="font-bold text-[#054A2B]">রিফান্ড, ব্যর্থ ও অন্যান্য</h3>
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
                 <MoneyStat label="রিফান্ড হয়েছে" value={d.refundedTotal} />
                 <MoneyStat label="ব্যর্থ লেনদেন" value={a.failedAmount} sub={`${a.failedCount}টি পেমেন্ট`} />
@@ -5763,7 +5763,7 @@ function AdminPayments({ token }: { token: string }) {
               {d.disputedPayments > 0 && (
                 <p className="mt-3 text-[13.5px] text-red-700">বিরোধপূর্ণ বুকিং: {d.disputedPayments}টি — সিদ্ধান্ত না হওয়া পর্যন্ত সেগুলোর সেটেলমেন্ট স্থগিত।</p>
               )}
-              <p className="mt-3 text-[12.5px] text-[#737B73]">
+              <p className="mt-3 text-[12.5px] text-[#5C6B76]">
                 বর্তমান হার — সম্পূর্ণ অনলাইন: ফি {d.fullOnlineCustomerFeePercent}% / কমিশন {d.fullOnlineProCommissionPercent}% •
                 ৫০% অনলাইন + ৫০% নগদ: ফি {d.splitCustomerFeePercent}% / কমিশন {d.splitProCommissionPercent}%। ক্যাশ গ্রাহক সরাসরি প্রফেশনালকে দেন — এটি যাচাইকৃত অনলাইন সংগ্রহ নয়।
               </p>
@@ -5773,7 +5773,7 @@ function AdminPayments({ token }: { token: string }) {
       </section>
       <CommissionRatesCard token={token} />
       <section>
-        <h2 className="text-lg font-bold text-[#064B27]">TrxID যাচাই ও পেমেন্ট ইতিহাস</h2>
+        <h2 className="text-lg font-bold text-[#054A2B]">TrxID যাচাই ও পেমেন্ট ইতিহাস</h2>
         <div className="flex flex-wrap gap-2 mt-3 mb-4" role="group" aria-label="পেমেন্ট স্ট্যাটাস ফিল্টার">
           {(
             [
@@ -5788,7 +5788,7 @@ function AdminPayments({ token }: { token: string }) {
               type="button"
               onClick={() => setStatus(k)}
               aria-pressed={status === k}
-              className={`px-3.5 py-2 rounded-full text-sm font-semibold ${status === k ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+              className={`px-3.5 py-2 rounded-full text-sm font-semibold ${status === k ? "bg-[#054A2B] text-white" : "bg-white border border-[#E1E9E4] text-[#43534B]"}`}
             >
               {label}
             </button>
@@ -5820,9 +5820,9 @@ function AdminPayments({ token }: { token: string }) {
               <div className="space-y-4">
                 {payCtl.pageRows.map((p) => (
                   <div key={p.id}>
-                    <p className="text-[13px] text-[#737B73] mb-1.5">
+                    <p className="text-[13px] text-[#5C6B76] mb-1.5">
                       বুকিং{" "}
-                      <a className="font-en font-semibold text-[#087A35] underline" href={`#/booking/${p.bookingCode}`}>
+                      <a className="font-en font-semibold text-[#075B35] underline" href={`#/booking/${p.bookingCode}`}>
                         {p.bookingCode}
                       </a>
                     </p>
@@ -5831,12 +5831,12 @@ function AdminPayments({ token }: { token: string }) {
                       type="button"
                       onClick={() => setOpenBooking(openBooking === p.bookingId ? null : p.bookingId)}
                       aria-expanded={openBooking === p.bookingId}
-                      className="mt-2 bg-[#F0FAF2] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E2F4E7]"
+                      className="mt-2 bg-[#F3F8F4] text-[#054A2B] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E4F1E8]"
                     >
                       {openBooking === p.bookingId ? "পেমেন্ট বিবরণ বন্ধ করুন" : "বুকিংয়ের পেমেন্ট বিবরণ"}
                     </button>
                     {openBooking === p.bookingId && (
-                      <div className="mt-3 rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                      <div className="mt-3 rounded-2xl border border-[#E1E9E4] bg-white p-4">
                         <BookingPaymentDetail token={token} bookingId={p.bookingId} />
                       </div>
                     )}
@@ -5902,7 +5902,7 @@ function AdminSettings({ token }: { token: string }) {
   if (data.isPending) return <Spinner />;
   return (
     <form
-      className="max-w-xl rounded-3xl border border-[#E5EAE5] bg-white p-5 sm:p-6 space-y-4"
+      className="max-w-xl rounded-3xl border border-[#E1E9E4] bg-white p-5 sm:p-6 space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         setError("");
@@ -5910,7 +5910,7 @@ function AdminSettings({ token }: { token: string }) {
         save.mutate();
       }}
     >
-      <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
+      <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">
         কমিশন ও গ্রাহক ফি-এর হার <strong>পেমেন্ট</strong> ট্যাব থেকে বদলানো যায় — প্রতিটি পেমেন্ট মডেলের (সম্পূর্ণ
         অনলাইন / ৫০% অনলাইন + ৫০% নগদ) আলাদা হার সেখানে দেখানো ও সম্পাদনা করা যায়।
       </p>
@@ -5950,14 +5950,14 @@ function AdminSettings({ token }: { token: string }) {
       <div>
         <label className={labelCls} htmlFor="st-pay-number">পেমেন্ট গ্রহণের নম্বর</label>
         <input id="st-pay-number" className={`${inputCls} font-en`} {...FIELDS.adminSaveSettings.paymentReceiveNumber} value={payNumber} onChange={(e) => setPayNumber(e.target.value)} placeholder="খালি রাখলে চেকআউটে নম্বর দেখানো হবে না" />
-        <p className="mt-1 text-[13px] text-[#737B73]">গ্রাহক এই নম্বরে টাকা পাঠিয়ে চেকআউটে TrxID জমা দেবেন — নম্বরটি চেকআউটে গ্রাহকদের দেখানো হয়।</p>
+        <p className="mt-1 text-[13px] text-[#5C6B76]">গ্রাহক এই নম্বরে টাকা পাঠিয়ে চেকআউটে TrxID জমা দেবেন — নম্বরটি চেকআউটে গ্রাহকদের দেখানো হয়।</p>
       </div>
       {error && <ErrorBox message={error} />}
-      {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">সেটিংস সংরক্ষিত হয়েছে।</p>}
-      <button type="submit" disabled={save.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
+      {ok && <p className="rounded-xl bg-[#F3F8F4] border border-[#C9DFD2] text-[#054A2B] text-sm px-4 py-3">সেটিংস সংরক্ষিত হয়েছে।</p>}
+      <button type="submit" disabled={save.isPending} className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
         {save.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
       </button>
-      <p className="text-[13px] text-[#737B73]">দ্রষ্টব্য: অনলাইন পেমেন্ট এখন ম্যানুয়াল TrxID পদ্ধতিতে চলে — গ্রাহক উপরের নম্বরে টাকা পাঠিয়ে TrxID জমা দেন, অ্যাডমিন যাচাই করলেই পেমেন্ট চূড়ান্ত হয়। কোনো পেমেন্ট গেটওয়ে (কার্ড/অটোমেটিক) এখনো যুক্ত হয়নি।</p>
+      <p className="text-[13px] text-[#5C6B76]">দ্রষ্টব্য: অনলাইন পেমেন্ট এখন ম্যানুয়াল TrxID পদ্ধতিতে চলে — গ্রাহক উপরের নম্বরে টাকা পাঠিয়ে TrxID জমা দেন, অ্যাডমিন যাচাই করলেই পেমেন্ট চূড়ান্ত হয়। কোনো পেমেন্ট গেটওয়ে (কার্ড/অটোমেটিক) এখনো যুক্ত হয়নি।</p>
     </form>
   );
 }
@@ -6009,8 +6009,8 @@ function AdminStaff({ token }: { token: string }) {
   return (
     <div className="space-y-8">
       <section>
-        <h2 className="text-lg font-bold text-[#064B27]">অ্যাডমিন টিম</h2>
-        <p className="mt-1 text-sm text-[#737B73]">
+        <h2 className="text-lg font-bold text-[#054A2B]">অ্যাডমিন টিম</h2>
+        <p className="mt-1 text-sm text-[#5C6B76]">
           প্রতিটি স্তরের অনুমতি সার্ভার থেকে যাচাই করা হয় — ফাইন্যান্স অ্যাডমিন পেমেন্ট যাচাই করতে পারবেন কিন্তু কারো স্তর বদলাতে পারবেন না; সাপোর্ট অ্যাডমিন অভিযোগ সামলাবেন কিন্তু পেআউট অনুমোদন করতে পারবেন না।
         </p>
         {error && (
@@ -6023,23 +6023,23 @@ function AdminStaff({ token }: { token: string }) {
         ) : (
           <div className="mt-4 space-y-3">
             {(staff.data?.staff ?? []).map((s) => (
-              <div key={s.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4 flex flex-wrap items-center gap-3">
+              <div key={s.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4 flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">
                     {s.name}{" "}
-                    <span className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle bg-[#064B27] text-white">
+                    <span className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle bg-[#054A2B] text-white">
                       {ADMIN_LEVEL_BN[s.adminLevel] ?? s.adminLevel}
                     </span>
                     {s.status === "suspended" && <span className="ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full align-middle bg-red-100 text-red-700">স্থগিত</span>}
                   </p>
-                  <p className="text-[13.5px] text-[#737B73] font-en">{s.phone}</p>
+                  <p className="text-[13.5px] text-[#5C6B76] font-en">{s.phone}</p>
                 </div>
                 {levelSelect(s.id, s.adminLevel, `${s.name}-এর অ্যাডমিন স্তর`)}
                 <button
                   type="button"
                   disabled={setLevel.isPending || (pick[s.id] ?? s.adminLevel) === s.adminLevel}
                   onClick={() => setLevel.mutate({ userId: s.id, level: (pick[s.id] ?? s.adminLevel) as "super" | "operations" | "finance" | "support" })}
-                  className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
+                  className="bg-[#075B35] hover:bg-[#054A2B] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl"
                 >
                   স্তর সংরক্ষণ করুন
                 </button>
@@ -6049,8 +6049,8 @@ function AdminStaff({ token }: { token: string }) {
         )}
       </section>
       <section>
-        <h2 className="text-lg font-bold text-[#064B27]">গ্রাহককে অ্যাডমিন করুন</h2>
-        <p className="mt-1 text-sm text-[#737B73]">নিবন্ধিত গ্রাহকদের মধ্য থেকে বেছে নিয়ে নির্দিষ্ট স্তরের অ্যাডমিন দায়িত্ব দিন।</p>
+        <h2 className="text-lg font-bold text-[#054A2B]">গ্রাহককে অ্যাডমিন করুন</h2>
+        <p className="mt-1 text-sm text-[#5C6B76]">নিবন্ধিত গ্রাহকদের মধ্য থেকে বেছে নিয়ে নির্দিষ্ট স্তরের অ্যাডমিন দায়িত্ব দিন।</p>
         {customers.isPending ? (
           <Spinner />
         ) : (customers.data?.customers ?? []).length === 0 ? (
@@ -6058,17 +6058,17 @@ function AdminStaff({ token }: { token: string }) {
         ) : (
           <div className="mt-4 space-y-3">
             {(customers.data?.customers ?? []).map((c) => (
-              <div key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4 flex flex-wrap items-center gap-3">
+              <div key={c.id} className="rounded-2xl border border-[#E1E9E4] bg-white p-4 flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{c.name}</p>
-                  <p className="text-[13.5px] text-[#737B73] font-en">{c.phone}</p>
+                  <p className="text-[13.5px] text-[#5C6B76] font-en">{c.phone}</p>
                 </div>
                 {levelSelect(c.id, "support", `${c.name}-এর নতুন অ্যাডমিন স্তর`)}
                 <button
                   type="button"
                   disabled={setLevel.isPending}
                   onClick={() => setLevel.mutate({ userId: c.id, level: (pick[c.id] ?? "support") as "super" | "operations" | "finance" | "support" })}
-                  className="border-[1.5px] border-[#087A35] text-[#087A35] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60"
+                  className="border-[1.5px] border-[#075B35] text-[#075B35] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F3F8F4] disabled:opacity-60"
                 >
                   অ্যাডমিন করুন
                 </button>
@@ -6143,13 +6143,13 @@ function AdminLogs({ token }: { token: string }) {
       ) : rows.length === 0 ? (
         <EmptyState title="এই ফিল্টারে কোনো লগ নেই" />
       ) : (
-        <ul className="divide-y divide-[#F0F3F0] border border-[#E5EAE5] rounded-2xl bg-white overflow-hidden">
+        <ul className="divide-y divide-[#EEF3F0] border border-[#E1E9E4] rounded-2xl bg-white overflow-hidden">
           {rows.map((l) => (
             <li key={l.id} className="px-4 py-3 flex flex-wrap items-baseline gap-x-3">
-              <span className="font-en text-[13px] font-semibold bg-[#F0FAF2] text-[#064B27] px-2 py-0.5 rounded">{l.action}</span>
-              {l.adminName && <span className="text-[13px] font-semibold text-[#4c584c]">{l.adminName}</span>}
-              <span className="text-sm text-[#4c584c]">{l.detail}</span>
-              <span className="ml-auto text-[12.5px] text-[#737B73]">{fmtDateTime(l.createdAt)}</span>
+              <span className="font-en text-[13px] font-semibold bg-[#F3F8F4] text-[#054A2B] px-2 py-0.5 rounded">{l.action}</span>
+              {l.adminName && <span className="text-[13px] font-semibold text-[#43534B]">{l.adminName}</span>}
+              <span className="text-sm text-[#43534B]">{l.detail}</span>
+              <span className="ml-auto text-[12.5px] text-[#5C6B76]">{fmtDateTime(l.createdAt)}</span>
             </li>
           ))}
         </ul>
