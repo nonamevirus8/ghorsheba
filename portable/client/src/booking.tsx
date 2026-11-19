@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiResponse } from "./api";
+import { FIELDS } from "./fields";
 import {
 Avatar,
 EmptyState,
@@ -186,7 +187,7 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
           </div>
           <div>
             <label className={labelCls} htmlFor="bk-name">আপনার নাম *</label>
-            <input id="bk-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} required />
+            <input id="bk-name" className={inputCls} {...FIELDS.createBooking.customerName} value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div>
             <label className={labelCls} htmlFor="bk-phone">মোবাইল নম্বর *</label>
@@ -206,7 +207,7 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
           </div>
           <div>
             <label className={labelCls} htmlFor="bk-area">এলাকা / গ্রাম</label>
-            <input id="bk-area" className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} placeholder="যেমন: নতুন বাসস্ট্যান্ড এলাকা" />
+            <input id="bk-area" className={inputCls} {...FIELDS.createBooking.area} value={area} onChange={(e) => setArea(e.target.value)} placeholder="যেমন: নতুন বাসস্ট্যান্ড এলাকা" />
           </div>
           <div>
             <label className={labelCls} htmlFor="bk-date">পছন্দের তারিখ *</label>
@@ -214,7 +215,7 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls} htmlFor="bk-address">বিস্তারিত ঠিকানা *</label>
-            <input id="bk-address" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="বাসা/হোল্ডিং, রোড, পরিচিত স্থানের পাশে…" />
+            <input id="bk-address" className={inputCls} {...FIELDS.createBooking.address} value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="বাসা/হোল্ডিং, রোড, পরিচিত স্থানের পাশে…" />
           </div>
           <div>
             <label className={labelCls} htmlFor="bk-time">পছন্দের সময় *</label>
@@ -257,10 +258,10 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
               id="bk-desc"
               className={inputCls}
               rows={4}
+              {...FIELDS.createBooking.description}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
-              minLength={5}
               placeholder="কী কাজ করাতে চান, সমস্যাটা কী — বিস্তারিত লিখুন"
             />
           </div>
@@ -270,6 +271,7 @@ export function BookingPage({ params }: { params: URLSearchParams }) {
               id="bk-inst"
               className={inputCls}
               rows={2}
+              {...FIELDS.createBooking.instructions}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="বিশেষ কোনো নির্দেশ থাকলে লিখুন (ঐচ্ছিক)"
@@ -670,11 +672,10 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
               <input
                 id="co-trx"
                 className={`${inputCls} font-en`}
+                {...FIELDS.submitManualPayment.providerTrxId}
                 value={trxId}
                 onChange={(e) => setTrxId(e.target.value)}
                 required
-                minLength={6}
-                maxLength={40}
                 placeholder="যেমন: 9HX7K2LM1P"
                 autoComplete="off"
               />
@@ -684,9 +685,9 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
               <input
                 id="co-sender"
                 className={`${inputCls} font-en`}
+                {...FIELDS.submitManualPayment.senderNumber}
                 value={senderNumber}
                 onChange={(e) => setSenderNumber(e.target.value)}
-                maxLength={20}
                 placeholder="01XXXXXXXXX"
                 inputMode="numeric"
               />
@@ -790,14 +791,32 @@ export function QuotationPanel({
     onError: (e) => setError(errMsg(e)),
   });
   const respond = useMutation({
-    mutationFn: (v: { id: number; approve: boolean }) =>
-      api.respondToQuotation({ token, quotationId: v.id, approve: v.approve }),
+    mutationFn: (v: { id: number; approve: boolean; couponCode?: string }) =>
+      api.respondToQuotation({ token, quotationId: v.id, approve: v.approve, couponCode: v.couponCode }),
     onSuccess: (_d, v) => {
       setMsg(v.approve ? "কোটেশন অনুমোদিত — মূল্য চূড়ান্ত হয়েছে।" : "কোটেশন গৃহীত হয়নি — মূল্য অপরিবর্তিত আছে।");
       setError("");
       refresh();
     },
     onError: (e) => setError(errMsg(e)),
+  });
+  // Coupon check (Phase 10): the customer can verify a code against
+  // the pending initial quotation before approving; approval re-checks
+  // server-side and records the discount, so the preview can never
+  // promise a discount the approval would not honour.
+  const [couponCode, setCouponCode] = useState("");
+  const [couponInfo, setCouponInfo] = useState<{ code: string; discount: number; discountedTotal: number } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const checkCoupon = useMutation({
+    mutationFn: (code: string) => api.checkCoupon({ token, bookingId: booking.id, code }),
+    onSuccess: (res) => {
+      setCouponInfo(res);
+      setCouponError("");
+    },
+    onError: (e) => {
+      setCouponInfo(null);
+      setCouponError(errMsg(e));
+    },
   });
   const canCreate =
     (viewerRole === "admin" || isAssignedPro) &&
@@ -815,6 +834,11 @@ export function QuotationPanel({
             : "মূল্য নির্ধারিত হয়েছে।"
           : "আইটেমভিত্তিক কোটেশন তৈরি হলে গ্রাহক অনুমোদন দিলেই মূল্য চূড়ান্ত হবে — তার আগে পেমেন্ট করা যাবে না।"}
       </p>
+      {booking.couponCode && booking.couponDiscount != null && (
+        <p className="mt-2 inline-block rounded-lg bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-[13px] font-semibold px-3 py-1.5">
+          কুপন <span className="font-en">{booking.couponCode}</span> প্রয়োগ হয়েছে — যোগ্য চার্জে {bdt(booking.couponDiscount)} ছাড় পেয়েছেন।
+        </p>
+      )}
       {msg && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{msg}</p>}
       {error && (
         <div className="mt-3">
@@ -849,23 +873,72 @@ export function QuotationPanel({
                 </dl>
                 {q.note && <p className="mt-2 text-sm text-[#4c584c]">{q.note}</p>}
                 {isOwnerCustomer && q.status === "pending_approval" && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={respond.isPending}
-                      onClick={() => respond.mutate({ id: q.id, approve: true })}
-                      className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl"
-                    >
-                      অনুমোদন করুন — মূল্য চূড়ান্ত হবে
-                    </button>
-                    <button
-                      type="button"
-                      disabled={respond.isPending}
-                      onClick={() => respond.mutate({ id: q.id, approve: false })}
-                      className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60"
-                    >
-                      গ্রহণ করছি না
-                    </button>
+                  <div className="mt-3">
+                    {q.kind === "initial" && (
+                      <div className="mb-3 rounded-xl bg-[#F8FAF8] border border-[#E5EAE5] p-3">
+                        <label className={labelCls} htmlFor={`cpn-${q.id}`}>কুপন কোড (যদি থাকে)</label>
+                        <div className="flex gap-2">
+                          <input
+                            id={`cpn-${q.id}`}
+                            className={`${inputCls} font-en uppercase`}
+                            {...FIELDS.respondToQuotation.couponCode}
+                            value={couponCode}
+                            onChange={(e) => {
+                              setCouponCode(e.target.value);
+                              setCouponInfo(null);
+                              setCouponError("");
+                            }}
+                            placeholder="যেমন: EID2026"
+                            autoComplete="off"
+                          />
+                          <button
+                            type="button"
+                            disabled={checkCoupon.isPending || !couponCode.trim()}
+                            onClick={() => {
+                              if (!couponCode.trim()) {
+                                setCouponError("আগে কুপন কোড লিখুন।");
+                                return;
+                              }
+                              checkCoupon.mutate(couponCode.trim());
+                            }}
+                            className="shrink-0 bg-white border-[1.5px] border-[#cfe3d3] text-[#064B27] font-semibold text-sm px-4 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60"
+                          >
+                            যাচাই করুন
+                          </button>
+                        </div>
+                        {couponInfo && (
+                          <p className="mt-2 text-sm text-[#064B27] font-semibold">
+                            কুপন <span className="font-en">{couponInfo.code}</span> প্রযোজ্য — ছাড় {bdt(couponInfo.discount)}, অনুমোদনের পর মূল্য হবে {bdt(couponInfo.discountedTotal)}।
+                          </p>
+                        )}
+                        {couponError && <p className="mt-2 text-sm font-semibold text-red-700">{couponError}</p>}
+                        <p className="mt-1.5 text-[12.5px] text-[#737B73]">ছাড় যোগ্য চার্জের (শ্রম + অতিরিক্ত) উপর প্রযোজ্য হয়; অনুমোদনের সময় সার্ভার আবার যাচাই করে।</p>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={respond.isPending}
+                        onClick={() =>
+                          respond.mutate({
+                            id: q.id,
+                            approve: true,
+                            couponCode: q.kind === "initial" && couponCode.trim() ? couponCode.trim() : undefined,
+                          })
+                        }
+                        className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold text-sm px-4 py-2.5 rounded-xl"
+                      >
+                        অনুমোদন করুন — মূল্য চূড়ান্ত হবে
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respond.isPending}
+                        onClick={() => respond.mutate({ id: q.id, approve: false })}
+                        className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60"
+                      >
+                        গ্রহণ করছি না
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -899,23 +972,23 @@ export function QuotationPanel({
             </div>
             <div>
               <label className={labelCls} htmlFor={`q-labour-${booking.id}`}>শ্রম / সার্ভিস চার্জ (৳)</label>
-              <input id={`q-labour-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={labour} onChange={(e) => setLabour(e.target.value)} placeholder="0" />
+              <input id={`q-labour-${booking.id}`} type="number" {...FIELDS.createQuotation.labourCharge} className={`${inputCls} font-en`} value={labour} onChange={(e) => setLabour(e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className={labelCls} htmlFor={`q-materials-${booking.id}`}>মালামাল (৳)</label>
-              <input id={`q-materials-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="0" />
+              <input id={`q-materials-${booking.id}`} type="number" {...FIELDS.createQuotation.materialsCharge} className={`${inputCls} font-en`} value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className={labelCls} htmlFor={`q-transport-${booking.id}`}>যাতায়াত (৳)</label>
-              <input id={`q-transport-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={transport} onChange={(e) => setTransport(e.target.value)} placeholder="0" />
+              <input id={`q-transport-${booking.id}`} type="number" {...FIELDS.createQuotation.transportCharge} className={`${inputCls} font-en`} value={transport} onChange={(e) => setTransport(e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className={labelCls} htmlFor={`q-additional-${booking.id}`}>অতিরিক্ত চার্জ (৳)</label>
-              <input id={`q-additional-${booking.id}`} type="number" min={0} className={`${inputCls} font-en`} value={additional} onChange={(e) => setAdditional(e.target.value)} placeholder="0" />
+              <input id={`q-additional-${booking.id}`} type="number" {...FIELDS.createQuotation.additionalCharge} className={`${inputCls} font-en`} value={additional} onChange={(e) => setAdditional(e.target.value)} placeholder="0" />
             </div>
             <div className="col-span-2">
               <label className={labelCls} htmlFor={`q-note-${booking.id}`}>নোট (ঐচ্ছিক)</label>
-              <input id={`q-note-${booking.id}`} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} placeholder="কাজের বিবরণ বা শর্ত" />
+              <input id={`q-note-${booking.id}`} className={inputCls} {...FIELDS.createQuotation.note} value={note} onChange={(e) => setNote(e.target.value)} placeholder="কাজের বিবরণ বা শর্ত" />
             </div>
           </div>
           <p className="mt-2.5 text-sm text-[#4c584c]">
@@ -1238,9 +1311,9 @@ export function BookingDetailPage({ code }: { code: string }) {
                     <input
                       aria-label="বাতিলের কারণ (ঐচ্ছিক)"
                       className={`${inputCls} flex-1`}
+                      {...FIELDS.requestBookingCancel.reason}
                       value={cancelReason}
                       onChange={(e) => setCancelReason(e.target.value)}
-                      maxLength={600}
                       placeholder="কারণ (ঐচ্ছিক)"
                     />
                     <button type="submit" disabled={requestCancel.isPending} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
@@ -1307,9 +1380,9 @@ export function BookingDetailPage({ code }: { code: string }) {
               <input
                 aria-label="বিরোধের কারণ"
                 className={`${inputCls} flex-1`}
+                {...FIELDS.setBookingDisputed.note}
                 value={disputeNote}
                 onChange={(e) => setDisputeNote(e.target.value)}
-                maxLength={600}
                 placeholder="সমস্যাটি সংক্ষেপে লিখুন"
               />
               <button type="submit" disabled={dispute.isPending} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
@@ -1335,9 +1408,9 @@ export function BookingDetailPage({ code }: { code: string }) {
               <input
                 aria-label="বিরোধের কারণ"
                 className={`${inputCls} flex-1`}
+                {...FIELDS.setBookingDisputed.note}
                 value={proDisputeNote}
                 onChange={(e) => setProDisputeNote(e.target.value)}
-                maxLength={600}
                 placeholder="সমস্যাটি সংক্ষেপে লিখুন"
               />
               <button type="submit" disabled={dispute.isPending} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-red-50 disabled:opacity-60">
@@ -1394,7 +1467,7 @@ export function BookingDetailPage({ code }: { code: string }) {
                 </div>
                 <div>
                   <label className={labelCls} htmlFor="rv-text">আপনার অভিজ্ঞতা লিখুন</label>
-                  <textarea id="rv-text" className={inputCls} rows={3} value={reviewText} onChange={(e) => setReviewText(e.target.value)} required minLength={3} placeholder="কাজ কেমন হয়েছে, প্রফেশনালের আচরণ কেমন ছিল…" />
+                  <textarea id="rv-text" className={inputCls} rows={3} {...FIELDS.submitReview.text} value={reviewText} onChange={(e) => setReviewText(e.target.value)} required placeholder="কাজ কেমন হয়েছে, প্রফেশনালের আচরণ কেমন ছিল…" />
                 </div>
                 <button type="submit" disabled={review.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
                   {review.isPending ? "পাঠানো হচ্ছে…" : "রিভিউ পাঠান"}

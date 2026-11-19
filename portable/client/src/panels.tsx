@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiResponse } from "./api";
+import { FIELDS } from "./fields";
 import {
 ADMIN_STAGE_NEXT,
 Avatar,
@@ -131,12 +132,23 @@ function NotificationsList({ notifs, token }: { notifs: Notif[]; token: string }
       qc.invalidateQueries({ queryKey: ["me"] });
     },
   });
+  const markOne = useMutation({
+    mutationFn: (id: number) => api.markNotificationRead({ token, notificationId: id }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["notifs"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
   if (notifs.length === 0) {
     return <EmptyState title="কোনো নোটিফিকেশন নেই" body="বুকিং আপডেট হলে এখানে জানানো হবে।" />;
   }
+  const unread = notifs.filter((n) => !n.isRead).length;
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm text-[#737B73]" aria-live="polite">
+          {unread > 0 ? `${unread}টি অপঠিত নোটিফিকেশন` : "সব নোটিফিকেশন পড়া হয়েছে"}
+        </p>
         <button
           type="button"
           onClick={() => mark.mutate()}
@@ -147,17 +159,40 @@ function NotificationsList({ notifs, token }: { notifs: Notif[]; token: string }
         </button>
       </div>
       <ul className="space-y-2.5">
-        {notifs.map((n) => (
-          <li key={n.id} className={`rounded-2xl border p-4 ${n.isRead ? "border-[#E5EAE5] bg-white" : "border-[#cfe3d3] bg-[#F0FAF2]"}`}>
-            <p className="font-semibold text-[15px] flex items-center gap-2">
-              <span className="text-[#087A35]">{Icon.bell("w-4 h-4")}</span>
-              {n.title}
-              {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#FF8A00]" aria-label="অপঠিত" />}
-            </p>
-            {n.body && <p className="mt-1 text-sm text-[#4c584c]">{n.body}</p>}
-            <p className="mt-1 text-[12.5px] text-[#737B73]">{fmtDateTime(n.createdAt)}</p>
-          </li>
-        ))}
+        {notifs.map((n) => {
+          const content = (
+            <>
+              <p className="font-semibold text-[15px] flex items-center gap-2">
+                <span className="text-[#087A35]">{Icon.bell("w-4 h-4")}</span>
+                {n.title}
+                {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#FF8A00]" aria-label="অপঠিত" />}
+              </p>
+              {n.body && <p className="mt-1 text-sm text-[#4c584c]">{n.body}</p>}
+              <p className="mt-1 text-[12.5px] text-[#737B73]">{fmtDateTime(n.createdAt)}</p>
+              {n.link && (
+                <p className="mt-1.5 text-[13px] font-semibold text-[#087A35]">সংশ্লিষ্ট পেজে যান →</p>
+              )}
+            </>
+          );
+          const cls = `block rounded-2xl border p-4 ${n.isRead ? "border-[#E5EAE5] bg-white" : "border-[#cfe3d3] bg-[#F0FAF2]"}`;
+          return (
+            <li key={n.id}>
+              {n.link ? (
+                <a
+                  href={n.link}
+                  className={`${cls} hover:border-[#087A35] transition-colors`}
+                  onClick={() => {
+                    if (!n.isRead) markOne.mutate(n.id);
+                  }}
+                >
+                  {content}
+                </a>
+              ) : (
+                <div className={cls}>{content}</div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -405,6 +440,7 @@ function TicketThread({ token, ticketId, admin = false }: { token: string; ticke
             id={`ticket-reply-${ticketId}`}
             className={inputCls}
             rows={3}
+            {...FIELDS.replyToSupportTicket.body}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             required
@@ -467,7 +503,7 @@ function TicketSupport({ token }: { token: string }) {
         <p className="text-sm text-[#737B73] -mt-2">আমাদের টিম এই থ্রেডেই উত্তর দেবে — উত্তর এলে নোটিফিকেশন পাবেন।</p>
         <div>
           <label className={labelCls} htmlFor="tk-subject">বিষয় *</label>
-          <input id="tk-subject" className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: পেমেন্ট নিয়ে প্রশ্ন" />
+          <input id="tk-subject" className={inputCls} {...FIELDS.createSupportTicket.subject} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: পেমেন্ট নিয়ে প্রশ্ন" />
         </div>
         <div>
           <label className={labelCls} htmlFor="tk-category">বিষয়ের ধরন</label>
@@ -479,11 +515,11 @@ function TicketSupport({ token }: { token: string }) {
         </div>
         <div>
           <label className={labelCls} htmlFor="tk-code">বুকিং কোড (যদি থাকে)</label>
-          <input id="tk-code" className={inputCls} value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} placeholder="GS-XXXXXX-XX" />
+          <input id="tk-code" className={inputCls} {...FIELDS.createSupportTicket.bookingCode} value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} placeholder="GS-XXXXXX-XX" />
         </div>
         <div>
           <label className={labelCls} htmlFor="tk-msg">বিস্তারিত *</label>
-          <textarea id="tk-msg" className={inputCls} rows={4} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
+          <textarea id="tk-msg" className={inputCls} rows={4} {...FIELDS.createSupportTicket.message} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
         </div>
         {error && <ErrorBox message={error} />}
         <button type="submit" disabled={create.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
@@ -580,15 +616,15 @@ function ComplaintsSection({ token }: { token: string }) {
         <h2 className="font-bold text-[#064B27]">অভিযোগ / অনুরোধ পাঠান</h2>
         <div>
           <label className={labelCls} htmlFor="cp-subject">বিষয় *</label>
-          <input id="cp-subject" className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: বুকিং নিয়ে সমস্যা" />
+          <input id="cp-subject" className={inputCls} {...FIELDS.submitComplaint.subject} value={subject} onChange={(e) => setSubject(e.target.value)} required placeholder="যেমন: বুকিং নিয়ে সমস্যা" />
         </div>
         <div>
           <label className={labelCls} htmlFor="cp-code">বুকিং কোড (যদি থাকে)</label>
-          <input id="cp-code" className={inputCls} value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} placeholder="GS-XXXXXX-XX" />
+          <input id="cp-code" className={inputCls} {...FIELDS.submitComplaint.bookingCode} value={bookingCode} onChange={(e) => setBookingCode(e.target.value)} placeholder="GS-XXXXXX-XX" />
         </div>
         <div>
           <label className={labelCls} htmlFor="cp-msg">বিস্তারিত *</label>
-          <textarea id="cp-msg" className={inputCls} rows={4} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
+          <textarea id="cp-msg" className={inputCls} rows={4} {...FIELDS.submitComplaint.message} value={message} onChange={(e) => setMessage(e.target.value)} required placeholder="আপনার সমস্যাটি বিস্তারিত লিখুন" />
         </div>
         {error && <ErrorBox message={error} />}
         {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">আপনার বার্তা পৌঁছেছে — আমাদের টিম দেখে ব্যবস্থা নেবে।</p>}
@@ -663,7 +699,7 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
       </div>
       <div>
         <label className={labelCls} htmlFor="pf-name">নাম</label>
-        <input id="pf-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} required />
+        <input id="pf-name" className={inputCls} {...FIELDS.updateMyProfile.name} value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div>
         <label className={labelCls} htmlFor="pf-loc">উপজেলা</label>
@@ -676,7 +712,7 @@ function CustomerProfileTab({ me, token }: { me: Me; token: string }) {
       </div>
       <div>
         <label className={labelCls} htmlFor="pf-addr">ঠিকানা</label>
-        <input id="pf-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} />
+        <input id="pf-addr" className={inputCls} {...FIELDS.updateMyProfile.address} value={address} onChange={(e) => setAddress(e.target.value)} />
       </div>
       <PhotoField
         label="নতুন প্রোফাইল ছবি"
@@ -908,7 +944,7 @@ function RefundsTab({ token }: { token: string }) {
             </div>
             <div>
               <label className={labelCls} htmlFor="rf-detail">বিস্তারিত *</label>
-              <textarea id="rf-detail" className={inputCls} rows={4} value={detail} onChange={(e) => setDetail(e.target.value)} required minLength={5} placeholder="কী হয়েছিল, কেন রিফান্ড চাইছেন — বিস্তারিত লিখুন" />
+              <textarea id="rf-detail" className={inputCls} rows={4} {...FIELDS.submitRefundRequest.detail} value={detail} onChange={(e) => setDetail(e.target.value)} required placeholder="কী হয়েছিল, কেন রিফান্ড চাইছেন — বিস্তারিত লিখুন" />
             </div>
             {error && <ErrorBox message={error} />}
             {ok && <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">আপনার রিফান্ড অনুরোধ পৌঁছেছে — অ্যাডমিন যাচাই করে জানাবেন।</p>}
@@ -1115,7 +1151,7 @@ function AddressesSection({ token }: { token: string }) {
           <h3 className="font-bold text-[#064B27]">{editing ? "ঠিকানা সম্পাদনা" : "নতুন ঠিকানা"}</h3>
           <div>
             <label className={labelCls} htmlFor="ad-label">নাম/লেবেল *</label>
-            <input id="ad-label" className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} required placeholder="যেমন: বাসা, অফিস" />
+            <input id="ad-label" className={inputCls} {...FIELDS.saveMyAddress.label} value={label} onChange={(e) => setLabel(e.target.value)} required placeholder="যেমন: বাসা, অফিস" />
           </div>
           <div>
             <label className={labelCls} htmlFor="ad-upazila">উপজেলা *</label>
@@ -1128,15 +1164,15 @@ function AddressesSection({ token }: { token: string }) {
           </div>
           <div>
             <label className={labelCls} htmlFor="ad-area">এলাকা / গ্রাম</label>
-            <input id="ad-area" className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} />
+            <input id="ad-area" className={inputCls} {...FIELDS.saveMyAddress.area} value={area} onChange={(e) => setArea(e.target.value)} />
           </div>
           <div>
             <label className={labelCls} htmlFor="ad-addr">বিস্তারিত ঠিকানা *</label>
-            <input id="ad-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} required minLength={5} placeholder="বাসা/হোল্ডিং, রোড…" />
+            <input id="ad-addr" className={inputCls} {...FIELDS.saveMyAddress.address} value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="বাসা/হোল্ডিং, রোড…" />
           </div>
           <div>
             <label className={labelCls} htmlFor="ad-phone">যোগাযোগের নম্বর</label>
-            <input id="ad-phone" className={`${inputCls} font-en`} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01XXXXXXXXX" inputMode="numeric" />
+            <input id="ad-phone" className={`${inputCls} font-en`} {...FIELDS.saveMyAddress.phone} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01XXXXXXXXX" inputMode="numeric" />
           </div>
           <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer">
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} className="w-4 h-4 accent-[#087A35]" />
@@ -1218,15 +1254,15 @@ function SecurityTab({ token }: { token: string }) {
           <h2 className="font-bold text-[#064B27]">পাসওয়ার্ড পরিবর্তন</h2>
           <div>
             <label className={labelCls} htmlFor="sec-current">বর্তমান পাসওয়ার্ড *</label>
-            <input id="sec-current" type="password" className={inputCls} value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} required autoComplete="current-password" />
+            <input id="sec-current" type="password" className={inputCls} {...FIELDS.changeMyPassword.currentPassword} value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} required autoComplete="current-password" />
           </div>
           <div>
             <label className={labelCls} htmlFor="sec-new">নতুন পাসওয়ার্ড (কমপক্ষে ১২ অক্ষর) *</label>
-            <input id="sec-new" type="password" className={inputCls} value={newPw} onChange={(e) => setNewPw(e.target.value)} required minLength={12} autoComplete="new-password" />
+            <input id="sec-new" type="password" className={inputCls} {...FIELDS.changeMyPassword.newPassword} value={newPw} onChange={(e) => setNewPw(e.target.value)} required autoComplete="new-password" />
           </div>
           <div>
             <label className={labelCls} htmlFor="sec-confirm">নতুন পাসওয়ার্ড আবার লিখুন *</label>
-            <input id="sec-confirm" type="password" className={inputCls} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} required minLength={12} autoComplete="new-password" />
+            <input id="sec-confirm" type="password" className={inputCls} {...FIELDS.changeMyPassword.newPassword} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} required autoComplete="new-password" />
           </div>
           <p className="text-[13px] text-[#737B73]">পাসওয়ার্ড বদলালে অন্য সব ডিভাইসের সেশন বাতিল হয়ে যাবে; এই ডিভাইসে লগইন থাকবে।</p>
           {pwError && <ErrorBox message={pwError} />}
@@ -1251,7 +1287,7 @@ function SecurityTab({ token }: { token: string }) {
               </p>
               <div>
                 <label className={labelCls} htmlFor="sec-del-reason">কারণ (ঐচ্ছিক)</label>
-                <textarea id="sec-del-reason" className={inputCls} rows={2} value={delReason} onChange={(e) => setDelReason(e.target.value)} placeholder="কেন অ্যাকাউন্ট মুছতে চান…" />
+                <textarea id="sec-del-reason" className={inputCls} rows={2} {...FIELDS.requestAccountDeletion.reason} value={delReason} onChange={(e) => setDelReason(e.target.value)} placeholder="কেন অ্যাকাউন্ট মুছতে চান…" />
               </div>
               {delError && <ErrorBox message={delError} />}
               <button
@@ -1661,7 +1697,7 @@ function ProEarningsTab({ token }: { token: string }) {
           </div>
           <div>
             <label className={labelCls} htmlFor="wd-number">{method === "bank" ? "ব্যাংক অ্যাকাউন্ট নম্বর" : "মোবাইল নম্বর"}</label>
-            <input id="wd-number" className={`${inputCls} font-en`} value={number} onChange={(e) => setNumber(e.target.value)} placeholder={method === "bank" ? "অ্যাকাউন্ট নম্বর" : "01XXXXXXXXX"} required />
+            <input id="wd-number" className={`${inputCls} font-en`} {...FIELDS.updateWithdrawalInfo.number} value={number} onChange={(e) => setNumber(e.target.value)} placeholder={method === "bank" ? "অ্যাকাউন্ট নম্বর" : "01XXXXXXXXX"} required />
           </div>
           <button type="submit" disabled={saveInfo.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl">
             {saveInfo.isPending ? "সংরক্ষণ হচ্ছে…" : "তথ্য সংরক্ষণ"}
@@ -1681,7 +1717,7 @@ function ProEarningsTab({ token }: { token: string }) {
         >
           <div>
             <label className={labelCls} htmlFor="wd-amount">উত্তোলনের পরিমাণ (৳)</label>
-            <input id="wd-amount" type="number" min={1} max={wallet.availableBalance} className={`${inputCls} font-en`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required />
+            <input id="wd-amount" type="number" {...FIELDS.requestWithdrawal.amount} className={`${inputCls} font-en`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" required />
           </div>
           <button
             type="submit"
@@ -1869,7 +1905,7 @@ function ProVerificationTab({ token, proId, status }: { token: string; proId: nu
           <p className="mt-1 text-sm text-[#737B73]">আগের ছবিগুলো বদলে নতুন ছবি বসবে এবং আবেদনটি আবার যাচাইয়ের অপেক্ষায় যাবে।</p>
           <div className="mt-3">
             <label className={labelCls} htmlFor="rs-nid">NID নম্বর (শুধু বদলাতে চাইলে)</label>
-            <input id="rs-nid" className={`${inputCls} font-en`} value={nidNumber} onChange={(e) => setNidNumber(e.target.value)} placeholder="আগের নম্বরই থাকবে" />
+            <input id="rs-nid" className={`${inputCls} font-en`} {...FIELDS.resubmitIdentityDocuments.nidNumber} value={nidNumber} onChange={(e) => setNidNumber(e.target.value)} placeholder="আগের নম্বরই থাকবে" />
           </div>
           <div className="mt-3 grid sm:grid-cols-2 gap-3">
             <PhotoField
@@ -2039,15 +2075,15 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
     >
       <div>
         <label className={labelCls} htmlFor="pp-name">নাম</label>
-        <input id="pp-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} required />
+        <input id="pp-name" className={inputCls} {...FIELDS.updateProProfile.name} value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div>
         <label className={labelCls} htmlFor="pp-exp">অভিজ্ঞতা (বছর)</label>
-        <input id="pp-exp" type="number" min={0} max={60} className={inputCls} value={experience} onChange={(e) => setExperience(e.target.value)} required />
+        <input id="pp-exp" type="number" {...FIELDS.updateProProfile.experienceYears} className={inputCls} value={experience} onChange={(e) => setExperience(e.target.value)} required />
       </div>
       <div className="sm:col-span-2">
         <label className={labelCls} htmlFor="pp-skills">দক্ষতা ও বিশেষত্ব</label>
-        <input id="pp-skills" className={inputCls} value={skills} onChange={(e) => setSkills(e.target.value)} />
+        <input id="pp-skills" className={inputCls} {...FIELDS.updateProProfile.skills} value={skills} onChange={(e) => setSkills(e.target.value)} />
       </div>
       <fieldset className="sm:col-span-2">
         <legend className={labelCls}>সেবার এলাকা</legend>
@@ -2070,11 +2106,11 @@ function ProProfileTab({ me, token }: { me: Me; token: string }) {
       </fieldset>
       <div className="sm:col-span-2">
         <label className={labelCls} htmlFor="pp-addr">ঠিকানা</label>
-        <input id="pp-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} />
+        <input id="pp-addr" className={inputCls} {...FIELDS.updateProProfile.address} value={address} onChange={(e) => setAddress(e.target.value)} />
       </div>
       <div className="sm:col-span-2">
         <label className={labelCls} htmlFor="pp-bio">পরিচিতি</label>
-        <textarea id="pp-bio" className={inputCls} rows={3} value={bio} onChange={(e) => setBio(e.target.value)} />
+        <textarea id="pp-bio" className={inputCls} rows={3} {...FIELDS.updateProProfile.bio} value={bio} onChange={(e) => setBio(e.target.value)} />
       </div>
       <label className="sm:col-span-2 flex items-center justify-between gap-3 rounded-xl bg-[#F0FAF2] px-4 py-3 cursor-pointer">
         <span className="font-semibold text-[15px]">এখন কাজ নেওয়ার জন্য উপলব্ধ</span>
@@ -2145,7 +2181,7 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
   const tabRaw = params.get("tab") ?? "overview";
-  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "tickets", "social", "payments", "settings", "staff", "logs"].includes(tabRaw)
+  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "tickets", "social", "announce", "coupons", "payments", "settings", "staff", "logs"].includes(tabRaw)
     ? tabRaw
     : "overview";
   const overview = useQuery({
@@ -2188,6 +2224,8 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
     ...(canOps || canSupport ? [{ key: "reviews", label: "রিভিউ", badge: ov?.pendingReviews }] : []),
     ...(canSupport ? [{ key: "complaints", label: "অভিযোগ", badge: ov?.openComplaints }] : []),
     ...(canSupport ? [{ key: "tickets", label: "সাপোর্ট টিকিট", badge: ov?.openTickets }] : []),
+    ...(canOps ? [{ key: "announce", label: "ঘোষণা" }] : []),
+    ...(canFinance ? [{ key: "coupons", label: "কুপন" }] : []),
     ...(canFinance ? [{ key: "payments", label: "পেমেন্ট", badge: ov?.pendingPayments }] : []),
     ...(canFinance ? [{ key: "settings", label: "সেটিংস" }] : []),
     ...(canOps ? [{ key: "social", label: "সোশ্যাল লিংক" }] : []),
@@ -2221,6 +2259,8 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
         {shownTab === "complaints" && <AdminComplaints token={token} />}
         {shownTab === "tickets" && <AdminTickets token={token} />}
         {shownTab === "social" && <AdminSocialLinks token={token} />}
+        {shownTab === "announce" && <AdminAnnouncements token={token} />}
+        {shownTab === "coupons" && <AdminCoupons token={token} />}
         {shownTab === "payments" && <AdminPayments token={token} />}
         {shownTab === "settings" && <AdminSettings token={token} />}
         {shownTab === "staff" && <AdminStaff token={token} />}
@@ -2406,9 +2446,9 @@ function CancelRequestsPanel({ token }: { token: string }) {
                   <input
                     id={`cancel-note-${r.id}`}
                     className={inputCls}
+                    {...FIELDS.adminDecideCancelRequest.note}
                     value={notes[r.id] ?? ""}
                     onChange={(e) => setNotes((m) => ({ ...m, [r.id]: e.target.value }))}
-                    maxLength={600}
                     placeholder="সিদ্ধান্তের নোট"
                   />
                 </div>
@@ -2698,7 +2738,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
                 <p className="text-xs text-[#737B73] mt-1">গ্রাহক-অনুমোদিত কোটেশনে নির্ধারিত — বদলাতে হলে নতুন অতিরিক্ত কোটেশন লাগবে।</p>
               </>
             ) : (
-              <input id={`ab-price-${b.id}`} type="number" min={0} className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="চূড়ান্ত মূল্য" />
+              <input id={`ab-price-${b.id}`} type="number" {...FIELDS.adminUpdateBooking.finalPrice} className={inputCls} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="চূড়ান্ত মূল্য" />
             )}
           </div>
           <div>
@@ -2710,7 +2750,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls} htmlFor={`ab-note-${b.id}`}>অ্যাডমিন নোট</label>
-            <input id={`ab-note-${b.id}`} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="স্ট্যাটাস বদলের কারণ বা মন্তব্য (ঐচ্ছিক)" />
+            <input id={`ab-note-${b.id}`} className={inputCls} {...FIELDS.adminUpdateBooking.adminNote} value={note} onChange={(e) => setNote(e.target.value)} placeholder="স্ট্যাটাস বদলের কারণ বা মন্তব্য (ঐচ্ছিক)" />
           </div>
           {error && (
             <div className="sm:col-span-2">
@@ -2796,9 +2836,9 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
             <input
               id={`dispute-reason-${b.id}`}
               className={inputCls}
+              {...FIELDS.adminClearDispute.note}
               value={disputeReason}
               onChange={(e) => setDisputeReason(e.target.value)}
-              maxLength={600}
               placeholder="যেমন: দুই পক্ষের কথা শুনে সমাধান হয়েছে"
             />
           </div>
@@ -2861,7 +2901,7 @@ function AdminBookingFlowControls({ b, token }: { b: Booking; token: string }) {
           </div>
           <div>
             <label className={labelCls} htmlFor={`rs-time-${b.id}`}>নতুন সময়</label>
-            <input id={`rs-time-${b.id}`} type="text" required className={inputCls} value={time} onChange={(e) => setTime(e.target.value)} placeholder="যেমন: সকাল ১০টা" />
+            <input id={`rs-time-${b.id}`} type="text" required className={inputCls} {...FIELDS.adminRescheduleBooking.time} value={time} onChange={(e) => setTime(e.target.value)} placeholder="যেমন: সকাল ১০টা" />
           </div>
           <button type="submit" disabled={busy} className="col-span-2 border-[1.5px] border-[#087A35] text-[#087A35] font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-[#F0FAF2] disabled:opacity-60">
             এই সময়ে পুনঃনির্ধারণ করুন
@@ -2988,10 +3028,10 @@ function AdminProCard({
           <input
             id={`pro-note-${p.id}`}
             className={inputCls}
+            {...FIELDS.adminSetProStatus.note}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="যেমন: NID ছবি ঝাপসা — স্পষ্ট ছবি আবার জমা দিন"
-            maxLength={600}
           />
         </div>
       )}
@@ -3191,47 +3231,47 @@ function ServiceForm({ token, service, onDone }: { token: string; service?: Admi
     >
       <div>
         <label className={labelCls} htmlFor={`sf-bn-${service?.id ?? "new"}`}>নাম (বাংলা) *</label>
-        <input id={`sf-bn-${service?.id ?? "new"}`} className={inputCls} value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
+        <input id={`sf-bn-${service?.id ?? "new"}`} className={inputCls} {...FIELDS.adminSaveService.nameBn} value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
       </div>
       <div>
         <label className={labelCls} htmlFor={`sf-en-${service?.id ?? "new"}`}>নাম (English) *</label>
-        <input id={`sf-en-${service?.id ?? "new"}`} className={inputCls} value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+        <input id={`sf-en-${service?.id ?? "new"}`} className={inputCls} {...FIELDS.adminSaveService.nameEn} value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
       </div>
       {!service && (
         <div>
           <label className={labelCls} htmlFor="sf-slug">Slug (URL) *</label>
-          <input id="sf-slug" className={inputCls} value={slug} onChange={(e) => setSlug(e.target.value)} required placeholder="e.g. solar-installer" />
+          <input id="sf-slug" className={inputCls} {...FIELDS.adminSaveService.slug} value={slug} onChange={(e) => setSlug(e.target.value)} required placeholder="e.g. solar-installer" />
         </div>
       )}
       <div className="sm:col-span-3">
         <label className={labelCls} htmlFor={`sf-tag-${service?.id ?? "new"}`}>ট্যাগলাইন</label>
-        <input id={`sf-tag-${service?.id ?? "new"}`} className={inputCls} value={tagline} onChange={(e) => setTagline(e.target.value)} />
+        <input id={`sf-tag-${service?.id ?? "new"}`} className={inputCls} {...FIELDS.adminSaveService.tagline} value={tagline} onChange={(e) => setTagline(e.target.value)} />
       </div>
       <div className="sm:col-span-3">
         <label className={labelCls} htmlFor={`sf-desc-${service?.id ?? "new"}`}>বিবরণ</label>
-        <textarea id={`sf-desc-${service?.id ?? "new"}`} className={inputCls} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <textarea id={`sf-desc-${service?.id ?? "new"}`} className={inputCls} rows={2} {...FIELDS.adminSaveService.description} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       {(
         [
-          ["শুরুর মূল্য (৳)", starting, setStarting],
-          ["ঘণ্টা প্রতি (৳)", hourly, setHourly],
-          ["দিন প্রতি (৳)", daily, setDaily],
-          ["একক প্রতি (৳)", unit, setUnit],
-          ["পরিদর্শন ফি (৳)", inspection, setInspection],
-        ] as [string, string, (v: string) => void][]
-      ).map(([label, v, set]) => (
+          ["শুরুর মূল্য (৳)", starting, setStarting, FIELDS.adminSaveService.startingPrice],
+          ["ঘণ্টা প্রতি (৳)", hourly, setHourly, FIELDS.adminSaveService.hourlyRate],
+          ["দিন প্রতি (৳)", daily, setDaily, FIELDS.adminSaveService.dailyRate],
+          ["একক প্রতি (৳)", unit, setUnit, FIELDS.adminSaveService.unitRate],
+          ["পরিদর্শন ফি (৳)", inspection, setInspection, FIELDS.adminSaveService.inspectionFee],
+        ] as [string, string, (v: string) => void, Record<string, string | number | boolean | undefined>][]
+      ).map(([label, v, set, fieldProps]) => (
         <div key={label}>
           <label className={labelCls}>{label}</label>
-          <input type="number" min={0} className={inputCls} value={v} onChange={(e) => set(e.target.value)} placeholder="খালি = অনির্ধারিত" aria-label={label} />
+          <input type="number" {...fieldProps} className={inputCls} value={v} onChange={(e) => set(e.target.value)} placeholder="খালি = অনির্ধারিত" aria-label={label} />
         </div>
       ))}
       <div>
         <label className={labelCls} htmlFor={`sf-unit-${service?.id ?? "new"}`}>এককের নাম</label>
-        <input id={`sf-unit-${service?.id ?? "new"}`} className={inputCls} value={unitLabel} onChange={(e) => setUnitLabel(e.target.value)} placeholder="যেমন: বর্গফুট, রুম" />
+        <input id={`sf-unit-${service?.id ?? "new"}`} className={inputCls} {...FIELDS.adminSaveService.unitLabel} value={unitLabel} onChange={(e) => setUnitLabel(e.target.value)} placeholder="যেমন: বর্গফুট, রুম" />
       </div>
       <div className="sm:col-span-3">
         <label className={labelCls} htmlFor={`sf-note-${service?.id ?? "new"}`}>মূল্য নোট</label>
-        <input id={`sf-note-${service?.id ?? "new"}`} className={inputCls} value={priceNote} onChange={(e) => setPriceNote(e.target.value)} placeholder="মূল্য সংক্রান্ত বিশেষ শর্ত থাকলে" />
+        <input id={`sf-note-${service?.id ?? "new"}`} className={inputCls} {...FIELDS.adminSaveService.priceNote} value={priceNote} onChange={(e) => setPriceNote(e.target.value)} placeholder="মূল্য সংক্রান্ত বিশেষ শর্ত থাকলে" />
       </div>
       <label className="sm:col-span-3 flex items-center gap-2.5 cursor-pointer">
         <input type="checkbox" className="w-5 h-5 accent-[#087A35]" checked={active} onChange={(e) => setActive(e.target.checked)} aria-label="সার্ভিস সক্রিয়" />
@@ -3313,15 +3353,15 @@ function AdminLocations({ token }: { token: string }) {
         <h2 className="font-bold text-[#064B27]">নতুন এলাকা যোগ করুন</h2>
         <div>
           <label className={labelCls} htmlFor="loc-bn">নাম (বাংলা) *</label>
-          <input id="loc-bn" className={inputCls} value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
+          <input id="loc-bn" className={inputCls} {...FIELDS.adminSaveLocation.nameBn} value={nameBn} onChange={(e) => setNameBn(e.target.value)} required />
         </div>
         <div>
           <label className={labelCls} htmlFor="loc-en">নাম (English) *</label>
-          <input id="loc-en" className={inputCls} value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+          <input id="loc-en" className={inputCls} {...FIELDS.adminSaveLocation.nameEn} value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
         </div>
         <div>
           <label className={labelCls} htmlFor="loc-dist">জেলা</label>
-          <input id="loc-dist" className={inputCls} value={district} onChange={(e) => setDistrict(e.target.value)} />
+          <input id="loc-dist" className={inputCls} {...FIELDS.adminSaveLocation.district} value={district} onChange={(e) => setDistrict(e.target.value)} />
         </div>
         {error && <ErrorBox message={error} />}
         <button type="submit" disabled={add.isPending} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl w-full">
@@ -3335,6 +3375,7 @@ function AdminLocations({ token }: { token: string }) {
 
 function AdminReviews({ token }: { token: string }) {
   const qc = useQueryClient();
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const list = useQuery({ queryKey: ["admin-reviews"], queryFn: () => api.adminListReviews({ token }) });
   const moderate = useMutation({
     mutationFn: (v: { id: number; status: "approved" | "rejected" | "pending" }) =>
@@ -3344,43 +3385,633 @@ function AdminReviews({ token }: { token: string }) {
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
       qc.invalidateQueries({ queryKey: ["home-reviews"] });
     },
+    onError: (e) => setModError(errMsg(e)),
   });
+  const [modError, setModError] = useState("");
   if (list.isPending) return <Spinner />;
+  if (list.isError) return <ErrorBox message={errMsg(list.error)} />;
   const rows = list.data?.reviews ?? [];
   if (rows.length === 0) return <EmptyState title="এখনো কোনো রিভিউ আসেনি" body="গ্রাহকরা সম্পন্ন কাজের রিভিউ দিলে এখানে মডারেশনের জন্য আসবে।" />;
+  const counts = {
+    all: rows.length,
+    pending: rows.filter((r) => r.status === "pending").length,
+    approved: rows.filter((r) => r.status === "approved").length,
+    rejected: rows.filter((r) => r.status === "rejected").length,
+  };
   const order = (s: string) => (s === "pending" ? 0 : s === "approved" ? 1 : 2);
-  const sorted = [...rows].sort((a, b) => order(a.status) - order(b.status) || b.id - a.id);
+  const sorted = [...rows]
+    .filter((r) => filter === "all" || r.status === filter)
+    .sort((a, b) => order(a.status) - order(b.status) || b.id - a.id);
+  const chip = (key: typeof filter, label: string) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => setFilter(key)}
+      aria-pressed={filter === key}
+      className={`text-[13px] font-semibold px-3.5 py-1.5 rounded-full border ${filter === key ? "bg-[#087A35] text-white border-[#087A35]" : "bg-white text-[#4c584c] border-[#E5EAE5] hover:border-[#087A35]"}`}
+    >
+      {label} ({counts[key]})
+    </button>
+  );
   return (
-    <div className="space-y-3.5">
-      {sorted.map((r) => (
-        <div key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <Stars value={r.rating} />
-              <p className="mt-1.5 text-[15px]">“{r.text}”</p>
-              <p className="mt-1.5 text-[13px] text-[#737B73]">
-                {r.customerName} • {r.serviceName}
-                {r.professionalName ? ` • প্রফেশনাল: ${r.professionalName}` : ""} • {fmtDate(r.createdAt)}
-              </p>
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="রিভিউ ফিল্টার">
+        {chip("all", "সব")}
+        {chip("pending", "মডারেশন বাকি")}
+        {chip("approved", "প্রকাশিত")}
+        {chip("rejected", "বাতিল")}
+      </div>
+      {modError && (
+        <div className="mb-3">
+          <ErrorBox message={modError} />
+        </div>
+      )}
+      {sorted.length === 0 ? (
+        <EmptyState title="এই ফিল্টারে কোনো রিভিউ নেই" body="অন্য অবস্থার রিভিউ দেখতে উপরের ফিল্টার বদলান।" />
+      ) : (
+        <div className="space-y-3.5">
+          {sorted.map((r) => (
+            <div key={r.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Stars value={r.rating} />
+                  <p className="mt-1.5 text-[15px]">“{r.text}”</p>
+                  <p className="mt-1.5 text-[13px] text-[#737B73]">
+                    {r.customerName} • {r.serviceName}
+                    {r.professionalName ? ` • প্রফেশনাল: ${r.professionalName}` : ""} • {fmtDate(r.createdAt)}
+                    {r.bookingCode && (
+                      <>
+                        {" "}•{" "}
+                        <a href={`#/booking/${r.bookingCode}`} className="font-semibold text-[#087A35] hover:underline">
+                          বুকিং {r.bookingCode}
+                        </a>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#087A35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
+                  {r.status === "approved" ? "প্রকাশিত" : r.status === "rejected" ? "বাতিল" : "মডারেশন বাকি"}
+                </span>
+              </div>
+              <div className="mt-3 flex gap-2">
+                {r.status !== "approved" && (
+                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "approved" })} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
+                    প্রকাশ করুন
+                  </button>
+                )}
+                {r.status !== "rejected" && (
+                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "rejected" })} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
+                    বাতিল করুন
+                  </button>
+                )}
+                {r.status !== "pending" && (
+                  <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "pending" })} className="border-[1.5px] border-[#E5EAE5] text-[#4c584c] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F8FAF8] disabled:opacity-60">
+                    মডারেশনে ফেরত পাঠান
+                  </button>
+                )}
+              </div>
             </div>
-            <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${r.status === "approved" ? "bg-[#087A35] text-white" : r.status === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
-              {r.status === "approved" ? "প্রকাশিত" : r.status === "rejected" ? "বাতিল" : "মডারেশন বাকি"}
-            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const AUDIENCE_ROLE_BN: Record<string, string> = {
+  customer: "গ্রাহক",
+  professional: "প্রফেশনাল",
+  admin: "অ্যাডমিন",
+};
+
+/**
+ * Manual notification manager (Master Phase 10): an operations admin
+ * composes an announcement and sends it to all users, one role, or
+ * one specific user. Every send is recorded server-side and lands in
+ * exactly the recipients' notification centers.
+ */
+function AdminAnnouncements({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [audience, setAudience] = useState<"all" | "role" | "user">("all");
+  const [role, setRole] = useState<"customer" | "professional" | "admin">("customer");
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<{ id: number; name: string; phone: string; role: string } | null>(null);
+  const [titleError, setTitleError] = useState("");
+  const [bodyError, setBodyError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [done, setDone] = useState("");
+  const history = useQuery({
+    queryKey: ["admin-announcements"],
+    queryFn: () => api.adminListAnnouncements({ token }),
+  });
+  const searchUsers = useMutation({
+    mutationFn: (q: string) => api.adminSearchUsers({ token, query: q }),
+    onError: (e) => setFormError(errMsg(e)),
+  });
+  const send = useMutation({
+    mutationFn: () =>
+      api.adminSendAnnouncement({
+        token,
+        title: title.trim(),
+        body: body.trim(),
+        audience,
+        audienceRole: audience === "role" ? role : undefined,
+        audienceUserId: audience === "user" ? picked?.id : undefined,
+      }),
+    onSuccess: (res) => {
+      setDone(`${res.recipientCount} জন ব্যবহারকারীর নোটিফিকেশন সেন্টারে ঘোষণাটি পাঠানো হয়েছে।`);
+      setFormError("");
+      setTitle("");
+      setBody("");
+      setPicked(null);
+      setSearch("");
+      searchUsers.reset();
+      qc.invalidateQueries({ queryKey: ["admin-announcements"] });
+    },
+    onError: (e) => setFormError(errMsg(e)),
+  });
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDone("");
+    setFormError("");
+    if (!title.trim()) {
+      setTitleError("ঘোষণার শিরোনাম দিন।");
+      return;
+    }
+    setTitleError("");
+    if (!body.trim()) {
+      setBodyError("ঘোষণার লেখা দিন।");
+      return;
+    }
+    setBodyError("");
+    if (audience === "user" && !picked) {
+      setFormError("নির্দিষ্ট একজনকে পাঠাতে হলে আগে নাম/মোবাইল দিয়ে খুঁজে একজন ব্যবহারকারী বেছে নিন।");
+      return;
+    }
+    send.mutate();
+  };
+  return (
+    <div>
+      <form onSubmit={submit} className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+        <h2 className="font-bold text-[#064B27]">নতুন ঘোষণা পাঠান</h2>
+        <p className="mt-1 text-sm text-[#737B73]">
+          ঘোষণাটি বেছে নেওয়া ব্যবহারকারীদের নোটিফিকেশন সেন্টারে যাবে। প্রতিটি পাঠানো ঘোষণা নিচে ইতিহাসে থেকে যায়।
+        </p>
+        <div className="mt-4">
+          <label className={labelCls} htmlFor="ann-title">শিরোনাম</label>
+          <input
+            id="ann-title"
+            className={inputCls}
+            {...FIELDS.adminSendAnnouncement.title}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="যেমন: সার্ভিস সময়সূচি পরিবর্তন"
+          />
+          {titleError && <p className="mt-1 text-[13px] font-semibold text-red-700">{titleError}</p>}
+        </div>
+        <div className="mt-3">
+          <label className={labelCls} htmlFor="ann-body">ঘোষণার লেখা</label>
+          <textarea
+            id="ann-body"
+            className={inputCls}
+            rows={3}
+            {...FIELDS.adminSendAnnouncement.body}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="বিস্তারিত লিখুন…"
+          />
+          {bodyError && <p className="mt-1 text-[13px] font-semibold text-red-700">{bodyError}</p>}
+        </div>
+        <div className="mt-3">
+          <label className={labelCls} htmlFor="ann-audience">কাদের কাছে পাঠাবেন</label>
+          <select
+            id="ann-audience"
+            className={inputCls}
+            value={audience}
+            onChange={(e) => setAudience(e.target.value as "all" | "role" | "user")}
+          >
+            <option value="all">সব ব্যবহারকারী</option>
+            <option value="role">একটি ভূমিকা (গ্রাহক / প্রফেশনাল / অ্যাডমিন)</option>
+            <option value="user">নির্দিষ্ট একজন ব্যবহারকারী</option>
+          </select>
+        </div>
+        {audience === "role" && (
+          <div className="mt-3">
+            <label className={labelCls} htmlFor="ann-role">ভূমিকা</label>
+            <select
+              id="ann-role"
+              className={inputCls}
+              value={role}
+              onChange={(e) => setRole(e.target.value as "customer" | "professional" | "admin")}
+            >
+              <option value="customer">গ্রাহক</option>
+              <option value="professional">প্রফেশনাল</option>
+              <option value="admin">অ্যাডমিন</option>
+            </select>
           </div>
-          <div className="mt-3 flex gap-2">
-            {r.status !== "approved" && (
-              <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "approved" })} className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl">
-                প্রকাশ করুন
+        )}
+        {audience === "user" && (
+          <div className="mt-3">
+            <label className={labelCls} htmlFor="ann-search">ব্যবহারকারী খুঁজুন (নাম বা মোবাইল)</label>
+            <div className="flex gap-2">
+              <input
+                id="ann-search"
+                className={inputCls}
+                {...FIELDS.adminSearchUsers.query}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPicked(null);
+                }}
+                placeholder="যেমন: রহিম বা 017…"
+              />
+              <button
+                type="button"
+                disabled={searchUsers.isPending || !search.trim()}
+                onClick={() => {
+                  if (!search.trim()) {
+                    setFormError("খুঁজতে নাম বা মোবাইল নম্বর লিখুন।");
+                    return;
+                  }
+                  setFormError("");
+                  searchUsers.mutate(search.trim());
+                }}
+                className="shrink-0 bg-[#F0FAF2] border-[1.5px] border-[#cfe3d3] text-[#064B27] font-semibold text-sm px-4 rounded-xl hover:bg-[#E2F4E7] disabled:opacity-60"
+              >
+                খুঁজুন
               </button>
+            </div>
+            {picked ? (
+              <p className="mt-2 text-sm rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] px-3.5 py-2">
+                প্রাপক: <b>{picked.name}</b> • <span className="font-en">{picked.phone}</span> • {AUDIENCE_ROLE_BN[picked.role] ?? picked.role}
+              </p>
+            ) : (
+              searchUsers.data &&
+              (searchUsers.data.users.length === 0 ? (
+                <p className="mt-2 text-sm text-[#737B73]">এই নাম/নম্বরে কোনো ব্যবহারকারী পাওয়া যায়নি।</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-[#F0F3F0] rounded-xl border border-[#E5EAE5]">
+                  {searchUsers.data.users.map((u) => (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        onClick={() => setPicked(u)}
+                        className="w-full text-left px-3.5 py-2.5 text-sm hover:bg-[#F8FAF8]"
+                        aria-label={`${u.name} কে প্রাপক হিসেবে বেছে নিন`}
+                      >
+                        <b>{u.name}</b> • <span className="font-en">{u.phone}</span> • {AUDIENCE_ROLE_BN[u.role] ?? u.role}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ))
             )}
-            {r.status !== "rejected" && (
-              <button type="button" disabled={moderate.isPending} onClick={() => moderate.mutate({ id: r.id, status: "rejected" })} className="border-[1.5px] border-red-300 text-red-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-red-50 disabled:opacity-60">
-                বাতিল করুন
-              </button>
-            )}
+          </div>
+        )}
+        {formError && (
+          <div className="mt-3">
+            <ErrorBox message={formError} />
+          </div>
+        )}
+        {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+        <button
+          type="submit"
+          disabled={send.isPending}
+          className="mt-4 bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+        >
+          {send.isPending ? "পাঠানো হচ্ছে…" : "ঘোষণা পাঠান"}
+        </button>
+      </form>
+
+      <h2 className="mt-8 font-bold text-[#064B27]">পাঠানো ঘোষণার ইতিহাস</h2>
+      {history.isPending ? (
+        <Spinner />
+      ) : history.isError ? (
+        <div className="mt-3">
+          <ErrorBox message={errMsg(history.error)} />
+        </div>
+      ) : (history.data?.announcements ?? []).length === 0 ? (
+        <p className="mt-2 text-sm text-[#737B73]">এখনো কোনো ঘোষণা পাঠানো হয়নি।</p>
+      ) : (
+        <ul className="mt-3 space-y-2.5">
+          {(history.data?.announcements ?? []).map((a) => (
+            <li key={a.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <p className="font-semibold text-[15px]">{a.title}</p>
+              <p className="mt-1 text-sm text-[#4c584c]">{a.body}</p>
+              <p className="mt-1.5 text-[12.5px] text-[#737B73]">
+                {a.senderName} •{" "}
+                {a.audience === "all"
+                  ? "সব ব্যবহারকারী"
+                  : a.audience === "role"
+                    ? `${AUDIENCE_ROLE_BN[a.audienceRole ?? ""] ?? a.audienceRole} — সবাই`
+                    : `একজন: ${a.audienceUserName ?? "ব্যবহারকারী"}`}{" "}
+                • {a.recipientCount} জন পেয়েছেন • {fmtDateTime(a.createdAt)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type CouponRowView = ApiResponse<typeof api, "adminListCoupons">["coupons"][number];
+
+/**
+ * Coupon manager (Master Phase 10): finance admins create coupons —
+ * fixed taka or percent off the eligible charge, with optional
+ * expiry, usage limit, minimum bill and service restriction. Usage
+ * figures are counted server-side from real redemptions.
+ */
+function AdminCoupons({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const catalog = useCatalog();
+  const list = useQuery({ queryKey: ["admin-coupons"], queryFn: () => api.adminListCoupons({ token }) });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [code, setCode] = useState("");
+  const [discountType, setDiscountType] = useState<"fixed" | "percent">("fixed");
+  const [discountValue, setDiscountValue] = useState("");
+  const [minAmount, setMinAmount] = useState("");
+  const [expiresOn, setExpiresOn] = useState("");
+  const [usageLimit, setUsageLimit] = useState("");
+  const [serviceSlug, setServiceSlug] = useState("");
+  const [couponActive, setCouponActive] = useState(true);
+  const [codeError, setCodeError] = useState("");
+  const [valueError, setValueError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [done, setDone] = useState("");
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin-coupons"] });
+  const resetForm = () => {
+    setEditingId(null);
+    setCode("");
+    setDiscountType("fixed");
+    setDiscountValue("");
+    setMinAmount("");
+    setExpiresOn("");
+    setUsageLimit("");
+    setServiceSlug("");
+    setCouponActive(true);
+    setCodeError("");
+    setValueError("");
+  };
+  const save = useMutation({
+    mutationFn: () =>
+      api.adminSaveCoupon({
+        token,
+        id: editingId ?? undefined,
+        code: code.trim(),
+        discountType,
+        discountValue: Number(discountValue),
+        minAmount: minAmount.trim() ? Number(minAmount) : null,
+        expiresOn: expiresOn || null,
+        usageLimit: usageLimit.trim() ? Number(usageLimit) : null,
+        serviceSlug: serviceSlug || null,
+        active: couponActive,
+      }),
+    onSuccess: () => {
+      setDone(editingId ? "কুপন আপডেট হয়েছে।" : "কুপন তৈরি হয়েছে — এখন থেকে এই কোডে ছাড় প্রযোজ্য হবে।");
+      setFormError("");
+      resetForm();
+      refresh();
+    },
+    onError: (e) => setFormError(errMsg(e)),
+  });
+  const toggle = useMutation({
+    mutationFn: (v: { id: number; active: boolean }) =>
+      api.adminSetCouponActive({ token, couponId: v.id, active: v.active }),
+    onSuccess: refresh,
+    onError: (e) => setFormError(errMsg(e)),
+  });
+  const startEdit = (c: CouponRowView) => {
+    setEditingId(c.id);
+    setCode(c.code);
+    setDiscountType(c.discountType === "percent" ? "percent" : "fixed");
+    setDiscountValue(String(c.discountValue));
+    setMinAmount(c.minAmount != null ? String(c.minAmount) : "");
+    setExpiresOn(c.expiresOn ?? "");
+    setUsageLimit(c.usageLimit != null ? String(c.usageLimit) : "");
+    setServiceSlug(c.serviceSlug ?? "");
+    setCouponActive(c.active);
+    setCodeError("");
+    setValueError("");
+    setFormError("");
+    setDone("");
+  };
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDone("");
+    setFormError("");
+    if (!code.trim()) {
+      setCodeError("কুপন কোড দিন।");
+      return;
+    }
+    setCodeError("");
+    const v = Number(discountValue);
+    if (!discountValue.trim() || !Number.isFinite(v) || v <= 0) {
+      setValueError(discountType === "percent" ? "ছাড়ের শতাংশ দিন (১–১০০)।" : "ছাড়ের পরিমাণ টাকায় দিন।");
+      return;
+    }
+    if (discountType === "percent" && v > 100) {
+      setValueError("শতাংশ ছাড় ১০০%-এর বেশি হতে পারে না।");
+      return;
+    }
+    setValueError("");
+    save.mutate();
+  };
+  const services = catalog.data?.services ?? [];
+  return (
+    <div>
+      <form onSubmit={submit} className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+        <h2 className="font-bold text-[#064B27]">{editingId ? "কুপন সম্পাদনা করুন" : "নতুন কুপন তৈরি করুন"}</h2>
+        <p className="mt-1 text-sm text-[#737B73]">
+          ছাড়টি প্রযোজ্য হয় কোটেশন অনুমোদনের সময়, শুধু যোগ্য চার্জের (শ্রম + অতিরিক্ত) উপর — কমিশনও হিসাব হয় ছাড়ের পরের অঙ্কে। এখানে তৈরি না করা কোনো ছাড়ের প্রতিশ্রুতি সাইটে কোথাও দেওয়া হয় না।
+        </p>
+        <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls} htmlFor="cp-code">কুপন কোড</label>
+            <input
+              id="cp-code"
+              className={`${inputCls} font-en uppercase`}
+              {...FIELDS.adminSaveCoupon.code}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="যেমন: EID2026"
+            />
+            {codeError && <p className="mt-1 text-[13px] font-semibold text-red-700">{codeError}</p>}
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="cp-type">ছাড়ের ধরন</label>
+            <select
+              id="cp-type"
+              className={inputCls}
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value as "fixed" | "percent")}
+            >
+              <option value="fixed">নির্দিষ্ট টাকা ছাড়</option>
+              <option value="percent">শতাংশ ছাড় (%)</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="cp-value">{discountType === "percent" ? "শতাংশ (%)" : "ছাড়ের পরিমাণ (৳)"}</label>
+            <input
+              id="cp-value"
+              type="number"
+              className={inputCls}
+              {...FIELDS.adminSaveCoupon.discountValue}
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              placeholder={discountType === "percent" ? "যেমন: 10" : "যেমন: 200"}
+            />
+            {valueError && <p className="mt-1 text-[13px] font-semibold text-red-700">{valueError}</p>}
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="cp-min">সর্বনিম্ন বিল (৳) — ঐচ্ছিক</label>
+            <input
+              id="cp-min"
+              type="number"
+              className={inputCls}
+              {...FIELDS.adminSaveCoupon.minAmount}
+              value={minAmount}
+              onChange={(e) => setMinAmount(e.target.value)}
+              placeholder="খালি রাখলে সীমা নেই"
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="cp-exp">মেয়াদ শেষের তারিখ — ঐচ্ছিক</label>
+            <input
+              id="cp-exp"
+              type="date"
+              className={inputCls}
+              value={expiresOn}
+              onChange={(e) => setExpiresOn(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="cp-limit">মোট ব্যবহারের সীমা — ঐচ্ছিক</label>
+            <input
+              id="cp-limit"
+              type="number"
+              className={inputCls}
+              {...FIELDS.adminSaveCoupon.usageLimit}
+              value={usageLimit}
+              onChange={(e) => setUsageLimit(e.target.value)}
+              placeholder="খালি রাখলে অসীম"
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor="cp-service">সার্ভিস — ঐচ্ছিক</label>
+            <select
+              id="cp-service"
+              className={inputCls}
+              value={serviceSlug}
+              onChange={(e) => setServiceSlug(e.target.value)}
+            >
+              <option value="">সব সার্ভিসে প্রযোজ্য</option>
+              {services.map((s) => (
+                <option key={s.slug} value={s.slug}>
+                  {s.nameBn}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end pb-1">
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#4c584c]">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-[#087A35]"
+                checked={couponActive}
+                onChange={(e) => setCouponActive(e.target.checked)}
+              />
+              কুপন সক্রিয়
+            </label>
           </div>
         </div>
-      ))}
+        {formError && (
+          <div className="mt-3">
+            <ErrorBox message={formError} />
+          </div>
+        )}
+        {done && <p className="mt-3 rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-2.5">{done}</p>}
+        <div className="mt-4 flex gap-2">
+          <button
+            type="submit"
+            disabled={save.isPending}
+            className="bg-[#087A35] hover:bg-[#064B27] disabled:opacity-60 text-white font-bold px-5 py-2.5 rounded-xl"
+          >
+            {save.isPending ? "সংরক্ষণ হচ্ছে…" : editingId ? "আপডেট করুন" : "কুপন তৈরি করুন"}
+          </button>
+          {editingId && (
+            <button
+              type="button"
+              onClick={() => {
+                resetForm();
+                setDone("");
+                setFormError("");
+              }}
+              className="border-[1.5px] border-[#E5EAE5] text-[#4c584c] font-semibold px-4 py-2.5 rounded-xl hover:bg-[#F8FAF8]"
+            >
+              বাতিল
+            </button>
+          )}
+        </div>
+      </form>
+
+      <h2 className="mt-8 font-bold text-[#064B27]">সব কুপন</h2>
+      {list.isPending ? (
+        <Spinner />
+      ) : list.isError ? (
+        <div className="mt-3">
+          <ErrorBox message={errMsg(list.error)} />
+        </div>
+      ) : (list.data?.coupons ?? []).length === 0 ? (
+        <p className="mt-2 text-sm text-[#737B73]">এখনো কোনো কুপন তৈরি হয়নি — কোনো ছাড়ও প্রযোজ্য নয়।</p>
+      ) : (
+        <ul className="mt-3 space-y-2.5">
+          {(list.data?.coupons ?? []).map((c) => (
+            <li key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-[15px]">
+                    <span className="font-en">{c.code}</span>{" "}
+                    <span className="text-[#087A35]">
+                      — {c.discountType === "percent" ? `${c.discountValue}% ছাড়` : `${bdt(c.discountValue)} ছাড়`}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[13px] text-[#737B73]">
+                    {c.serviceName ? `শুধু: ${c.serviceName}` : "সব সার্ভিস"}
+                    {c.minAmount != null ? ` • সর্বনিম্ন বিল ${bdt(c.minAmount)}` : ""}
+                    {c.expiresOn ? ` • মেয়াদ: ${fmtDate(c.expiresOn)} পর্যন্ত` : " • মেয়াদ নেই"}
+                    {" "}• ব্যবহৃত: {c.usedCount} বার
+                    {c.remaining != null ? ` • বাকি: ${c.remaining} বার` : " • সীমা নেই"}
+                  </p>
+                </div>
+                <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full ${c.active ? "bg-[#087A35] text-white" : "bg-[#F0F3F0] text-[#737B73]"}`}>
+                  {c.active ? "সক্রিয়" : "নিষ্ক্রিয়"}
+                </span>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => startEdit(c)}
+                  className="border-[1.5px] border-[#cfe3d3] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F0FAF2]"
+                >
+                  সম্পাদনা
+                </button>
+                <button
+                  type="button"
+                  disabled={toggle.isPending}
+                  onClick={() => toggle.mutate({ id: c.id, active: !c.active })}
+                  className="border-[1.5px] border-[#E5EAE5] text-[#4c584c] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#F8FAF8] disabled:opacity-60"
+                >
+                  {c.active ? "নিষ্ক্রিয় করুন" : "সক্রিয় করুন"}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -3424,6 +4055,7 @@ function AdminComplaints({ token }: { token: string }) {
               <input
                 id={`cmp-note-${c.id}`}
                 className={inputCls}
+                {...FIELDS.adminResolveComplaint.note}
                 placeholder="গ্রাহককে জানানোর জন্য সমাধান নোট"
                 value={notes[c.id] ?? ""}
                 onChange={(e) => setNotes((prev) => ({ ...prev, [c.id]: e.target.value }))}
@@ -3613,7 +4245,7 @@ function SocialLinkEditor({
         </div>
         <div>
           <label className={labelCls} htmlFor={`${fid}-label`}>নাম (ঐচ্ছিক)</label>
-          <input id={`${fid}-label`} className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="যেমন: GhorSheba অফিসিয়াল পেজ" />
+          <input id={`${fid}-label`} className={inputCls} {...FIELDS.adminSaveSocialLink.label} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="যেমন: GhorSheba অফিসিয়াল পেজ" />
         </div>
       </div>
       <div>
@@ -3621,6 +4253,7 @@ function SocialLinkEditor({
         <input
           id={`${fid}-url`}
           className={`${inputCls} font-en`}
+          {...FIELDS.adminSaveSocialLink.url}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           required
@@ -3631,7 +4264,7 @@ function SocialLinkEditor({
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className={labelCls} htmlFor={`${fid}-order`}>ক্রম</label>
-          <input id={`${fid}-order`} type="number" min={0} max={999} className={`${inputCls} font-en w-24`} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+          <input id={`${fid}-order`} type="number" {...FIELDS.adminSaveSocialLink.sortOrder} className={`${inputCls} font-en w-24`} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
         </div>
         <label className="flex items-center gap-2 font-medium pb-2" htmlFor={`${fid}-enabled`}>
           <input id={`${fid}-enabled`} type="checkbox" className="w-4.5 h-4.5 accent-[#087A35]" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
@@ -3791,6 +4424,7 @@ function PaymentVerifyBox({ token, p }: { token: string; p: PaymentView }) {
             <input
               id={`rej-${p.id}`}
               className={inputCls}
+              {...FIELDS.adminVerifyPayment.reason}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="যেমন: TrxID মেলেনি / টাকা পৌঁছায়নি"
@@ -3932,12 +4566,18 @@ function CommissionRatesCard({ token }: { token: string }) {
   });
   if (data.isPending) return <Spinner />;
   if (data.isError) return <ErrorBox message={errMsg(data.error)} />;
-  const rateField = (id: string, label: string, value: string, set: (v: string) => void) => (
+  const rateField = (
+    id: string,
+    label: string,
+    value: string,
+    set: (v: string) => void,
+    fieldProps: Record<string, string | number | boolean | undefined>,
+  ) => (
     <div>
       <label className={labelCls} htmlFor={id}>
         {label}
       </label>
-      <input id={id} type="number" min={0} max={100} className={inputCls} value={value} onChange={(e) => set(e.target.value)} required />
+      <input id={id} type="number" {...fieldProps} className={inputCls} value={value} onChange={(e) => set(e.target.value)} required />
     </div>
   );
   return (
@@ -3959,15 +4599,15 @@ function CommissionRatesCard({ token }: { token: string }) {
         <fieldset>
           <legend className="font-semibold text-[#064B27] mb-2">সম্পূর্ণ অনলাইন পেমেন্ট</legend>
           <div className="grid grid-cols-2 gap-3">
-            {rateField("cr-full-fee", "গ্রাহক ফি (%)", fullFee, setFullFee)}
-            {rateField("cr-full-comm", "প্রফেশনাল কমিশন (%)", fullComm, setFullComm)}
+            {rateField("cr-full-fee", "গ্রাহক ফি (%)", fullFee, setFullFee, FIELDS.adminSaveSettings.fullOnlineCustomerFeePercent)}
+            {rateField("cr-full-comm", "প্রফেশনাল কমিশন (%)", fullComm, setFullComm, FIELDS.adminSaveSettings.fullOnlineProCommissionPercent)}
           </div>
         </fieldset>
         <fieldset>
           <legend className="font-semibold text-[#064B27] mb-2">৫০% অনলাইন + ৫০% ক্যাশ</legend>
           <div className="grid grid-cols-2 gap-3">
-            {rateField("cr-split-fee", "গ্রাহক ফি (%)", splitFee, setSplitFee)}
-            {rateField("cr-split-comm", "প্রফেশনাল কমিশন (%)", splitComm, setSplitComm)}
+            {rateField("cr-split-fee", "গ্রাহক ফি (%)", splitFee, setSplitFee, FIELDS.adminSaveSettings.splitCustomerFeePercent)}
+            {rateField("cr-split-comm", "প্রফেশনাল কমিশন (%)", splitComm, setSplitComm, FIELDS.adminSaveSettings.splitProCommissionPercent)}
           </div>
         </fieldset>
         {error && <ErrorBox message={error} />}
@@ -4046,9 +4686,9 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
               <input
                 id={`wd-ref-${w.id}`}
                 className={`${inputCls} font-en`}
+                {...FIELDS.adminDecideWithdrawal.transactionReference}
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
-                maxLength={120}
                 placeholder="যেমন: 9HX7K2LM1P"
               />
             </div>
@@ -4057,9 +4697,9 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
               <input
                 id={`wd-note-${w.id}`}
                 className={inputCls}
+                {...FIELDS.adminDecideWithdrawal.note}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                maxLength={600}
                 placeholder="যেমন: বুকিংয়ে বিরোধ চলমান"
               />
             </div>
@@ -4290,15 +4930,15 @@ function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest 
           <div className="grid sm:grid-cols-3 gap-2.5">
             <div>
               <label className={labelCls} htmlFor={`rf-amt-${r.id}`}>রিফান্ডের পরিমাণ (৳)</label>
-              <input id={`rf-amt-${r.id}`} type="number" min={1} className={`${inputCls} font-en`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+              <input id={`rf-amt-${r.id}`} type="number" {...FIELDS.adminDecideRefundRequest.refundAmount} className={`${inputCls} font-en`} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
             </div>
             <div>
               <label className={labelCls} htmlFor={`rf-ref-${r.id}`}>ফেরত লেনদেনের TrxID / রেফারেন্স</label>
-              <input id={`rf-ref-${r.id}`} className={`${inputCls} font-en`} value={reference} onChange={(e) => setReference(e.target.value)} maxLength={120} placeholder="যেমন: 9HX7K2LM1P" />
+              <input id={`rf-ref-${r.id}`} className={`${inputCls} font-en`} {...FIELDS.adminDecideRefundRequest.refundReference} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="যেমন: 9HX7K2LM1P" />
             </div>
             <div>
               <label className={labelCls} htmlFor={`rf-note-${r.id}`}>নোট / বাতিলের কারণ</label>
-              <input id={`rf-note-${r.id}`} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} placeholder="বাতিলে কারণ লাগবে" />
+              <input id={`rf-note-${r.id}`} className={inputCls} {...FIELDS.adminDecideRefundRequest.note} value={note} onChange={(e) => setNote(e.target.value)} placeholder="বাতিলে কারণ লাগবে" />
             </div>
           </div>
           {error && <ErrorBox message={error} />}
@@ -4549,27 +5189,27 @@ function AdminSettings({ token }: { token: string }) {
       </p>
       <div>
         <label className={labelCls} htmlFor="st-phone">সাপোর্ট ফোন নম্বর</label>
-        <input id="st-phone" className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="খালি রাখলে সাইটে দেখানো হবে না" />
+        <input id="st-phone" className={inputCls} {...FIELDS.adminSaveSettings.supportPhone} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="খালি রাখলে সাইটে দেখানো হবে না" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-wa">WhatsApp নম্বর</label>
-        <input id="st-wa" className={inputCls} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="দেশের কোডসহ, যেমন 8801XXXXXXXXX" />
+        <input id="st-wa" className={inputCls} {...FIELDS.adminSaveSettings.supportWhatsapp} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="দেশের কোডসহ, যেমন 8801XXXXXXXXX" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-email">সাপোর্ট ইমেইল</label>
-        <input id="st-email" type="email" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="খালি রাখলে সাইটে দেখানো হবে না" />
+        <input id="st-email" type="email" className={inputCls} {...FIELDS.adminSaveSettings.supportEmail} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="খালি রাখলে সাইটে দেখানো হবে না" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-address">ব্যবসায়িক ঠিকানা (যোগাযোগ পেজ ও ফুটারে দেখানো হবে)</label>
-        <input id="st-address" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="খালি রাখলে শুধু এলাকা (টাঙ্গাইল) দেখানো হবে" />
+        <input id="st-address" className={inputCls} {...FIELDS.adminSaveSettings.businessAddress} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="খালি রাখলে শুধু এলাকা (টাঙ্গাইল) দেখানো হবে" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-hours">অফিস সময়</label>
-        <input id="st-hours" className={inputCls} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="যেমন: প্রতিদিন সকাল ৯টা – রাত ৯টা (খালি রাখলে দেখানো হবে না)" />
+        <input id="st-hours" className={inputCls} {...FIELDS.adminSaveSettings.officeHours} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="যেমন: প্রতিদিন সকাল ৯টা – রাত ৯টা (খালি রাখলে দেখানো হবে না)" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-ann">ঘোষণা (সাইটের উপরে দেখানো হবে)</label>
-        <input id="st-ann" className={inputCls} value={announcement} onChange={(e) => setAnnouncement(e.target.value)} placeholder="বিশেষ ঘোষণা থাকলে লিখুন (ঐচ্ছিক)" />
+        <input id="st-ann" className={inputCls} {...FIELDS.adminSaveSettings.announcement} value={announcement} onChange={(e) => setAnnouncement(e.target.value)} placeholder="বিশেষ ঘোষণা থাকলে লিখুন (ঐচ্ছিক)" />
       </div>
       <div>
         <label className={labelCls} htmlFor="st-pay-provider">পেমেন্ট গ্রহণের মাধ্যম (ম্যানুয়াল TrxID)</label>
@@ -4582,7 +5222,7 @@ function AdminSettings({ token }: { token: string }) {
       </div>
       <div>
         <label className={labelCls} htmlFor="st-pay-number">পেমেন্ট গ্রহণের নম্বর</label>
-        <input id="st-pay-number" className={`${inputCls} font-en`} value={payNumber} onChange={(e) => setPayNumber(e.target.value)} placeholder="খালি রাখলে চেকআউটে নম্বর দেখানো হবে না" />
+        <input id="st-pay-number" className={`${inputCls} font-en`} {...FIELDS.adminSaveSettings.paymentReceiveNumber} value={payNumber} onChange={(e) => setPayNumber(e.target.value)} placeholder="খালি রাখলে চেকআউটে নম্বর দেখানো হবে না" />
         <p className="mt-1 text-[13px] text-[#737B73]">গ্রাহক এই নম্বরে টাকা পাঠিয়ে চেকআউটে TrxID জমা দেবেন — নম্বরটি চেকআউটে গ্রাহকদের দেখানো হয়।</p>
       </div>
       {error && <ErrorBox message={error} />}

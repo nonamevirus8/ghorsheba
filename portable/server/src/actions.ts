@@ -462,6 +462,173 @@ async function addEvent(
   });
 }
 
+// --------------------------------- Phase 10: announcements / coupons /
+// review reminders / notification-center links
+//
+// The notification center links every notification to the page it is
+// about: a booking-related notification (bookingId set) links to that
+// booking's detail page; a support-ticket notification links to the
+// viewer's own support tab (admins land on the admin ticket queue);
+// announcements and account-level notices have no page and return
+// null. Links are computed here, server-side, from the notification's
+// own stored fields — never from client-supplied data.
+function notificationLink(
+  n: { type: string; bookingId: number | null },
+  bookingCode: string | null,
+  viewerRole: string,
+): string | null {
+  if (n.bookingId != null && bookingCode) return `#/booking/${bookingCode}`;
+  if (n.type.startsWith("support_ticket") || n.type === "ticket_status") {
+    if (viewerRole === "admin") return "#/admin?tab=tickets";
+    if (viewerRole === "professional") return "#/pro-dashboard?tab=support";
+    return "#/dashboard?tab=support";
+  }
+  return null;
+}
+
+/**
+ * Sends the customer ONE review reminder for a booking that has just
+ * been completed/confirmed (Master Phase 10): only when the booking
+ * is at a completed stage, no review exists for it yet, and no
+ * reminder was sent before — so the customer is never nagged twice
+ * for the same job, and never reminded about a job they already
+ * reviewed.
+ */
+async function sendReviewReminderIfNeeded(
+  ctx: Ctx,
+  b: BookingRowFull,
+): Promise<void> {
+  const stage = bookingStage(b);
+  if (stage !== "customer_confirmed" && stage !== "admin_reviewed") return;
+  const db = dbOf(ctx);
+  const existingReview = await db
+    .select({ id: schema.reviews.id })
+    .from(schema.reviews)
+    .where(eq(schema.reviews.bookingId, b.id))
+    .limit(1);
+  if (existingReview.length > 0) return;
+  const prior = await db
+    .select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(
+      and(
+        eq(schema.notifications.userId, b.customerId),
+        eq(schema.notifications.bookingId, b.id),
+        eq(schema.notifications.type, "review_reminder"),
+      ),
+    )
+    .limit(1);
+  if (prior.length > 0) return;
+  await notify(ctx, {
+    userId: b.customerId,
+    type: "review_reminder",
+    title: "কাজ সম্পন্ন হয়েছে — রিভিউ দিন",
+    body: `কোড: ${b.code} — কাজটি কেমন হয়েছে জানালে অন্য গ্রাহকদের সাহায্য হবে।`,
+    bookingId: b.id,
+  });
+}
+
+type CouponRow = typeof schema.coupons.$inferSelect;
+
+const couponOut = z.object({
+  id: z.number(),
+  code: z.string(),
+  discountType: z.string(),
+  discountValue: z.number(),
+  minAmount: z.number().nullable(),
+  expiresOn: z.string().nullable(),
+  usageLimit: z.number().nullable(),
+  serviceSlug: z.string().nullable(),
+  serviceName: z.string().nullable(),
+  active: z.boolean(),
+  usedCount: z.number(),
+  remaining: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+function normalizeCouponCode(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+
+/** Today's date (YYYY-MM-DD) in Asia/Dhaka — coupon expiry compares dates, not instants. */
+function dhakaToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/**
+ * Validates a coupon for one booking's price confirmation and computes
+ * the discount. The discount is taken off the ELIGIBLE charge only
+ * (labour + additional — the commission base), so the Dual Payment
+ * commission is always computed on the discounted base. Every failure
+ * throws a clear Bengali reason — a bad code is never silently
+ * ignored. `billTotal` is the full quotation total (the minimum-amount
+ * check applies to what the customer is being charged overall).
+ */
+async function validateCouponForBooking(
+  ctx: Ctx,
+  args: {
+    code: string;
+    serviceSlug: string;
+    billTotal: number;
+    eligibleCharge: number;
+    bookingId: number;
+  },
+): Promise<{ coupon: CouponRow; discount: number }> {
+  const db = dbOf(ctx);
+  const code = normalizeCouponCode(args.code);
+  if (!code) throw new Error("কুপন কোড দিন।");
+  const rows = await db
+    .select()
+    .from(schema.coupons)
+    .where(eq(schema.coupons.code, code))
+    .limit(1);
+  const coupon = rows[0];
+  if (!coupon) throw new Error("এই কুপন কোডটি পাওয়া যায়নি — কোডটি আবার যাচাই করুন।");
+  if (coupon.active !== 1) throw new Error("এই কুপনটি এখন সক্রিয় নয়।");
+  if (coupon.expiresOn && coupon.expiresOn < dhakaToday()) {
+    throw new Error("এই কুপনের মেয়াদ শেষ হয়ে গেছে।");
+  }
+  if (coupon.serviceSlug && coupon.serviceSlug !== args.serviceSlug) {
+    throw new Error("এই কুপনটি এই সার্ভিসের জন্য প্রযোজ্য নয়।");
+  }
+  if (coupon.minAmount != null && args.billTotal < coupon.minAmount) {
+    throw new Error(
+      `এই কুপন ব্যবহার করতে হলে বিল কমপক্ষে ৳${coupon.minAmount} হতে হবে।`,
+    );
+  }
+  const usedRows = await db
+    .select({ id: schema.couponRedemptions.id })
+    .from(schema.couponRedemptions)
+    .where(eq(schema.couponRedemptions.couponId, coupon.id));
+  if (coupon.usageLimit != null && usedRows.length >= coupon.usageLimit) {
+    throw new Error("এই কুপনের ব্যবহারের সীমা শেষ হয়ে গেছে।");
+  }
+  const already = await db
+    .select({ id: schema.couponRedemptions.id })
+    .from(schema.couponRedemptions)
+    .where(eq(schema.couponRedemptions.bookingId, args.bookingId))
+    .limit(1);
+  if (already.length > 0) {
+    throw new Error("এই বুকিংয়ে ইতিমধ্যে একটি কুপন ব্যবহার করা হয়েছে।");
+  }
+  const discount =
+    coupon.discountType === "fixed"
+      ? Math.min(coupon.discountValue, args.eligibleCharge)
+      : Math.min(
+          Math.round((args.eligibleCharge * coupon.discountValue) / 100),
+          args.eligibleCharge,
+        );
+  if (discount <= 0) {
+    throw new Error("এই বুকিংয়ের যোগ্য চার্জে এই কুপনে কোনো ছাড় পাওয়া যাবে না।");
+  }
+  return { coupon, discount };
+}
+
 // --------------------------------------------------------- dual payments
 
 type SettingsRow = typeof schema.settings.$inferSelect;
@@ -1435,6 +1602,9 @@ const bookingOut = z.object({
   proResponse: z.string(),
   proDone: z.boolean(),
   finalPrice: z.number().nullable(),
+  // Master Phase 10: the coupon recorded at price confirmation, if any.
+  couponCode: z.string().nullable(),
+  couponDiscount: z.number().nullable(),
   paymentStatus: z.string(),
   // Dual Payment snapshot (null until a price/model is confirmed).
   paymentModel: z.string().nullable(),
@@ -1504,6 +1674,8 @@ async function toBookingOut(
     proResponse: b.proResponse,
     proDone: b.proDone === 1,
     finalPrice: b.finalPrice,
+    couponCode: b.couponCode ?? null,
+    couponDiscount: b.couponDiscount ?? null,
     paymentStatus: b.paymentStatus,
     paymentModel: b.paymentModel,
     extendedPaymentStatus: b.extendedPaymentStatus,
@@ -2916,6 +3088,9 @@ export const Actions = {
         body: `কোড: ${b.code}`,
         bookingId: b.id,
       });
+      // Phase 10: remind the customer to review the completed job
+      // (once per booking, and never when a review already exists).
+      await sendReviewReminderIfNeeded(ctx, { ...b, status: "customer_confirmed" });
       if (b.professionalId) {
         const pros = await db
           .select()
@@ -3056,7 +3231,8 @@ export const Actions = {
   }),
 
   getNotifications: defineAction({
-    description: "Returns notifications for the signed-in user (own plus role-wide).",
+    description:
+      "Returns the signed-in user's notification center: their own notifications plus role-wide ones, newest first, each with its read state and a page link to the booking / ticket it is about (null when it has no page). Only real events and real admin announcements ever appear here — nothing is synthesized.",
     request: z.object({ token: z.string() }),
     response: z.object({
       notifications: z.array(
@@ -3065,6 +3241,8 @@ export const Actions = {
           type: z.string(),
           title: z.string(),
           body: z.string().nullable(),
+          bookingId: z.number().nullable(),
+          link: z.string().nullable(),
           isRead: z.boolean(),
           createdAt: z.string(),
         }),
@@ -3077,20 +3255,64 @@ export const Actions = {
         .select()
         .from(schema.notifications)
         .orderBy(desc(schema.notifications.id))
-        .limit(100);
-      const mine = rows.filter(
-        (n) => n.userId === user.id || (n.userId === null && n.targetRole === user.role),
-      );
+        .limit(300);
+      const mine = rows
+        .filter(
+          (n) => n.userId === user.id || (n.userId === null && n.targetRole === user.role),
+        )
+        .slice(0, 100);
+      const bookingIds = [
+        ...new Set(mine.map((n) => n.bookingId).filter((x): x is number => x != null)),
+      ];
+      const codeById = new Map<number, string>();
+      if (bookingIds.length > 0) {
+        const brows = await db
+          .select({ id: schema.bookings.id, code: schema.bookings.code })
+          .from(schema.bookings)
+          .where(inArray(schema.bookings.id, bookingIds));
+        for (const b of brows) codeById.set(b.id, b.code);
+      }
       return {
         notifications: mine.map((n) => ({
           id: n.id,
           type: n.type,
           title: n.title,
           body: n.body,
+          bookingId: n.bookingId,
+          link: notificationLink(
+            n,
+            n.bookingId != null ? (codeById.get(n.bookingId) ?? null) : null,
+            user.role,
+          ),
           isRead: n.isRead === 1,
           createdAt: n.createdAt.toISOString(),
         })),
       };
+    },
+  }),
+
+  markNotificationRead: defineAction({
+    description:
+      "Marks ONE of the signed-in user's own notifications as read (notification center: tapping a notification opens its page and clears its unread dot). Role-broadcast rows are shared, so they are left to markNotificationsRead.",
+    request: z.object({ token: z.string(), notificationId: z.number().int() }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const user = await requireUser(ctx, args.token);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.notifications)
+        .where(eq(schema.notifications.id, args.notificationId))
+        .limit(1);
+      const n = rows[0];
+      if (n && n.userId === user.id && n.isRead !== 1) {
+        await db
+          .update(schema.notifications)
+          .set({ isRead: 1 })
+          .where(eq(schema.notifications.id, n.id));
+        ctx.invalidateQueries();
+      }
+      return { ok: true };
     },
   }),
 
@@ -3963,8 +4185,23 @@ export const Actions = {
       }
       if (patch.status && patch.status !== b.status) {
         await addEvent(ctx, b.id, patch.status, "admin", args.adminNote ?? null);
-      } else if (assignedProUserId) {
-        await addEvent(ctx, b.id, newStatus, "admin", "প্রফেশনাল অ্যাসাইন করা হয়েছে");
+      }
+      // Phase 10 fix (carried from Phase 9): a pure assignment change
+      // gets its OWN event status ("pro_assigned", labelled
+      // "প্রফেশনাল অ্যাসাইন করা হয়েছে" in the timeline) instead of
+      // reusing the booking's current status. Previously, assigning a
+      // professional while the booking sat in "disputed" wrote a
+      // timeline entry headed "বিরোধ চলমান" whose text was the
+      // assignment note — each entry now shows its own correct text.
+      // When the status itself moved TO "assigned", the status event
+      // above already records the assignment, so no second entry.
+      if (assignedProUserId && newStatus !== "assigned") {
+        await addEvent(ctx, b.id, "pro_assigned", "admin", null);
+      }
+      // Phase 10: an admin moving a booking to a completed stage also
+      // triggers the customer's one-time review reminder.
+      if (patch.status && patch.status !== b.status) {
+        await sendReviewReminderIfNeeded(ctx, { ...b, status: newStatus });
       }
       if (newStatus !== b.status || assignedProUserId) {
         await notify(ctx, {
@@ -4350,9 +4587,10 @@ export const Actions = {
   }),
 
   adminListReviews: defineAction({
-    description: "Admin: lists all reviews for moderation.",
+    description:
+      "Admin: lists all reviews for moderation, each with its booking code so the moderator can open the exact booking it belongs to.",
     request: z.object({ token: z.string() }),
-    response: z.object({ reviews: z.array(reviewOut) }),
+    response: z.object({ reviews: z.array(reviewOut.extend({ bookingCode: z.string() })) }),
     async handler(ctx, args) {
       await requireAdminLevel(ctx, args.token, ["operations", "support"]);
       const db = dbOf(ctx);
@@ -4364,10 +4602,19 @@ export const Actions = {
         ? await db.select().from(schema.users).where(inArray(schema.users.id, custIds))
         : [];
       const custMap = new Map(custs.map((c) => [c.id, c.name]));
+      const bookingIds = [...new Set(revs.map((r) => r.bookingId))];
+      const brows = bookingIds.length
+        ? await db
+            .select({ id: schema.bookings.id, code: schema.bookings.code })
+            .from(schema.bookings)
+            .where(inArray(schema.bookings.id, bookingIds))
+        : [];
+      const codeMap = new Map(brows.map((b) => [b.id, b.code]));
       return {
         reviews: revs.map((r) => ({
           id: r.id,
           bookingId: r.bookingId,
+          bookingCode: codeMap.get(r.bookingId) ?? "",
           customerName: custMap.get(r.customerId) ?? "গ্রাহক",
           professionalId: r.professionalId,
           professionalName: r.professionalId ? (proNames.get(r.professionalId) ?? null) : null,
@@ -7369,6 +7616,11 @@ export const Actions = {
       token: z.string(),
       quotationId: z.number().int(),
       approve: z.boolean(),
+      // Master Phase 10: an optional coupon code applied at this
+      // price-confirmation moment (initial quotations only). A code
+      // that fails validation rejects the approval with the reason —
+      // it is never silently ignored.
+      couponCode: z.string().trim().max(40).optional(),
     }),
     response: okOut,
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
@@ -7435,12 +7687,29 @@ export const Actions = {
       let newFinalPrice: number;
       let newCalcBase: number;
       let newStatus: BookingRow["status"] | null = null;
+      // Master Phase 10: coupon applied at price confirmation. The
+      // discount comes off the eligible charge (labour + additional),
+      // so the commission base below is the DISCOUNTED base and the
+      // Dual Payment snapshot stays exact.
+      let appliedCoupon: { coupon: CouponRow; discount: number } | null = null;
+      if (args.couponCode && args.couponCode.trim()) {
+        if (q.kind !== "initial") {
+          throw new Error("কুপন শুধু প্রাথমিক কোটেশন অনুমোদনের সময় ব্যবহার করা যাবে।");
+        }
+        appliedCoupon = await validateCouponForBooking(ctx, {
+          code: args.couponCode,
+          serviceSlug: b.serviceSlug,
+          billTotal: q.totalAmount,
+          eligibleCharge: calcBasePart,
+          bookingId: b.id,
+        });
+      }
       if (q.kind === "initial") {
         if (b.finalPrice != null) {
           throw new Error("এই বুকিংয়ের মূল্য ইতিমধ্যে চূড়ান্ত হয়ে গেছে।");
         }
-        newFinalPrice = q.totalAmount;
-        newCalcBase = calcBasePart;
+        newFinalPrice = q.totalAmount - (appliedCoupon?.discount ?? 0);
+        newCalcBase = calcBasePart - (appliedCoupon?.discount ?? 0);
         if (stage === "pending") newStatus = "price_confirmed";
       } else {
         if (b.finalPrice == null) {
@@ -7471,6 +7740,10 @@ export const Actions = {
         priceFinalizedVia: "quotation",
         updatedAt: now,
       };
+      if (appliedCoupon) {
+        patch.couponCode = appliedCoupon.coupon.code;
+        patch.couponDiscount = appliedCoupon.discount;
+      }
       if (newStatus) patch.status = newStatus;
       // When a payment model was already chosen for the booking,
       // snapshot the Dual Payment breakdown for the new price — from
@@ -7478,7 +7751,15 @@ export const Actions = {
       // current settings (the same rule submitManualPayment uses).
       // This approval IS the Phase 1/3/5 price-confirmation snapshot
       // moment; no other path re-snapshots afterwards.
-      if (b.paymentModel) {
+      if (b.paymentModel && newFinalPrice === 0) {
+        // A coupon covered the whole bill: nothing is payable online
+        // or in cash, so the snapshot is all zeros (computeBreakdown
+        // requires a positive bill and is skipped deliberately).
+        patch.onlineAmount = 0;
+        patch.cashAmount = 0;
+        patch.customerFee = 0;
+        patch.proCommission = 0;
+      } else if (b.paymentModel) {
         let bd = breakdownFromBooking({ ...b, finalPrice: newFinalPrice, calcBase: newCalcBase });
         if (!bd) {
           const stRows = await db.select().from(schema.settings).limit(1);
@@ -7503,6 +7784,17 @@ export const Actions = {
           .set({ status: "approved", decidedByUserId: user.id, decidedAt: now, updatedAt: now })
           .where(eq(schema.quotations.id, q.id));
         await tx.update(schema.bookings).set(patch).where(eq(schema.bookings.id, b.id));
+        if (appliedCoupon) {
+          // The redemption is written in the same transaction as the
+          // price confirmation — a coupon can never be "used" without
+          // its discount landing on the booking, or vice versa.
+          await tx.insert(schema.couponRedemptions).values({
+            couponId: appliedCoupon.coupon.id,
+            bookingId: b.id,
+            customerId: user.id,
+            discountAmount: appliedCoupon.discount,
+          });
+        }
       });
       await addEvent(
         ctx,
@@ -7510,7 +7802,11 @@ export const Actions = {
         patch.status ?? b.status,
         "customer",
         q.kind === "initial"
-          ? `গ্রাহক কোটেশন অনুমোদন করেছেন — মূল্য চূড়ান্ত: ৳${newFinalPrice}`
+          ? `গ্রাহক কোটেশন অনুমোদন করেছেন — মূল্য চূড়ান্ত: ৳${newFinalPrice}${
+              appliedCoupon
+                ? ` (কুপন ${appliedCoupon.coupon.code}: −৳${appliedCoupon.discount} ছাড়)`
+                : ""
+            }`
           : `গ্রাহক অতিরিক্ত কাজের কোটেশন অনুমোদন করেছেন — নতুন মোট মূল্য: ৳${newFinalPrice}`,
       );
       await notify(ctx, {
@@ -7975,6 +8271,415 @@ export const Actions = {
       await logAdmin(ctx, admin.id, "booking_dispute_cleared", `${b.code} → ${restore}`);
       ctx.invalidateQueries();
       return { ok: true };
+    },
+  }),
+
+  // ------------------------------------------ Phase 10: announcements
+
+  adminSendAnnouncement: defineAction({
+    description:
+      "Admin (operations): composes and sends a manual announcement to all users, to one role, or to one specific user. The send is recorded in the announcements table (sender, audience, text, time, recipient count) and delivered as one notification per recipient, so it lands in exactly those users' notification centers with their own read state. An audience that resolves to zero recipients is rejected — an announcement is never recorded as sent to nobody.",
+    request: z.object({
+      token: z.string(),
+      title: z.string().trim().min(1, "শিরোনাম দিন।").max(120),
+      body: z.string().trim().min(1, "ঘোষণার লেখা দিন।").max(1000),
+      audience: z.enum(["all", "role", "user"]),
+      audienceRole: z.enum(["customer", "professional", "admin"]).optional(),
+      audienceUserId: z.number().int().optional(),
+    }),
+    response: z.object({ ok: z.literal(true), recipientCount: z.number() }),
+    async handler(ctx, args) {
+      const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      let recipients: { id: number }[] = [];
+      if (args.audience === "all") {
+        recipients = await db
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(eq(schema.users.status, "active"));
+      } else if (args.audience === "role") {
+        if (!args.audienceRole) throw new Error("কোন ভূমিকাকে পাঠাবেন তা বেছে নিন।");
+        recipients = await db
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(
+            and(
+              eq(schema.users.role, args.audienceRole),
+              eq(schema.users.status, "active"),
+            ),
+          );
+      } else {
+        if (!args.audienceUserId) throw new Error("কাকে পাঠাবেন তা বেছে নিন।");
+        const rows = await db
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(
+            and(
+              eq(schema.users.id, args.audienceUserId),
+              eq(schema.users.status, "active"),
+            ),
+          )
+          .limit(1);
+        recipients = rows;
+      }
+      if (recipients.length === 0) {
+        throw new Error("এই দর্শকের জন্য কোনো প্রাপক পাওয়া যায়নি — ঘোষণা পাঠানো হয়নি।");
+      }
+      const title = args.title.trim();
+      const body = args.body.trim();
+      await db.transaction(async (tx) => {
+        await tx.insert(schema.announcements).values({
+          adminId: admin.id,
+          audience: args.audience,
+          audienceRole: args.audience === "role" ? (args.audienceRole ?? null) : null,
+          audienceUserId: args.audience === "user" ? (args.audienceUserId ?? null) : null,
+          title,
+          body,
+          recipientCount: recipients.length,
+        });
+        for (const r of recipients) {
+          await tx.insert(schema.notifications).values({
+            userId: r.id,
+            type: "announcement",
+            title,
+            body,
+          });
+        }
+      });
+      await logAdmin(
+        ctx,
+        admin.id,
+        "announcement_sent",
+        `${args.audience}${args.audience === "role" ? `:${args.audienceRole ?? ""}` : ""}${args.audience === "user" ? `:#${args.audienceUserId ?? ""}` : ""} → ${recipients.length} জন: ${title}`,
+      );
+      ctx.invalidateQueries();
+      return { ok: true as const, recipientCount: recipients.length };
+    },
+  }),
+
+  adminListAnnouncements: defineAction({
+    description:
+      "Admin (operations): the recorded history of manual announcements — sender, audience, text, recipient count and time, newest first.",
+    request: z.object({ token: z.string() }),
+    response: z.object({
+      announcements: z.array(
+        z.object({
+          id: z.number(),
+          senderName: z.string(),
+          audience: z.string(),
+          audienceRole: z.string().nullable(),
+          audienceUserId: z.number().nullable(),
+          audienceUserName: z.string().nullable(),
+          title: z.string(),
+          body: z.string(),
+          recipientCount: z.number(),
+          createdAt: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.announcements)
+        .orderBy(desc(schema.announcements.id))
+        .limit(100);
+      const userIds = [
+        ...new Set([
+          ...rows.map((r) => r.adminId),
+          ...rows.map((r) => r.audienceUserId).filter((x): x is number => x != null),
+        ]),
+      ];
+      const users = userIds.length
+        ? await db.select().from(schema.users).where(inArray(schema.users.id, userIds))
+        : [];
+      const nameById = new Map(users.map((u) => [u.id, u.name]));
+      return {
+        announcements: rows.map((r) => ({
+          id: r.id,
+          senderName: nameById.get(r.adminId) ?? "অ্যাডমিন",
+          audience: r.audience,
+          audienceRole: r.audienceRole,
+          audienceUserId: r.audienceUserId,
+          audienceUserName:
+            r.audienceUserId != null ? (nameById.get(r.audienceUserId) ?? null) : null,
+          title: r.title,
+          body: r.body,
+          recipientCount: r.recipientCount,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      };
+    },
+  }),
+
+  adminSearchUsers: defineAction({
+    description:
+      "Admin (operations): searches users by name or phone (for picking the one specific recipient of an announcement). Returns at most 20 matches with role, so the picker never dumps the whole user base.",
+    request: z.object({
+      token: z.string(),
+      query: z.string().trim().min(1).max(60),
+    }),
+    response: z.object({
+      users: z.array(
+        z.object({
+          id: z.number(),
+          name: z.string(),
+          phone: z.string(),
+          role: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["operations"]);
+      const db = dbOf(ctx);
+      const q = args.query.trim().toLowerCase();
+      const rows = await db
+        .select()
+        .from(schema.users)
+        .orderBy(desc(schema.users.id))
+        .limit(500);
+      const matched = rows
+        .filter(
+          (u) =>
+            u.status === "active" &&
+            (u.name.toLowerCase().includes(q) || u.phone.includes(args.query.trim())),
+        )
+        .slice(0, 20);
+      return {
+        users: matched.map((u) => ({
+          id: u.id,
+          name: u.name,
+          phone: u.phone,
+          role: u.role,
+        })),
+      };
+    },
+  }),
+
+  // ------------------------------------------------ Phase 10: coupons
+
+  adminListCoupons: defineAction({
+    description:
+      "Admin (finance): lists all coupons with honest usage stats counted from real redemption rows (uses so far, remaining uses).",
+    request: z.object({ token: z.string() }),
+    response: z.object({ coupons: z.array(couponOut) }),
+    async handler(ctx, args) {
+      await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const names = await serviceNameMap(ctx);
+      const rows = await db
+        .select()
+        .from(schema.coupons)
+        .orderBy(desc(schema.coupons.id));
+      const reds = await db
+        .select({ couponId: schema.couponRedemptions.couponId })
+        .from(schema.couponRedemptions);
+      const usedBy = new Map<number, number>();
+      for (const r of reds) usedBy.set(r.couponId, (usedBy.get(r.couponId) ?? 0) + 1);
+      return {
+        coupons: rows.map((c) => {
+          const used = usedBy.get(c.id) ?? 0;
+          return {
+            id: c.id,
+            code: c.code,
+            discountType: c.discountType,
+            discountValue: c.discountValue,
+            minAmount: c.minAmount,
+            expiresOn: c.expiresOn,
+            usageLimit: c.usageLimit,
+            serviceSlug: c.serviceSlug,
+            serviceName: c.serviceSlug ? (names.get(c.serviceSlug) ?? c.serviceSlug) : null,
+            active: c.active === 1,
+            usedCount: used,
+            remaining: c.usageLimit != null ? Math.max(0, c.usageLimit - used) : null,
+            createdAt: c.createdAt.toISOString(),
+          };
+        }),
+      };
+    },
+  }),
+
+  adminSaveCoupon: defineAction({
+    description:
+      "Admin (finance): creates or updates a coupon. The code must be unique (case-insensitive); a percent discount is 1–100, a fixed discount at least ৳1; the service restriction must be a real service slug when set; the expiry must be a real YYYY-MM-DD date when set.",
+    request: z.object({
+      token: z.string(),
+      id: z.number().int().optional(),
+      code: z.string().trim().min(3).max(24),
+      discountType: z.enum(["fixed", "percent"]),
+      discountValue: z.number().int().min(1).max(100000),
+      minAmount: z.number().int().min(0).nullable().optional(),
+      expiresOn: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "মেয়াদের তারিখ YYYY-MM-DD আকারে দিন।")
+        .nullable()
+        .optional(),
+      usageLimit: z.number().int().min(1).max(1000000).nullable().optional(),
+      serviceSlug: z.string().trim().max(60).nullable().optional(),
+      active: z.boolean().optional(),
+    }),
+    response: z.object({ ok: z.literal(true), id: z.number() }),
+    async handler(ctx, args) {
+      const admin = await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const code = normalizeCouponCode(args.code);
+      if (!/^[A-Z0-9][A-Z0-9_-]*$/.test(code)) {
+        throw new Error("কুপন কোডে শুধু ইংরেজি অক্ষর, সংখ্যা, - ও _ ব্যবহার করুন।");
+      }
+      if (args.discountType === "percent" && args.discountValue > 100) {
+        throw new Error("শতাংশ ছাড় ১০০%-এর বেশি হতে পারে না।");
+      }
+      if (args.expiresOn) {
+        const d = new Date(`${args.expiresOn}T00:00:00`);
+        if (Number.isNaN(d.getTime())) throw new Error("মেয়াদের তারিখটি সঠিক নয়।");
+      }
+      let serviceSlug: string | null = null;
+      if (args.serviceSlug) {
+        const names = await serviceNameMap(ctx);
+        if (!names.has(args.serviceSlug)) {
+          throw new Error("সার্ভিসটি পাওয়া যায়নি — তালিকা থেকে বেছে নিন।");
+        }
+        serviceSlug = args.serviceSlug;
+      }
+      const clash = await db
+        .select({ id: schema.coupons.id })
+        .from(schema.coupons)
+        .where(eq(schema.coupons.code, code));
+      const now = new Date();
+      if (args.id) {
+        const rows = await db
+          .select()
+          .from(schema.coupons)
+          .where(eq(schema.coupons.id, args.id))
+          .limit(1);
+        if (!rows[0]) throw new Error("কুপন পাওয়া যায়নি।");
+        if (clash.some((c) => c.id !== args.id)) {
+          throw new Error("এই কোডে ইতিমধ্যে আরেকটি কুপন আছে।");
+        }
+        await db
+          .update(schema.coupons)
+          .set({
+            code,
+            discountType: args.discountType,
+            discountValue: args.discountValue,
+            minAmount: args.minAmount ?? null,
+            expiresOn: args.expiresOn ?? null,
+            usageLimit: args.usageLimit ?? null,
+            serviceSlug,
+            active: args.active === undefined ? rows[0].active : args.active ? 1 : 0,
+            updatedAt: now,
+          })
+          .where(eq(schema.coupons.id, args.id));
+        await logAdmin(ctx, admin.id, "coupon_update", `${code} (${args.discountType} ${args.discountValue})`);
+        ctx.invalidateQueries();
+        return { ok: true as const, id: args.id };
+      }
+      if (clash.length > 0) throw new Error("এই কোডে ইতিমধ্যে একটি কুপন আছে।");
+      const inserted = await db
+        .insert(schema.coupons)
+        .values({
+          code,
+          discountType: args.discountType,
+          discountValue: args.discountValue,
+          minAmount: args.minAmount ?? null,
+          expiresOn: args.expiresOn ?? null,
+          usageLimit: args.usageLimit ?? null,
+          serviceSlug,
+          active: args.active === undefined ? 1 : args.active ? 1 : 0,
+          createdBy: admin.id,
+        })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error("কুপন তৈরি করা যায়নি — আবার চেষ্টা করুন।");
+      await logAdmin(ctx, admin.id, "coupon_create", `${code} (${args.discountType} ${args.discountValue})`);
+      ctx.invalidateQueries();
+      return { ok: true as const, id: row.id };
+    },
+  }),
+
+  adminSetCouponActive: defineAction({
+    description: "Admin (finance): activates or deactivates a coupon without deleting it or its redemption history.",
+    request: z.object({
+      token: z.string(),
+      couponId: z.number().int(),
+      active: z.boolean(),
+    }),
+    response: okOut,
+    async handler(ctx, args): Promise<z.infer<typeof okOut>> {
+      const admin = await requireAdminLevel(ctx, args.token, ["finance"]);
+      const db = dbOf(ctx);
+      const rows = await db
+        .select()
+        .from(schema.coupons)
+        .where(eq(schema.coupons.id, args.couponId))
+        .limit(1);
+      const c = rows[0];
+      if (!c) throw new Error("কুপন পাওয়া যায়নি।");
+      await db
+        .update(schema.coupons)
+        .set({ active: args.active ? 1 : 0, updatedAt: new Date() })
+        .where(eq(schema.coupons.id, c.id));
+      await logAdmin(ctx, admin.id, "coupon_active", `${c.code} -> ${args.active ? "active" : "inactive"}`);
+      ctx.invalidateQueries();
+      return { ok: true };
+    },
+  }),
+
+  checkCoupon: defineAction({
+    description:
+      "Customer: checks a coupon code against their own booking's pending INITIAL quotation before approving it — returns the exact discount that approval would record, or throws the precise reason the code cannot be used. Nothing is redeemed by checking.",
+    request: z.object({
+      token: z.string(),
+      bookingId: z.number().int(),
+      code: z.string().trim().min(1).max(40),
+    }),
+    response: z.object({
+      code: z.string(),
+      discount: z.number(),
+      discountedTotal: z.number(),
+    }),
+    async handler(ctx, args) {
+      const user = await requireUser(ctx, args.token);
+      if (user.role !== "customer") {
+        throw new Error("শুধুমাত্র গ্রাহকই কুপন যাচাই করতে পারবেন।");
+      }
+      const db = dbOf(ctx);
+      const brows = await db
+        .select()
+        .from(schema.bookings)
+        .where(eq(schema.bookings.id, args.bookingId))
+        .limit(1);
+      const b = brows[0];
+      if (!b || b.customerId !== user.id) throw new Error("বুকিং পাওয়া যায়নি।");
+      if (b.finalPrice != null) {
+        throw new Error("এই বুকিংয়ের মূল্য ইতিমধ্যে চূড়ান্ত — এখন কুপন ব্যবহার করা যাবে না।");
+      }
+      const qrows = await db
+        .select()
+        .from(schema.quotations)
+        .where(
+          and(
+            eq(schema.quotations.bookingId, b.id),
+            eq(schema.quotations.kind, "initial"),
+            eq(schema.quotations.status, "pending_approval"),
+          ),
+        )
+        .limit(1);
+      const q = qrows[0];
+      if (!q) throw new Error("এই বুকিংয়ে অনুমোদনের অপেক্ষায় কোনো প্রাথমিক কোটেশন নেই।");
+      const { coupon, discount } = await validateCouponForBooking(ctx, {
+        code: args.code,
+        serviceSlug: b.serviceSlug,
+        billTotal: q.totalAmount,
+        eligibleCharge: q.labourCharge + q.additionalCharge,
+        bookingId: b.id,
+      });
+      return {
+        code: coupon.code,
+        discount,
+        discountedTotal: q.totalAmount - discount,
+      };
     },
   }),
 

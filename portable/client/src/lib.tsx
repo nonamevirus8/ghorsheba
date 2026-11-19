@@ -205,6 +205,9 @@ export const STATUS_BN: Record<string, string> = {
   rejected: "প্রত্যাখ্যাত",
   disputed: "বিরোধ চলমান",
   rescheduled: "সময় পুনঃনির্ধারিত",
+  // Timeline-only event (Phase 10 fix): a pure professional-assignment
+  // change recorded while the booking's status itself did not move.
+  pro_assigned: "প্রফেশনাল অ্যাসাইন করা হয়েছে",
 };
 
 /** Master-flow stage order for progress displays (Phase 7). */

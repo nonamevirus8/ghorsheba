@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { FIELDS } from "./fields";
 import {
 Avatar,
 EmptyState,
@@ -1682,6 +1683,7 @@ function LoginPage({ params }: { params: URLSearchParams }) {
             id="login-pass"
             type="password"
             className={inputCls}
+            {...FIELDS.login.password}
             autoComplete="current-password"
             placeholder="আপনার পাসওয়ার্ড"
             value={password}
@@ -1755,7 +1757,7 @@ function RegisterPage({ params }: { params: URLSearchParams }) {
       >
         <div>
           <label className={labelCls} htmlFor="reg-name">আপনার নাম *</label>
-          <input id="reg-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="পুরো নাম লিখুন" required />
+          <input id="reg-name" className={inputCls} {...FIELDS.registerCustomer.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="পুরো নাম লিখুন" required />
         </div>
         <div>
           <label className={labelCls} htmlFor="reg-phone">মোবাইল নম্বর *</label>
@@ -1763,7 +1765,7 @@ function RegisterPage({ params }: { params: URLSearchParams }) {
         </div>
         <div>
           <label className={labelCls} htmlFor="reg-pass">পাসওয়ার্ড *</label>
-          <input id="reg-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} />
+          <input id="reg-pass" type="password" className={inputCls} {...FIELDS.registerCustomer.password} autoComplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
         <div>
           <label className={labelCls} htmlFor="reg-loc">আপনার উপজেলা</label>
@@ -1775,7 +1777,7 @@ function RegisterPage({ params }: { params: URLSearchParams }) {
         </div>
         <div>
           <label className={labelCls} htmlFor="reg-addr">ঠিকানা</label>
-          <input id="reg-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="গ্রাম / এলাকা, বাসার বিবরণ" />
+          <input id="reg-addr" className={inputCls} {...FIELDS.registerCustomer.address} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="গ্রাম / এলাকা, বাসার বিবরণ" />
         </div>
         <PhotoField
           label="প্রোফাইল ছবি"
@@ -1866,7 +1868,7 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
           >
             <div>
               <label className={labelCls} htmlFor="jp-name">পুরো নাম *</label>
-              <input id="jp-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} required placeholder="আপনার নাম" />
+              <input id="jp-name" className={inputCls} {...FIELDS.registerProfessional.name} value={name} onChange={(e) => setName(e.target.value)} required placeholder="আপনার নাম" />
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-phone">মোবাইল নম্বর *</label>
@@ -1874,11 +1876,11 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-pass">পাসওয়ার্ড *</label>
-              <input id="jp-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} />
+              <input id="jp-pass" type="password" className={inputCls} {...FIELDS.registerProfessional.password} autoComplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-email">ইমেইল (ঐচ্ছিক)</label>
-              <input id="jp-email" type="email" className={inputCls} placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input id="jp-email" type="email" className={inputCls} {...FIELDS.registerProfessional.email} placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-cat">কাজের ক্যাটাগরি *</label>
@@ -1891,11 +1893,11 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
             </div>
             <div>
               <label className={labelCls} htmlFor="jp-exp">অভিজ্ঞতা (বছর) *</label>
-              <input id="jp-exp" type="number" min={0} max={60} className={inputCls} value={experience} onChange={(e) => setExperience(e.target.value)} required />
+              <input id="jp-exp" type="number" {...FIELDS.registerProfessional.experienceYears} className={inputCls} value={experience} onChange={(e) => setExperience(e.target.value)} required />
             </div>
             <div className="sm:col-span-2">
               <label className={labelCls} htmlFor="jp-skills">দক্ষতা ও বিশেষত্ব</label>
-              <input id="jp-skills" className={inputCls} value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="যেমন: বাসার ওয়ারিং, IPS লাইন, সুইচবোর্ড" />
+              <input id="jp-skills" className={inputCls} {...FIELDS.registerProfessional.skills} value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="যেমন: বাসার ওয়ারিং, IPS লাইন, সুইচবোর্ড" />
             </div>
             <fieldset className="sm:col-span-2">
               <legend className={labelCls}>সেবার এলাকা (যেসব উপজেলায় কাজ করবেন) *</legend>
@@ -1920,11 +1922,11 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
             </fieldset>
             <div className="sm:col-span-2">
               <label className={labelCls} htmlFor="jp-addr">ঠিকানা</label>
-              <input id="jp-addr" className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="গ্রাম / এলাকা, উপজেলা" />
+              <input id="jp-addr" className={inputCls} {...FIELDS.registerProfessional.address} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="গ্রাম / এলাকা, উপজেলা" />
             </div>
             <div className="sm:col-span-2">
               <label className={labelCls} htmlFor="jp-nid">জাতীয় পরিচয়পত্র (NID) নম্বর *</label>
-              <input id="jp-nid" className={inputCls} inputMode="numeric" value={nid} onChange={(e) => setNid(e.target.value)} placeholder="যাচাইয়ের জন্য NID নম্বর" />
+              <input id="jp-nid" className={inputCls} {...FIELDS.registerProfessional.nidNumber} inputMode="numeric" value={nid} onChange={(e) => setNid(e.target.value)} placeholder="যাচাইয়ের জন্য NID নম্বর" />
               <p className="mt-1 text-[13px] text-[#737B73]">আপনার NID নম্বর ও ডকুমেন্ট শুধুমাত্র অ্যাডমিন যাচাইয়ের জন্য ব্যবহার হবে — গ্রাহক বা অন্য কারো কাছে কখনো দেখানো হবে না।</p>
             </div>
             <div className="sm:col-span-2">
@@ -1949,7 +1951,7 @@ function JoinProPage({ params }: { params: URLSearchParams }) {
             </div>
             <div className="sm:col-span-2">
               <label className={labelCls} htmlFor="jp-bio">সংক্ষিপ্ত পরিচিতি</label>
-              <textarea id="jp-bio" className={inputCls} rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="আপনার কাজের অভিজ্ঞতা সম্পর্কে দুই-এক লাইন লিখুন" />
+              <textarea id="jp-bio" className={inputCls} rows={3} {...FIELDS.registerProfessional.bio} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="আপনার কাজের অভিজ্ঞতা সম্পর্কে দুই-এক লাইন লিখুন" />
             </div>
             <div className="sm:col-span-2">
               <PhotoField
@@ -2012,7 +2014,7 @@ function AdminSetupPage() {
       >
         <div>
           <label className={labelCls} htmlFor="as-name">নাম</label>
-          <input id="as-name" className={inputCls} value={name} onChange={(e) => setName(e.target.value)} required />
+          <input id="as-name" className={inputCls} {...FIELDS.claimAdmin.name} value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div>
           <label className={labelCls} htmlFor="as-phone">মোবাইল নম্বর</label>
@@ -2020,7 +2022,7 @@ function AdminSetupPage() {
         </div>
         <div>
           <label className={labelCls} htmlFor="as-pass">পাসওয়ার্ড</label>
-          <input id="as-pass" type="password" className={inputCls} autoComplete="new-password" placeholder="শক্তিশালী পাসওয়ার্ড দিন" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} />
+          <input id="as-pass" type="password" className={inputCls} {...FIELDS.claimAdmin.password} autoComplete="new-password" placeholder="শক্তিশালী পাসওয়ার্ড দিন" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
         {error && <ErrorBox message={error} />}
         <button type="submit" disabled={claim.isPending} className="w-full bg-[#064B27] hover:bg-[#043A1E] disabled:opacity-60 text-white font-bold py-3 rounded-xl">

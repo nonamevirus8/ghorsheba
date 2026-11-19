@@ -238,6 +238,15 @@ export const bookings = pgTable("bookings", {
   paymentModel: text("payment_model", {
     enum: ["full_online", "split_50_50"],
   }),
+  // Master Phase 10: a coupon the customer applied at price
+  // confirmation (initial quotation approval). `couponDiscount` is the
+  // taka amount taken off the eligible charge (labour + additional);
+  // the booking's finalPrice and calcBase already include the discount
+  // — these two columns are the record of what was applied. The full
+  // redemption (with the coupon row it came from) lives in
+  // coupon_redemptions. Null when no coupon was used.
+  couponCode: text("coupon_code"),
+  couponDiscount: integer("coupon_discount"),
   customerFeePercent: integer("customer_fee_percent"),
   proCommissionPercent: integer("pro_commission_percent"),
   calcBase: integer("calc_base"),
@@ -762,4 +771,79 @@ export const cancelRequests = pgTable("cancel_requests", {
   decidedAt: timestamp("decided_at", { mode: "date" }),
   createdAt: ts("created_at"),
   updatedAt: ts("updated_at"),
+});
+
+// ---------------------------------------------------------------------------
+// Master Phase 10 — manual announcements, coupons.
+//
+// Announcements are the MANUAL half of the notification system (every
+// other notification is auto-created by a real event): an admin
+// composes a title + body and sends it to all users, to one role, or
+// to one specific user. Each send is recorded here (sender, audience,
+// text, time, recipient count) and delivered as one `notifications`
+// row per recipient (type "announcement"), so every recipient has
+// their own read/unread state in the notification center. An
+// announcement with no recipients is rejected server-side — this
+// table never holds a send that reached nobody.
+export const announcements = pgTable("announcements", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  adminId: integer("admin_id")
+    .notNull()
+    .references(() => users.id),
+  audience: text("audience", { enum: ["all", "role", "user"] }).notNull(),
+  audienceRole: text("audience_role", {
+    enum: ["customer", "professional", "admin"],
+  }),
+  audienceUserId: integer("audience_user_id").references(() => users.id),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  recipientCount: integer("recipient_count").notNull(),
+  createdAt: ts("created_at"),
+});
+
+// Coupons (Master Phase 10). A coupon exists ONLY because an admin
+// configured it here — the site never promises a discount that is not
+// a row in this table. `discountValue` is taka for "fixed" and a
+// percent (1–100) for "percent"; the discount is always computed on
+// the booking's eligible charge (labour + additional, the commission
+// base) at price confirmation. `serviceSlug` null = every service.
+// `expiresOn` is a YYYY-MM-DD date (Asia/Dhaka) or null = no expiry.
+// `usageLimit` null = unlimited. Codes are stored uppercase and
+// matched case-insensitively.
+export const coupons = pgTable("coupons", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  code: text("code").notNull().unique(),
+  discountType: text("discount_type", { enum: ["fixed", "percent"] }).notNull(),
+  discountValue: integer("discount_value").notNull(),
+  minAmount: integer("min_amount"),
+  expiresOn: text("expires_on"),
+  usageLimit: integer("usage_limit"),
+  serviceSlug: text("service_slug"),
+  active: integer("active").notNull().default(1),
+  createdBy: integer("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: ts("created_at"),
+  updatedAt: ts("updated_at"),
+});
+
+// One row per actual coupon use, written in the same transaction as
+// the price confirmation that applied it. Usage counts and remaining
+// uses are always counted from these rows — never a stored counter
+// that could drift. One redemption per booking (unique booking_id):
+// a booking's price is confirmed once, so its coupon is used once.
+export const couponRedemptions = pgTable("coupon_redemptions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  couponId: integer("coupon_id")
+    .notNull()
+    .references(() => coupons.id),
+  bookingId: integer("booking_id")
+    .notNull()
+    .unique()
+    .references(() => bookings.id),
+  customerId: integer("customer_id")
+    .notNull()
+    .references(() => users.id),
+  discountAmount: integer("discount_amount").notNull(),
+  createdAt: ts("created_at"),
 });
