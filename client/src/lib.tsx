@@ -310,6 +310,30 @@ export function fmtDate(iso: string): string {
 
 export const bdt = (n: number) => `৳${n.toLocaleString("bn-BD")}`;
 
+// Exact English brand spellings for payment providers (Master Phase 11).
+// The stored enum values are lowercase ("bkash", "nagad", "rocket");
+// anywhere an English provider name is shown or exported it MUST come
+// from this map — rendering the raw enum leaks the misspelling "bkash".
+export const PROVIDER_EN: Record<string, string> = {
+  bkash: "bKash",
+  nagad: "Nagad",
+  rocket: "Rocket",
+  pathao_pay: "Pathao Pay",
+  sslcommerz: "SSLCOMMERZ",
+  bank: "Bank",
+};
+
+export function providerEn(value: string | null | undefined): string {
+  if (!value) return "";
+  return PROVIDER_EN[value] ?? value;
+}
+
+/** Clock time for "last updated" stamps (viewer-local). */
+export function fmtTime(iso: string | number | Date): string {
+  const d = iso instanceof Date ? iso : new Date(iso);
+  return d.toLocaleTimeString("bn-BD", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+}
+
 // ------------------------------------------------------------- images
 
 export async function fileToImage(file: File): Promise<{ dataBase64: string; mimeType: string }> {
@@ -499,6 +523,31 @@ export const Icon = {
     svg(<path d="M4 7h16M4 12h16M4 17h16" />, c ?? "w-6 h-6"),
   x: (c?: string) => svg(<path d="M6 6l12 12M18 6 6 18" />, c ?? "w-5 h-5"),
   chevronDown: (c?: string) => svg(<path d="m6 9 6 6 6-6" />, c ?? "w-4 h-4"),
+  chevronLeft: (c?: string) => svg(<path d="m15 6-6 6 6 6" />, c ?? "w-4 h-4"),
+  chevronRight: (c?: string) => svg(<path d="m9 6 6 6-6 6" />, c ?? "w-4 h-4"),
+  refresh: (c?: string) =>
+    svg(
+      <>
+        <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+        <path d="M20 3v4h-4" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
+  chart: (c?: string) =>
+    svg(
+      <>
+        <path d="M4 20V10M10 20V4M16 20v-8M21 20H3" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
+  fileText: (c?: string) =>
+    svg(
+      <>
+        <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z" />
+        <path d="M14 3v5h4M9.5 13h5M9.5 17h5" />
+      </>,
+      c ?? "w-5 h-5",
+    ),
   arrowRight: (c?: string) => svg(<path d="M4 12h15m-6-7 7 7-7 7" />, c ?? "w-5 h-5"),
   arrowLeft: (c?: string) => svg(<path d="M20 12H5m6 7-7-7 7-7" />, c ?? "w-5 h-5"),
   bell: (c?: string) =>

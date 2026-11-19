@@ -3927,6 +3927,182 @@ export const Actions = {
     },
   }),
 
+  getAdminAnalytics: defineAction({
+    description:
+      "Admin analytics & reports (Master Phase 11): real figures only, computed server-side from the payments table, the immutable payment ledger and booking snapshots for an optional date range (Asia/Dhaka days). Online money, customer fees, commission earned vs collected, payouts, refunds and failed transactions are kept strictly separate; cash is reported as recorded on bookings (paid directly to professionals) and is never presented as platform-verified money. Current held balance and pending payouts are point-in-time figures, not range-filtered.",
+    request: z.object({
+      token: z.string(),
+      from: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      to: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+    }),
+    response: z.object({
+      from: z.string().nullable(),
+      to: z.string().nullable(),
+      onlineCollected: z.number(),
+      onlineFullOnline: z.number(),
+      onlineSplit: z.number(),
+      customerFeesCollected: z.number(),
+      commissionEarned: z.number(),
+      commissionCollected: z.number(),
+      revenue: z.number(),
+      payoutsCompleted: z.number(),
+      refundsTotal: z.number(),
+      refundsCount: z.number(),
+      failedCount: z.number(),
+      failedAmount: z.number(),
+      cashToProfessionals: z.number(),
+      heldBalanceTotal: z.number(),
+      pendingPayoutCount: z.number(),
+      pendingPayoutAmount: z.number(),
+      verifiedPaymentsInRange: z.number(),
+      ledger: z.array(
+        z.object({
+          id: z.number(),
+          createdAt: z.string(),
+          bookingCode: z.string(),
+          entryType: z.string(),
+          amount: z.number(),
+          note: z.string().nullable(),
+        }),
+      ),
+      payments: z.array(
+        z.object({
+          id: z.number(),
+          createdAt: z.string(),
+          bookingCode: z.string(),
+          customerName: z.string(),
+          provider: z.string(),
+          providerTrxId: z.string(),
+          amount: z.number(),
+          status: z.string(),
+          paymentModel: z.string(),
+          method: z.string(),
+        }),
+      ),
+    }),
+    async handler(ctx, args) {
+      await requireAdmin(ctx, args.token);
+      const db = dbOf(ctx);
+      // Date range in Asia/Dhaka wall time (UTC+6, no DST): `from` is
+      // inclusive, `to` is inclusive of the whole day.
+      const start = args.from ? new Date(`${args.from}T00:00:00+06:00`) : null;
+      const end = args.to ? new Date(`${args.to}T00:00:00+06:00`) : null;
+      if (end) end.setDate(end.getDate() + 1);
+      const inRange = (d: Date | null | undefined) => {
+        if (!d) return false;
+        if (start && d < start) return false;
+        if (end && d >= end) return false;
+        return true;
+      };
+
+      const bookings = await db.select().from(schema.bookings);
+      const bookingById = new Map(bookings.map((b) => [b.id, b]));
+      const ledgerAll = await db.select().from(schema.paymentLedger);
+      const ledger = ledgerAll.filter((e) => inRange(e.createdAt));
+      const sumLedger = (t: string) =>
+        ledger.filter((e) => e.entryType === t).reduce((a, e) => a + e.amount, 0);
+
+      const paymentRows = await db.select().from(schema.payments);
+      const paymentWhen = (p: (typeof paymentRows)[number]) => p.verifiedAt ?? p.createdAt;
+      const verifiedInRange = paymentRows.filter((p) => p.status === "verified" && inRange(paymentWhen(p)));
+      const failedInRange = paymentRows.filter((p) => p.status === "failed" && inRange(p.createdAt));
+      const onlineFullOnline = verifiedInRange
+        .filter((p) => p.paymentModel === "full_online")
+        .reduce((a, p) => a + p.amount, 0);
+      const onlineSplit = verifiedInRange
+        .filter((p) => p.paymentModel === "split_50_50")
+        .reduce((a, p) => a + p.amount, 0);
+
+      // Cash recorded on bookings: the cash part of dual-payment
+      // bookings whose online part was verified in range, plus legacy
+      // cash-paid completed bookings updated in range. This is money
+      // paid DIRECTLY to the professional — recorded, not verified by
+      // the platform — and is reported separately for that reason.
+      const verifiedBookingIdsInRange = new Set(verifiedInRange.map((p) => p.bookingId));
+      let cashToProfessionals = 0;
+      for (const b of bookings) {
+        if (verifiedBookingIdsInRange.has(b.id)) {
+          cashToProfessionals += b.cashAmount ?? 0;
+        } else if (
+          COMPLETED_STATUS_SET.has(b.status) &&
+          b.paymentStatus === "cash_paid" &&
+          b.finalPrice != null &&
+          inRange(b.updatedAt)
+        ) {
+          cashToProfessionals += b.finalPrice;
+        }
+      }
+
+      // Point-in-time figures (NOT range-filtered): money still held
+      // for settlement and payouts still waiting on a decision.
+      const sumAll = (t: string) =>
+        ledgerAll.filter((e) => e.entryType === t).reduce((a, e) => a + e.amount, 0);
+      const heldBalanceTotal = sumAll("held_balance") - sumAll("payout") - sumAll("refund");
+      const withdrawals = await db.select().from(schema.withdrawalRequests);
+      const openWithdrawals = withdrawals.filter(
+        (w) => w.status === "requested" || w.status === "approved" || w.status === "held",
+      );
+
+      const customerFeesCollected = sumLedger("customer_fee");
+      const commissionCollected = sumLedger("commission_collected");
+      const refundEntries = ledger.filter((e) => e.entryType === "refund");
+      const paymentsInRange = paymentRows
+        .filter((p) => inRange(p.createdAt))
+        .sort((a, b) => b.id - a.id)
+        .slice(0, 100);
+      return {
+        from: args.from ?? null,
+        to: args.to ?? null,
+        onlineCollected: sumLedger("online_collection"),
+        onlineFullOnline,
+        onlineSplit,
+        customerFeesCollected,
+        commissionEarned: sumLedger("commission_due"),
+        commissionCollected,
+        revenue: customerFeesCollected + commissionCollected,
+        payoutsCompleted: sumLedger("payout"),
+        refundsTotal: refundEntries.reduce((a, e) => a + e.amount, 0),
+        refundsCount: refundEntries.length,
+        failedCount: failedInRange.length,
+        failedAmount: failedInRange.reduce((a, p) => a + p.amount, 0),
+        cashToProfessionals,
+        heldBalanceTotal,
+        pendingPayoutCount: openWithdrawals.length,
+        pendingPayoutAmount: openWithdrawals.reduce((a, w) => a + w.amount, 0),
+        verifiedPaymentsInRange: verifiedInRange.length,
+        ledger: [...ledger]
+          .sort((a, b) => b.id - a.id)
+          .slice(0, 100)
+          .map((e) => ({
+            id: e.id,
+            createdAt: e.createdAt.toISOString(),
+            bookingCode: bookingById.get(e.bookingId)?.code ?? "",
+            entryType: e.entryType,
+            amount: e.amount,
+            note: e.note,
+          })),
+        payments: paymentsInRange.map((p) => ({
+          id: p.id,
+          createdAt: p.createdAt.toISOString(),
+          bookingCode: bookingById.get(p.bookingId)?.code ?? "",
+          customerName: bookingById.get(p.bookingId)?.customerName ?? "",
+          provider: p.provider,
+          providerTrxId: p.providerTrxId,
+          amount: p.amount,
+          status: p.status,
+          paymentModel: p.paymentModel,
+          method: p.method,
+        })),
+      };
+    },
+  }),
+
   adminListBookings: defineAction({
     description: "Admin: lists all bookings, optionally filtered by status.",
     request: z.object({ token: z.string(), status: z.string().optional() }),

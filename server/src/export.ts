@@ -30,6 +30,17 @@ import { z, type SpaceDb } from "@hatch/space-sdk";
 import { asc } from "drizzle-orm";
 import * as schema from "./schema";
 
+// Exact English brand spellings for payment providers (Master
+// Phase 11): the Sheets export must never write the raw lowercase
+// enum ("bkash") — the owner's spreadsheet shows "bKash" / "Nagad".
+const PROVIDER_EN: Record<string, string> = {
+  bkash: "bKash",
+  nagad: "Nagad",
+  rocket: "Rocket",
+  pathao_pay: "Pathao Pay",
+  sslcommerz: "SSLCOMMERZ",
+};
+
 type ExportDb = SpaceDb<typeof schema>;
 
 export const exportBookingRow = z.object({
@@ -266,7 +277,7 @@ export async function buildExport(db: ExportDb): Promise<ExportPayload> {
         bookingId: p.bookingId,
         bookingCode: booking?.code ?? "",
         customerName: booking?.customerName ?? "",
-        provider: p.provider,
+        provider: PROVIDER_EN[p.provider] ?? p.provider,
         trxId: p.providerTrxId,
         amount: p.amount,
         customerFee: booking?.customerFee ?? null,

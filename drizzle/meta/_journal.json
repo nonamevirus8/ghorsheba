@@ -36,6 +36,48 @@
       "when": 1794934347740,
       "tag": "0005_identity_documents_table",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794963431052,
+      "tag": "0006_phase3_customer_dashboard",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794968290752,
+      "tag": "0007_phase4_professional_dashboard",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794994469846,
+      "tag": "0008_phase6_social_links_contact_settings_support_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795001865740,
+      "tag": "0009_phase7_booking_quotation_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795018731069,
+      "tag": "0010_phase9_withdrawal_cancel_disputes_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795025649924,
+      "tag": "0011_phase10_announcements_coupons",
+      "breakpoints": true
     }
   ]
 }

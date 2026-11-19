@@ -21,6 +21,7 @@ fmtDate,
 fmtDateTime,
 getToken,
 go,
+providerEn,
 useCatalog,
 useMe,
 type Booking,
@@ -323,8 +324,8 @@ export const PROVIDER_BN: Record<string, string> = {
 };
 
 export const PAYMENT_MODEL_BN: Record<string, string> = {
-  full_online: "সম্পূর্ণ অনলাইন পেমেন্ট",
-  split_50_50: "৫০% অনলাইন + ৫০% ক্যাশ",
+  full_online: "সম্পূর্ণ অনলাইন",
+  split_50_50: "৫০% অনলাইন + ৫০% নগদ",
 };
 
 export const PAYMENT_STATUS_BN: Record<string, string> = {
@@ -532,7 +533,7 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
             {Icon.checkCircle("w-5 h-5")} আপনার অনলাইন পেমেন্ট যাচাই সম্পন্ন হয়েছে
           </p>
           <p className="mt-1.5 text-sm text-[#4c584c]">
-            {bdt(verified.amount)} • {PROVIDER_BN[verified.provider] ?? verified.provider} •{" "}
+            {bdt(verified.amount)} • {PROVIDER_BN[verified.provider] ?? providerEn(verified.provider)} •{" "}
             {verified.method === "sslcommerz" ? "Tran ID" : "TrxID"}:{" "}
             <span className="font-en">{verified.providerTrxId}</span> • {PAYMENT_MODEL_BN[verified.paymentModel]}
           </p>
@@ -549,7 +550,7 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
               : "পেমেন্ট জমা হয়েছে — অ্যাডমিন যাচাইয়ের অপেক্ষায়"}
           </p>
           <p className="mt-1.5 text-sm text-amber-900/80">
-            {bdt(live.amount)} • {PROVIDER_BN[live.provider] ?? live.provider} •{" "}
+            {bdt(live.amount)} • {PROVIDER_BN[live.provider] ?? providerEn(live.provider)} •{" "}
             {live.method === "sslcommerz" ? "Tran ID" : "TrxID"}:{" "}
             <span className="font-en">{live.providerTrxId}</span> • {PAYMENT_MODEL_BN[live.paymentModel]}।
             যাচাই সম্পন্ন হলে নোটিফিকেশন পাবেন — তখনই পেমেন্টটি চূড়ান্ত বলে গণ্য হবে।
@@ -558,9 +559,13 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
       ) : (
         <>
           <p className="mt-1.5 text-sm text-[#737B73]">
-            দুটি পদ্ধতির যেকোনো একটি বেছে নিন। সব হিসাব সার্ভার থেকে এসেছে — মূল্য নিশ্চিত হওয়ার সময়ের হারেই হিসাব হয়েছে।
+            তিনটি সহজ ধাপে পেমেন্ট সম্পন্ন করুন। সব হিসাব সার্ভার থেকে এসেছে — মূল্য নিশ্চিত হওয়ার সময়ের হারেই হিসাব হয়েছে।
           </p>
-          <div className="mt-4 grid md:grid-cols-2 gap-3.5" role="radiogroup" aria-label="পেমেন্ট পদ্ধতি">
+          <h3 className="mt-5 font-bold text-[#064B27] flex items-center gap-2">
+            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#087A35] text-white text-[13px] font-bold">১</span>
+            পেমেন্ট পদ্ধতি বেছে নিন
+          </h3>
+          <div className="mt-3 grid md:grid-cols-2 gap-3.5" role="radiogroup" aria-label="পেমেন্ট পদ্ধতি">
             {q.options.map((o) => {
               const isActive = o.paymentModel === activeModel;
               return (
@@ -621,13 +626,17 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
             </div>
           )}
 
-          <h3 className="mt-6 font-bold text-[#064B27]">অথবা ম্যানুয়াল TrxID দিয়ে পেমেন্ট করুন</h3>
+          <h3 className="mt-6 font-bold text-[#064B27] flex items-center gap-2">
+            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#087A35] text-white text-[13px] font-bold">২</span>
+            টাকা পাঠান
+          </h3>
+          <p className="mt-1.5 text-sm text-[#737B73]">নিচের নম্বরে টাকা পাঠিয়ে TrxIDটি সংরক্ষণ করুন।</p>
 
           {q.paymentReceiveNumber ? (
             <div className="mt-4 rounded-2xl bg-[#F0FAF2] border border-[#cfe3d3] p-4 text-[15px]">
               <p className="font-semibold text-[#064B27]">টাকা পাঠানোর নম্বর</p>
               <p className="mt-1">
-                {q.paymentReceiveProvider ? `${PROVIDER_BN[q.paymentReceiveProvider] ?? q.paymentReceiveProvider} — ` : ""}
+                {q.paymentReceiveProvider ? `${PROVIDER_BN[q.paymentReceiveProvider] ?? providerEn(q.paymentReceiveProvider)} — ` : ""}
                 <b className="font-en text-[17px]">{q.paymentReceiveNumber}</b> (ঘরসেবার অফিসিয়াল নম্বর)
               </p>
               <p className="mt-1 text-sm text-[#4c584c]">
@@ -641,6 +650,10 @@ export function CheckoutPanel({ token, code }: { token: string; code: string }) 
             </div>
           )}
 
+          <h3 className="mt-6 font-bold text-[#064B27] flex items-center gap-2">
+            <span className="grid place-items-center w-6 h-6 rounded-full bg-[#087A35] text-white text-[13px] font-bold">৩</span>
+            TrxID জমা দিন
+          </h3>
           <form
             className="mt-4 grid sm:grid-cols-2 gap-4"
             onSubmit={(e) => {

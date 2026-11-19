@@ -1,6 +1,6 @@
 // Customer, Professional and Admin dashboards.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ApiResponse } from "./api";
 import { FIELDS } from "./fields";
@@ -23,7 +23,9 @@ bdt,
 errMsg,
 fmtDate,
 fmtDateTime,
+fmtTime,
 getToken,
+providerEn,
 setToken,
 useCatalog,
 useMe,
@@ -83,6 +85,163 @@ function StatCard({ label, value, icon }: { label: string; value: ReactNode; ico
       <span className="inline-grid place-items-center w-9 h-9 rounded-lg bg-[#F0FAF2] text-[#087A35] mb-2">{icon}</span>
       <p className="text-[22px] font-bold leading-none text-[#064B27]">{value}</p>
       <p className="mt-1 text-[13px] text-[#737B73]">{label}</p>
+    </div>
+  );
+}
+
+// ------------------------------------------------- Phase 11 admin bits
+//
+// Money figures must read identically on every device and browser, so
+// the money tabs refetch on focus + on a short interval and show when
+// the numbers were last refreshed, with a manual refresh button.
+const MONEY_REFETCH = { refetchInterval: 30_000, refetchOnWindowFocus: true } as const;
+
+function FreshnessBar({
+  dataUpdatedAt,
+  isFetching,
+  onRefresh,
+}: {
+  dataUpdatedAt: number;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  if (!dataUpdatedAt) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-[#737B73]">
+      <span className="inline-flex items-center gap-1.5">
+        {Icon.clock("w-4 h-4")} সর্বশেষ আপডেট: <span className="font-en font-semibold text-[#4c584c]">{fmtTime(dataUpdatedAt)}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={isFetching}
+        className="inline-flex items-center gap-1.5 border border-[#E5EAE5] bg-white hover:bg-[#F0FAF2] disabled:opacity-60 text-[#064B27] font-semibold px-3 py-1.5 rounded-lg"
+      >
+        {Icon.refresh("w-4 h-4")} {isFetching ? "আপডেট হচ্ছে…" : "রিফ্রেশ করুন"}
+      </button>
+    </div>
+  );
+}
+
+// Search + sort + pagination controls shared by the admin management
+// lists (Master Phase 11). Filtering and sorting happen on rows the
+// server already returned — no figure is ever computed here.
+const ADMIN_PAGE_SIZE = 10;
+
+function useListControls<T>(
+  rows: T[],
+  searchText: (row: T) => string,
+  sorters: Record<string, (a: T, b: T) => number>,
+  defaultSort: string,
+) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState(defaultSort);
+  const [page, setPage] = useState(1);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q ? rows.filter((r) => searchText(r).toLowerCase().includes(q)) : [...rows];
+    const sorter = sorters[sort];
+    if (sorter) base.sort(sorter);
+    return base;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, query, sort]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / ADMIN_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((safePage - 1) * ADMIN_PAGE_SIZE, safePage * ADMIN_PAGE_SIZE);
+  return {
+    query,
+    setQuery: (v: string) => {
+      setQuery(v);
+      setPage(1);
+    },
+    sort,
+    setSort: (v: string) => {
+      setSort(v);
+      setPage(1);
+    },
+    page: safePage,
+    setPage,
+    pageCount,
+    total: filtered.length,
+    pageRows,
+  };
+}
+
+function ListControls({
+  query,
+  setQuery,
+  sort,
+  setSort,
+  sortOptions,
+  total,
+  page,
+  pageCount,
+  setPage,
+  searchLabel,
+}: {
+  query: string;
+  setQuery: (v: string) => void;
+  sort: string;
+  setSort: (v: string) => void;
+  sortOptions: [string, string][];
+  total: number;
+  page: number;
+  pageCount: number;
+  setPage: (n: number) => void;
+  searchLabel: string;
+}) {
+  return (
+    <div className="mb-4">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#737B73] pointer-events-none">{Icon.search("w-4 h-4")}</span>
+          <label className="sr-only" htmlFor={searchLabel}>{searchLabel}</label>
+          <input
+            id={searchLabel}
+            className={`${inputCls} pl-9`}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchLabel}
+          />
+        </div>
+        <div>
+          <label className="sr-only" htmlFor={`${searchLabel}-sort`}>সাজান</label>
+          <select
+            id={`${searchLabel}-sort`}
+            className="w-full sm:w-auto border border-[#E5EAE5] rounded-xl px-3 py-2.5 bg-white text-sm font-medium"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            {sortOptions.map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {total > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-[#737B73]">
+          <span>মোট {total}টি • পেজ {page} / {pageCount}</span>
+          <span className="ml-auto flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="inline-flex items-center gap-1 border border-[#E5EAE5] bg-white px-3 py-1.5 rounded-lg font-semibold text-[#064B27] disabled:opacity-40"
+            >
+              {Icon.chevronLeft("w-4 h-4")} আগের
+            </button>
+            <button
+              type="button"
+              disabled={page >= pageCount}
+              onClick={() => setPage(page + 1)}
+              className="inline-flex items-center gap-1 border border-[#E5EAE5] bg-white px-3 py-1.5 rounded-lg font-semibold text-[#064B27] disabled:opacity-40"
+            >
+              পরের {Icon.chevronRight("w-4 h-4")}
+            </button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -818,7 +977,7 @@ function PaymentsTab({ token }: { token: string }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-bold">
-                <span className="font-en">{bdt(p.amount)}</span> • {PROVIDER_BN[p.provider] ?? p.provider}
+                <span className="font-en">{bdt(p.amount)}</span> • {PROVIDER_BN[p.provider] ?? providerEn(p.provider)}
               </p>
               <p className="text-[13px] text-[#737B73]">
                 বুকিং <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a>
@@ -1744,7 +1903,7 @@ function ProEarningsTab({ token }: { token: string }) {
               return (
                 <li key={r.id} className="py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-en font-bold">{bdt(r.amount)}</span>
-                  <span className="text-sm text-[#4c584c]">{WITHDRAWAL_METHOD_BN[r.method] ?? r.method} • <span className="font-en">{r.number}</span></span>
+                  <span className="text-sm text-[#4c584c]">{WITHDRAWAL_METHOD_BN[r.method] ?? providerEn(r.method)} • <span className="font-en">{r.number}</span></span>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
                   <span className="text-[13px] text-[#737B73] ml-auto">{fmtDate(r.createdAt)}</span>
                   {r.status === "paid" && r.transactionReference && (
@@ -2180,14 +2339,17 @@ type AdminService = ApiResponse<typeof api, "adminListServicesAll">["services"][
 export function AdminPanel({ params }: { params: URLSearchParams }) {
   const token = getToken() ?? "";
   const me = useMe();
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const tabRaw = params.get("tab") ?? "overview";
-  const tab = ["overview", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "tickets", "social", "announce", "coupons", "payments", "settings", "staff", "logs"].includes(tabRaw)
+  const tab = ["overview", "analytics", "bookings", "professionals", "customers", "services", "locations", "reviews", "complaints", "tickets", "social", "announce", "coupons", "payments", "settings", "staff", "logs"].includes(tabRaw)
     ? tabRaw
     : "overview";
   const overview = useQuery({
     queryKey: ["admin-overview"],
     queryFn: () => api.getAdminOverview({ token }),
     enabled: !!token && me.data?.user.role === "admin",
+    ...MONEY_REFETCH,
   });
   const gate = GateMessage({ query: me });
   if (gate) return gate;
@@ -2210,62 +2372,240 @@ export function AdminPanel({ params }: { params: URLSearchParams }) {
   const canOps = level === "super" || level === "operations";
   const canSupport = level === "super" || level === "support";
   const canFinance = level === "super" || level === "finance";
-  const tabs: { key: string; label: string; badge?: number }[] = [
-    { key: "overview", label: "ওভারভিউ" },
+  type AdminTab = { key: string; label: string; icon: ReactNode; badge?: number };
+  const groups: { title: string; tabs: AdminTab[] }[] = [
+    {
+      title: "প্রধান",
+      tabs: [
+        { key: "overview", label: "ড্যাশবোর্ড", icon: Icon.home("w-5 h-5") },
+        { key: "analytics", label: "অ্যানালিটিক্স ও রিপোর্ট", icon: Icon.chart("w-5 h-5") },
+      ],
+    },
     ...(canOps
       ? [
-          { key: "bookings", label: "বুকিং", badge: ov?.pendingBookings },
-          { key: "professionals", label: "প্রফেশনাল", badge: ov?.pendingVerifications },
-          { key: "customers", label: "গ্রাহক" },
-          { key: "services", label: "সার্ভিস" },
-          { key: "locations", label: "এলাকা" },
+          {
+            title: "পরিচালনা",
+            tabs: [
+              { key: "bookings", label: "বুকিং", icon: Icon.calendar("w-5 h-5"), badge: ov?.pendingBookings },
+              { key: "professionals", label: "প্রফেশনাল", icon: Icon.briefcase("w-5 h-5"), badge: ov?.pendingVerifications },
+              { key: "customers", label: "গ্রাহক", icon: Icon.users("w-5 h-5") },
+              { key: "services", label: "সার্ভিস", icon: Icon.grid("w-5 h-5") },
+              { key: "locations", label: "এলাকা", icon: Icon.pin("w-5 h-5") },
+            ] as AdminTab[],
+          },
         ]
       : []),
-    ...(canOps || canSupport ? [{ key: "reviews", label: "রিভিউ", badge: ov?.pendingReviews }] : []),
-    ...(canSupport ? [{ key: "complaints", label: "অভিযোগ", badge: ov?.openComplaints }] : []),
-    ...(canSupport ? [{ key: "tickets", label: "সাপোর্ট টিকিট", badge: ov?.openTickets }] : []),
-    ...(canOps ? [{ key: "announce", label: "ঘোষণা" }] : []),
-    ...(canFinance ? [{ key: "coupons", label: "কুপন" }] : []),
-    ...(canFinance ? [{ key: "payments", label: "পেমেন্ট", badge: ov?.pendingPayments }] : []),
-    ...(canFinance ? [{ key: "settings", label: "সেটিংস" }] : []),
-    ...(canOps ? [{ key: "social", label: "সোশ্যাল লিংক" }] : []),
-    ...(level === "super"
+    ...(canOps || canSupport
       ? [
-          { key: "staff", label: "অ্যাডমিন টিম" },
-          { key: "logs", label: "কার্যকলাপ লগ" },
+          {
+            title: "সাপোর্ট",
+            tabs: [
+              ...((canOps || canSupport)
+                ? [{ key: "reviews", label: "রিভিউ", icon: Icon.star(true, "w-5 h-5"), badge: ov?.pendingReviews } as AdminTab]
+                : []),
+              ...(canSupport
+                ? [
+                    { key: "complaints", label: "অভিযোগ", icon: Icon.message("w-5 h-5"), badge: ov?.openComplaints } as AdminTab,
+                    { key: "tickets", label: "সাপোর্ট টিকিট", icon: Icon.message("w-5 h-5"), badge: ov?.openTickets } as AdminTab,
+                  ]
+                : []),
+            ],
+          },
         ]
       : []),
+    ...(canOps
+      ? [
+          {
+            title: "মার্কেটিং",
+            tabs: [
+              { key: "announce", label: "ঘোষণা", icon: Icon.bell("w-5 h-5") },
+              { key: "social", label: "সোশ্যাল লিংক", icon: Icon.globe("w-5 h-5") },
+            ] as AdminTab[],
+          },
+        ]
+      : []),
+    ...(canFinance
+      ? [
+          {
+            title: "ফাইন্যান্স",
+            tabs: [
+              { key: "payments", label: "পেমেন্ট ও ফাইন্যান্স", icon: Icon.wallet("w-5 h-5"), badge: ov?.pendingPayments },
+              { key: "coupons", label: "কুপন", icon: Icon.sparkle("w-5 h-5") },
+            ] as AdminTab[],
+          },
+        ]
+      : []),
+    {
+      title: "সিস্টেম",
+      tabs: [
+        ...(canFinance ? [{ key: "settings", label: "সেটিংস", icon: Icon.settings("w-5 h-5") } as AdminTab] : []),
+        ...(level === "super"
+          ? [
+              { key: "staff", label: "অ্যাডমিন টিম", icon: Icon.shield("w-5 h-5") } as AdminTab,
+              { key: "logs", label: "কার্যকলাপ লগ", icon: Icon.fileText("w-5 h-5") } as AdminTab,
+            ]
+          : []),
+      ],
+    },
+  ].filter((g) => g.tabs.length > 0);
+  const allTabs = groups.flatMap((g) => g.tabs);
+  const shownTab = allTabs.some((t) => t.key === tab) ? tab : "overview";
+  const activeLabel = allTabs.find((t) => t.key === shownTab)?.label ?? "ড্যাশবোর্ড";
+
+  const navList = (onNavigate?: () => void) => (
+    <nav aria-label="অ্যাডমিন নেভিগেশন" className="space-y-5">
+      {groups.map((g) => (
+        <div key={g.title}>
+          {!collapsed && <p className="px-3 mb-1.5 text-[11.5px] font-bold tracking-wide text-[#737B73]">{g.title}</p>}
+          <ul className="space-y-0.5">
+            {g.tabs.map((t) => {
+              const active = shownTab === t.key;
+              return (
+                <li key={t.key}>
+                  <a
+                    href={`#/admin?tab=${t.key}`}
+                    onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
+                    title={collapsed ? t.label : undefined}
+                    className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[14.5px] font-semibold ${
+                      active ? "bg-[#087A35] text-white" : "text-[#064B27] hover:bg-[#F0FAF2]"
+                    } ${collapsed ? "justify-center" : ""}`}
+                  >
+                    <span className="shrink-0">{t.icon}</span>
+                    {!collapsed && <span className="flex-1 truncate">{t.label}</span>}
+                    {!collapsed && t.badge != null && t.badge > 0 && (
+                      <span className={`min-w-[20px] h-5 px-1 rounded-full text-[11px] font-bold grid place-items-center ${active ? "bg-white text-[#087A35]" : "bg-[#FF8A00] text-white"}`}>
+                        {t.badge}
+                      </span>
+                    )}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+
+  // Mobile bottom nav: Dashboard, Bookings, Users, Finance, More.
+  const bottomItems: { key: string; label: string; icon: ReactNode; href?: string }[] = [
+    { key: "overview", label: "ড্যাশবোর্ড", icon: Icon.home("w-5 h-5"), href: "#/admin?tab=overview" },
+    ...(canOps ? [{ key: "bookings", label: "বুকিং", icon: Icon.calendar("w-5 h-5"), href: "#/admin?tab=bookings" }] : []),
+    ...(canOps ? [{ key: "customers", label: "ব্যবহারকারী", icon: Icon.users("w-5 h-5"), href: "#/admin?tab=customers" }] : []),
+    ...(canFinance ? [{ key: "payments", label: "ফাইন্যান্স", icon: Icon.wallet("w-5 h-5"), href: "#/admin?tab=payments" }] : []),
   ];
-  const shownTab = tabs.some((t) => t.key === tab) ? tab : "overview";
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-3 mb-6">
-        <span className="grid place-items-center w-11 h-11 rounded-2xl bg-[#064B27] text-white">{Icon.settings("w-5 h-5")}</span>
-        <div>
-          <h1 className="text-[24px] font-bold text-[#064B27] leading-tight">অ্যাডমিন প্যানেল</h1>
-          <p className="text-sm text-[#737B73]">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
+    <div className="mx-auto w-full max-w-[1400px] px-3 sm:px-4 py-5 lg:py-8">
+      {/* Mobile admin top bar */}
+      <div className="lg:hidden flex items-center gap-3 mb-4">
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="অ্যাডমিন মেনু খুলুন"
+          className="grid place-items-center w-11 h-11 rounded-xl border border-[#E5EAE5] bg-white text-[#064B27]"
+        >
+          {Icon.menu("w-5 h-5")}
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-[19px] font-bold text-[#064B27] leading-tight truncate">{activeLabel}</h1>
+          <p className="text-[12.5px] text-[#737B73] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
         </div>
       </div>
-      <TabsBar tabs={tabs} active={shownTab} href={(k) => `#/admin?tab=${k}`} />
-      <div className="mt-6">
-        {shownTab === "overview" && <AdminOverview token={token} />}
-        {shownTab === "overview" && level === "super" && <FullBackupCard token={token} />}
-        {shownTab === "bookings" && <AdminBookings token={token} />}
-        {shownTab === "professionals" && <AdminProfessionals token={token} />}
-        {shownTab === "customers" && <AdminCustomers token={token} />}
-        {shownTab === "services" && <AdminServices token={token} />}
-        {shownTab === "locations" && <AdminLocations token={token} />}
-        {shownTab === "reviews" && <AdminReviews token={token} />}
-        {shownTab === "complaints" && <AdminComplaints token={token} />}
-        {shownTab === "tickets" && <AdminTickets token={token} />}
-        {shownTab === "social" && <AdminSocialLinks token={token} />}
-        {shownTab === "announce" && <AdminAnnouncements token={token} />}
-        {shownTab === "coupons" && <AdminCoupons token={token} />}
-        {shownTab === "payments" && <AdminPayments token={token} />}
-        {shownTab === "settings" && <AdminSettings token={token} />}
-        {shownTab === "staff" && <AdminStaff token={token} />}
-        {shownTab === "logs" && <AdminLogs token={token} />}
+
+      <div className="lg:flex lg:gap-6 lg:items-start">
+        {/* Desktop sidebar (collapsible) */}
+        <aside className={`hidden lg:block shrink-0 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-[#E5EAE5] bg-white p-3 ${collapsed ? "w-[76px]" : "w-64"}`}>
+          <div className={`flex items-center gap-2.5 px-2 pb-3 ${collapsed ? "justify-center" : ""}`}>
+            <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#064B27] text-white shrink-0">{Icon.settings("w-5 h-5")}</span>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="font-bold text-[#064B27] leading-tight">অ্যাডমিন প্যানেল</p>
+                <p className="text-[12px] text-[#737B73] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
+              </div>
+            )}
+          </div>
+          {navList()}
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            className="mt-5 w-full inline-flex items-center justify-center gap-1.5 border border-[#E5EAE5] rounded-xl px-3 py-2 text-[13px] font-semibold text-[#064B27] hover:bg-[#F0FAF2]"
+          >
+            {collapsed ? Icon.chevronRight("w-4 h-4") : (<>{Icon.chevronLeft("w-4 h-4")} ছোট করুন</>)}
+          </button>
+        </aside>
+
+        {/* Mobile drawer */}
+        {drawerOpen && (
+          <div className="lg:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="অ্যাডমিন মেনু">
+            <button type="button" aria-label="মেনু বন্ধ করুন" className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
+            <div className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] bg-white shadow-xl overflow-y-auto p-4 pb-safe">
+              <div className="flex items-center gap-2.5 pb-3">
+                <span className="grid place-items-center w-10 h-10 rounded-xl bg-[#064B27] text-white">{Icon.settings("w-5 h-5")}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-[#064B27] leading-tight">অ্যাডমিন প্যানেল</p>
+                  <p className="text-[12px] text-[#737B73] truncate">{me.data!.user.name} • {ADMIN_LEVEL_BN[level] ?? "অ্যাডমিন"}</p>
+                </div>
+                <button type="button" onClick={() => setDrawerOpen(false)} aria-label="বন্ধ করুন" className="grid place-items-center w-9 h-9 rounded-lg border border-[#E5EAE5] text-[#064B27]">
+                  {Icon.x("w-4 h-4")}
+                </button>
+              </div>
+              {navList(() => setDrawerOpen(false))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 min-w-0 pb-20 lg:pb-0">
+          <h1 className="hidden lg:block text-[24px] font-bold text-[#064B27] leading-tight mb-5">{activeLabel}</h1>
+          {shownTab === "overview" && <AdminOverview token={token} />}
+          {shownTab === "overview" && level === "super" && <FullBackupCard token={token} />}
+          {shownTab === "analytics" && <AdminAnalytics token={token} />}
+          {shownTab === "bookings" && <AdminBookings token={token} />}
+          {shownTab === "professionals" && <AdminProfessionals token={token} />}
+          {shownTab === "customers" && <AdminCustomers token={token} />}
+          {shownTab === "services" && <AdminServices token={token} />}
+          {shownTab === "locations" && <AdminLocations token={token} />}
+          {shownTab === "reviews" && <AdminReviews token={token} />}
+          {shownTab === "complaints" && <AdminComplaints token={token} />}
+          {shownTab === "tickets" && <AdminTickets token={token} />}
+          {shownTab === "social" && <AdminSocialLinks token={token} />}
+          {shownTab === "announce" && <AdminAnnouncements token={token} />}
+          {shownTab === "coupons" && <AdminCoupons token={token} />}
+          {shownTab === "payments" && <AdminPayments token={token} />}
+          {shownTab === "settings" && <AdminSettings token={token} />}
+          {shownTab === "staff" && <AdminStaff token={token} />}
+          {shownTab === "logs" && <AdminLogs token={token} />}
+        </div>
       </div>
+
+      {/* Admin mobile bottom navigation (replaces the customer one,
+          which App.tsx hides on admin pages) */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-[#E5EAE5] pb-safe shadow-[0_-2px_12px_rgba(6,75,39,0.06)]" aria-label="অ্যাডমিন মোবাইল নেভিগেশন">
+        <div className={`grid ${bottomItems.length >= 4 ? "grid-cols-5" : "grid-cols-4"}`}>
+          {bottomItems.map((item) => (
+            <a
+              key={item.key}
+              href={item.href}
+              aria-current={shownTab === item.key ? "page" : undefined}
+              className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${shownTab === item.key ? "text-[#087A35]" : "text-[#737B73]"}`}
+            >
+              {item.icon}
+              {item.label}
+            </a>
+          ))}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="আরও মেনু খুলুন"
+            className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-[#737B73]"
+          >
+            {Icon.menu("w-5 h-5")}
+            আরও
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }
@@ -2332,13 +2672,17 @@ function FullBackupCard({ token }: { token: string }) {
 }
 
 function AdminOverview({ token }: { token: string }) {
-  const ov = useQuery({ queryKey: ["admin-overview"], queryFn: () => api.getAdminOverview({ token }) });
+  const ov = useQuery({ queryKey: ["admin-overview"], queryFn: () => api.getAdminOverview({ token }), ...MONEY_REFETCH });
   const recent = useQuery({ queryKey: ["admin-bookings", "pending"], queryFn: () => api.adminListBookings({ token, status: "pending" }) });
   if (ov.isPending) return <Spinner />;
   if (ov.isError) return <ErrorBox message={errMsg(ov.error)} />;
   const d = ov.data!;
   return (
     <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <p className="text-sm text-[#737B73]">সব সংখ্যা সার্ভারের আসল রেকর্ড থেকে — প্রতিটি ডিভাইসে একই হিসাব দেখা যাবে।</p>
+        <FreshnessBar dataUpdatedAt={ov.dataUpdatedAt} isFetching={ov.isFetching} onRefresh={() => void ov.refetch()} />
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="মোট গ্রাহক" value={d.totalCustomers} icon={Icon.users("w-5 h-5")} />
         <StatCard label="মোট প্রফেশনাল" value={d.totalProfessionals} icon={Icon.briefcase("w-5 h-5")} />
@@ -2351,7 +2695,10 @@ function AdminOverview({ token }: { token: string }) {
         <StatCard label="খোলা সাপোর্ট টিকিট" value={d.openTickets} icon={Icon.message("w-5 h-5")} />
       </div>
       <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
-        <h2 className="font-bold text-[#064B27] mb-3">টাকার হিসাব (যাচাইকৃত পেমেন্ট ও লেজার থেকে)</h2>
+        <h2 className="font-bold text-[#064B27] mb-1">টাকার হিসাব (যাচাইকৃত পেমেন্ট ও লেজার থেকে)</h2>
+        <p className="text-[12.5px] text-[#737B73] mb-3">
+          কমিশনের এই হিসাব লাইভ লেজার থেকে — প্রফেশনালের আয়ের পেজে প্রতিটি বুকিংয়ের কোটেশনের সময় স্থির (স্ন্যাপশট) কমিশন দেখানো হয়, তাই দুটি সংখ্যা সবসময় হুবহু মিলবে না; দুটোই নিজ নিজ জায়গায় সঠিক।
+        </p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
           <MoneyStat label="অনলাইনে সংগৃহীত" value={d.onlineCollected} />
           <MoneyStat label="হেল্ড ব্যালেন্স (সেটলমেন্ট বাকি)" value={d.heldBalanceTotal} />
@@ -2506,12 +2853,196 @@ function CancelRequestsPanel({ token }: { token: string }) {
   );
 }
 
+// ------------------------------------------------------ admin analytics
+//
+// Master Phase 11 (Scope A): real figures only, computed server-side
+// by getAdminAnalytics from the payments table, the immutable ledger
+// and booking snapshots. Online money, fees, commission earned vs
+// collected, payouts, refunds and failed transactions stay separate;
+// cash is shown as what it is — money paid directly to professionals
+// and recorded on bookings, never platform-verified collections.
+
+function dhakaToday(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+}
+
+function dhakaDaysAgo(n: number): string {
+  const d = new Date(`${dhakaToday()}T00:00:00+06:00`);
+  d.setDate(d.getDate() - n);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+}
+
+function AdminAnalytics({ token }: { token: string }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const q = useQuery({
+    queryKey: ["admin-analytics", from, to],
+    queryFn: () => api.getAdminAnalytics({ token, from: from || undefined, to: to || undefined }),
+    ...MONEY_REFETCH,
+  });
+  const d = q.data;
+  const quick: [string, string, string][] = [
+    ["সব সময়", "", ""],
+    ["আজ", dhakaToday(), dhakaToday()],
+    ["গত ৭ দিন", dhakaDaysAgo(6), dhakaToday()],
+    ["গত ৩০ দিন", dhakaDaysAgo(29), dhakaToday()],
+    ["এই মাস", `${dhakaToday().slice(0, 8)}01`, dhakaToday()],
+  ];
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className={labelCls} htmlFor="an-from">শুরুর তারিখ</label>
+          <input id="an-from" type="date" className={inputCls} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <div>
+          <label className={labelCls} htmlFor="an-to">শেষ তারিখ</label>
+          <input id="an-to" type="date" className={inputCls} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="দ্রুত সময়সীমা">
+          {quick.map(([label, f, t]) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={from === f && to === t}
+              onClick={() => {
+                setFrom(f);
+                setTo(t);
+              }}
+              className={`px-3 py-2 rounded-full text-[13px] font-semibold ${from === f && to === t ? "bg-[#064B27] text-white" : "bg-white border border-[#E5EAE5] text-[#4c584c]"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto">
+          <FreshnessBar dataUpdatedAt={q.dataUpdatedAt} isFetching={q.isFetching} onRefresh={() => void q.refetch()} />
+        </div>
+      </div>
+
+      {q.isPending ? (
+        <Spinner />
+      ) : q.isError ? (
+        <ErrorBox message={errMsg(q.error)} />
+      ) : d ? (
+        <>
+          <section aria-label="অনলাইন সংগ্রহ" className="rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
+            <h2 className="font-bold text-[#064B27]">অনলাইন সংগ্রহ (যাচাইকৃত)</h2>
+            <p className="mt-0.5 text-[12.5px] text-[#737B73]">শুধু অ্যাডমিন-যাচাইকৃত অনলাইন পেমেন্ট — {d.verifiedPaymentsInRange}টি যাচাইকৃত পেমেন্ট এই সময়ে।</p>
+            <div className="mt-3 grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+              <MoneyStat label="মোট অনলাইন সংগ্রহ" value={d.onlineCollected} />
+              <MoneyStat label="সম্পূর্ণ অনলাইন পেমেন্ট" value={d.onlineFullOnline} />
+              <MoneyStat label="আংশিক অনলাইন পেমেন্ট" value={d.onlineSplit} />
+            </div>
+          </section>
+
+          <section aria-label="ফি, কমিশন ও রাজস্ব" className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+            <h2 className="font-bold text-[#064B27]">ফি, কমিশন ও ঘরসেবার রাজস্ব</h2>
+            <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+              <MoneyStat label="গ্রাহক সার্ভিস ফি সংগৃহীত" value={d.customerFeesCollected} />
+              <MoneyStat label="প্রফেশনাল কমিশন অর্জিত (পাওনা)" value={d.commissionEarned} />
+              <MoneyStat label="প্রফেশনাল কমিশন সংগৃহীত" value={d.commissionCollected} />
+              <MoneyStat label="ঘরসেবার রাজস্ব (ফি + সংগৃহীত কমিশন)" value={d.revenue} />
+            </div>
+            <p className="mt-3 text-[12.5px] text-[#737B73]">
+              কমিশন অর্জিত হয় যাচাইকৃত পেমেন্টের সময়। অর্জিত ও সংগৃহীতের পার্থক্য হলো সেই কমিশন, যা এখনো হেল্ড ব্যালেন্সে জমা আছে (পেআউটের সময় কমিশনের অংশ হেল্ড ব্যালেন্সেই থেকে যায়)।
+            </p>
+          </section>
+
+          <section aria-label="পেআউট, রিফান্ড ও ক্যাশ" className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+            <h2 className="font-bold text-[#064B27]">পেআউট, রিফান্ড, ব্যর্থ ও ক্যাশ</h2>
+            <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+              <MoneyStat label="পেআউট সম্পন্ন হয়েছে" value={d.payoutsCompleted} />
+              <MoneyStat label="পেআউটের অপেক্ষায় (বর্তমান)" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
+              <MoneyStat label="হেল্ড ব্যালেন্স (বর্তমান)" value={d.heldBalanceTotal} />
+              <MoneyStat label="রিফান্ড হয়েছে" value={d.refundsTotal} sub={`${d.refundsCount}টি এন্ট্রি`} />
+              <MoneyStat label="ব্যর্থ লেনদেন" value={d.failedAmount} sub={`${d.failedCount}টি পেমেন্ট`} />
+              <MoneyStat label="ক্যাশ — প্রফেশনালকে সরাসরি" value={d.cashToProfessionals} />
+            </div>
+            <p className="mt-3 text-[12.5px] text-[#737B73]">
+              ক্যাশের টাকা গ্রাহক সরাসরি প্রফেশনালকে দেন — এটি বুকিং রেকর্ডে লিপিবদ্ধ হিসাব, ঘরসেবার যাচাইকৃত সংগ্রহ নয়; তাই অনলাইন সংগ্রহের সাথে এটি যোগ করা হয়নি।
+            </p>
+          </section>
+
+          <section aria-label="লেজার ইতিহাস">
+            <h2 className="font-bold text-[#064B27] mb-3">লেজার ইতিহাস (সাম্প্রতিক ১০০টি)</h2>
+            {d.ledger.length === 0 ? (
+              <EmptyState title="এই সময়ে কোনো লেজার এন্ট্রি নেই" />
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-[#E5EAE5] bg-white">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="text-left text-[#737B73] border-b border-[#E5EAE5]">
+                      <th className="px-4 py-2.5 font-semibold">তারিখ</th>
+                      <th className="px-4 py-2.5 font-semibold">বুকিং</th>
+                      <th className="px-4 py-2.5 font-semibold">ধরন</th>
+                      <th className="px-4 py-2.5 font-semibold text-right">পরিমাণ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.ledger.map((e) => (
+                      <tr key={e.id} className="border-b border-[#F0F4F0] last:border-0">
+                        <td className="px-4 py-2.5 whitespace-nowrap">{fmtDateTime(e.createdAt)}</td>
+                        <td className="px-4 py-2.5">
+                          {e.bookingCode ? (
+                            <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${e.bookingCode}`}>{e.bookingCode}</a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">{LEDGER_TYPE_BN[e.entryType] ?? e.entryType}{e.note ? <span className="block text-[12px] text-[#737B73]">{e.note}</span> : null}</td>
+                        <td className="px-4 py-2.5 text-right font-en font-bold whitespace-nowrap">{bdt(e.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section aria-label="পেমেন্ট ইতিহাস">
+            <h2 className="font-bold text-[#064B27] mb-3">পেমেন্ট ইতিহাস (সাম্প্রতিক ১০০টি)</h2>
+            {d.payments.length === 0 ? (
+              <EmptyState title="এই সময়ে কোনো পেমেন্ট নেই" />
+            ) : (
+              <div className="space-y-2.5">
+                {d.payments.map((p) => (
+                  <div key={p.id} className="rounded-xl border border-[#E5EAE5] bg-white px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className="font-en font-bold">{bdt(p.amount)}</span>
+                    <span className="font-semibold">{PROVIDER_BN[p.provider] ?? providerEn(p.provider)}</span>
+                    <span className="font-en text-[13px] text-[#737B73]">{p.providerTrxId}</span>
+                    <PaymentStatusChip status={p.status} />
+                    <span className="text-[13px] text-[#737B73]">
+                      {PAYMENT_MODEL_BN[p.paymentModel] ?? p.paymentModel} • {p.customerName} •{" "}
+                      <a className="font-en font-semibold text-[#087A35] hover:underline" href={`#/booking/${p.bookingCode}`}>{p.bookingCode}</a> • {fmtDateTime(p.createdAt)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function AdminBookings({ token }: { token: string }) {
   const [status, setStatus] = useState("");
   const list = useQuery({
     queryKey: ["admin-bookings", status],
     queryFn: () => api.adminListBookings({ token, status: status || undefined }),
   });
+  const ctl = useListControls<Booking>(
+    list.data?.bookings ?? [],
+    (b) => `${b.code} ${b.customerName} ${b.phone} ${b.serviceName} ${b.upazila}`,
+    {
+      new: (a, b) => b.id - a.id,
+      old: (a, b) => a.id - b.id,
+      name: (a, b) => a.customerName.localeCompare(b.customerName, "bn"),
+    },
+    "new",
+  );
   return (
     <div>
       <CancelRequestsPanel token={token} />
@@ -2551,9 +3082,27 @@ function AdminBookings({ token }: { token: string }) {
       ) : (list.data?.bookings.length ?? 0) === 0 ? (
         <EmptyState title="এই ফিল্টারে কোনো বুকিং নেই" />
       ) : (
-        <div className="space-y-3.5">
-          {list.data?.bookings.map((b) => <AdminBookingCard key={b.id} b={b} token={token} />)}
-        </div>
+        <>
+          <ListControls
+            query={ctl.query}
+            setQuery={ctl.setQuery}
+            sort={ctl.sort}
+            setSort={ctl.setSort}
+            sortOptions={[["new", "নতুন আগে"], ["old", "পুরনো আগে"], ["name", "গ্রাহকের নাম অনুযায়ী"]]}
+            total={ctl.total}
+            page={ctl.page}
+            pageCount={ctl.pageCount}
+            setPage={ctl.setPage}
+            searchLabel="কোড, নাম, ফোন বা সার্ভিস দিয়ে খুঁজুন"
+          />
+          {ctl.pageRows.length === 0 ? (
+            <EmptyState title="খোঁজার সাথে মিলে এমন বুকিং নেই" />
+          ) : (
+            <div className="space-y-3.5">
+              {ctl.pageRows.map((b) => <AdminBookingCard key={b.id} b={b} token={token} />)}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -2734,7 +3283,7 @@ function AdminBookingCard({ b, token }: { b: Booking; token: string }) {
               </>
             ) : b.priceFinalizedVia === "quotation" ? (
               <>
-                <input id={`ab-price-${b.id}`} type="number" className={inputCls} value={price} disabled />
+                <input id={`ab-price-${b.id}`} type="number" {...FIELDS.adminUpdateBooking.finalPrice} className={inputCls} value={price} disabled />
                 <p className="text-xs text-[#737B73] mt-1">গ্রাহক-অনুমোদিত কোটেশনে নির্ধারিত — বদলাতে হলে নতুন অতিরিক্ত কোটেশন লাগবে।</p>
               </>
             ) : (
@@ -2931,6 +3480,16 @@ function AdminProfessionals({ token }: { token: string }) {
   });
   const all = list.data?.professionals ?? [];
   const shown = filter ? all.filter((p) => p.status === filter) : all;
+  const ctl = useListControls<AdminPro>(
+    shown,
+    (p) => `${p.name} ${p.phone} ${p.categoryName} ${p.areas.join(" ")}`,
+    {
+      new: (a, b) => b.id - a.id,
+      name: (a, b) => a.name.localeCompare(b.name, "bn"),
+      jobs: (a, b) => b.completedJobs - a.completedJobs,
+    },
+    "new",
+  );
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="প্রফেশনাল ফিল্টার">
@@ -2956,11 +3515,29 @@ function AdminProfessionals({ token }: { token: string }) {
       </div>
       {list.isPending ? (
         <Spinner />
+      ) : list.isError ? (
+        <ErrorBox message={errMsg(list.error)} />
       ) : shown.length === 0 ? (
         <EmptyState title="কোনো প্রফেশনাল আবেদন নেই" body="নতুন আবেদন এলে এখানে দেখা যাবে এবং নোটিফিকেশন পাবেন।" />
       ) : (
-        <div className="space-y-3.5">
-          {shown.map((p) => (
+        <>
+          <ListControls
+            query={ctl.query}
+            setQuery={ctl.setQuery}
+            sort={ctl.sort}
+            setSort={ctl.setSort}
+            sortOptions={[["new", "নতুন আগে"], ["name", "নাম অনুযায়ী"], ["jobs", "বেশি সম্পন্ন কাজ আগে"]]}
+            total={ctl.total}
+            page={ctl.page}
+            pageCount={ctl.pageCount}
+            setPage={ctl.setPage}
+            searchLabel="নাম, ফোন, সার্ভিস বা এলাকা দিয়ে খুঁজুন"
+          />
+          {ctl.pageRows.length === 0 ? (
+            <EmptyState title="খোঁজার সাথে মিলে এমন প্রফেশনাল নেই" />
+          ) : (
+            <div className="space-y-3.5">
+              {ctl.pageRows.map((p) => (
             <AdminProCard
               key={p.id}
               p={p}
@@ -2969,8 +3546,10 @@ function AdminProfessionals({ token }: { token: string }) {
               onUserStatus={(s) => setUserStatus.mutate({ userId: p.userId, status: s })}
               busy={setStatus.isPending || setUserStatus.isPending}
             />
-          ))}
-        </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -3081,12 +3660,40 @@ function AdminCustomers({ token }: { token: string }) {
       api.adminSetUserStatus({ token, userId: v.userId, status: v.status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-customers"] }),
   });
+  type AdminCustomerRow = ApiResponse<typeof api, "adminListCustomers">["customers"][number];
+  const ctl = useListControls<AdminCustomerRow>(
+    list.data?.customers ?? [],
+    (c) => `${c.name} ${c.phone} ${c.location ?? ""}`,
+    {
+      new: (a, b) => b.id - a.id,
+      name: (a, b) => a.name.localeCompare(b.name, "bn"),
+      bookings: (a, b) => b.bookingCount - a.bookingCount,
+    },
+    "new",
+  );
   if (list.isPending) return <Spinner />;
+  if (list.isError) return <ErrorBox message={errMsg(list.error)} />;
   const rows = list.data?.customers ?? [];
   if (rows.length === 0) return <EmptyState title="এখনো কোনো গ্রাহক নিবন্ধন করেননি" />;
   return (
-    <div className="grid md:grid-cols-2 gap-3.5">
-      {rows.map((c) => (
+    <div>
+      <ListControls
+        query={ctl.query}
+        setQuery={ctl.setQuery}
+        sort={ctl.sort}
+        setSort={ctl.setSort}
+        sortOptions={[["new", "নতুন আগে"], ["name", "নাম অনুযায়ী"], ["bookings", "বেশি বুকিং আগে"]]}
+        total={ctl.total}
+        page={ctl.page}
+        pageCount={ctl.pageCount}
+        setPage={ctl.setPage}
+        searchLabel="নাম বা ফোন দিয়ে খুঁজুন"
+      />
+      {ctl.pageRows.length === 0 ? (
+        <EmptyState title="খোঁজার সাথে মিলে এমন গ্রাহক নেই" />
+      ) : (
+        <div className="grid md:grid-cols-2 gap-3.5">
+          {ctl.pageRows.map((c) => (
         <div key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4 flex items-start gap-3.5">
           <Avatar name={c.name} photoUrl={c.photoUrl} size="w-12 h-12" textSize="text-base" />
           <div className="min-w-0 flex-1">
@@ -3114,7 +3721,9 @@ function AdminCustomers({ token }: { token: string }) {
             </div>
           </div>
         </div>
-      ))}
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4027,12 +4636,39 @@ function AdminComplaints({ token }: { token: string }) {
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
     },
   });
+  type AdminComplaintRow = ApiResponse<typeof api, "adminListComplaints">["complaints"][number];
+  const ctl = useListControls<AdminComplaintRow>(
+    list.data?.complaints ?? [],
+    (c) => `${c.subject} ${c.message} ${c.customerName} ${c.customerPhone} ${c.bookingCode ?? ""}`,
+    {
+      new: (a, b) => b.id - a.id,
+      old: (a, b) => a.id - b.id,
+    },
+    "new",
+  );
   if (list.isPending) return <Spinner />;
+  if (list.isError) return <ErrorBox message={errMsg(list.error)} />;
   const rows = list.data?.complaints ?? [];
   if (rows.length === 0) return <EmptyState title="কোনো অভিযোগ নেই" />;
   return (
-    <div className="space-y-3.5">
-      {rows.map((c) => (
+    <div>
+      <ListControls
+        query={ctl.query}
+        setQuery={ctl.setQuery}
+        sort={ctl.sort}
+        setSort={ctl.setSort}
+        sortOptions={[["new", "নতুন আগে"], ["old", "পুরনো আগে"]]}
+        total={ctl.total}
+        page={ctl.page}
+        pageCount={ctl.pageCount}
+        setPage={ctl.setPage}
+        searchLabel="বিষয়, নাম বা বুকিং কোড দিয়ে খুঁজুন"
+      />
+      {ctl.pageRows.length === 0 ? (
+        <EmptyState title="খোঁজার সাথে মিলে এমন অভিযোগ নেই" />
+      ) : (
+        <div className="space-y-3.5">
+          {ctl.pageRows.map((c) => (
         <div key={c.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -4074,7 +4710,9 @@ function AdminComplaints({ token }: { token: string }) {
             </div>
           )}
         </div>
-      ))}
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4100,6 +4738,16 @@ function AdminTickets({ token }: { token: string }) {
       }),
   });
   const rows = list.data?.tickets ?? [];
+  type AdminTicketRow = ApiResponse<typeof api, "adminListTickets">["tickets"][number];
+  const ctl = useListControls<AdminTicketRow>(
+    rows,
+    (t) => `${t.subject} ${t.code} ${t.ownerName} ${t.ownerPhone}`,
+    {
+      new: (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+      old: (a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt),
+    },
+    "new",
+  );
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -4124,8 +4772,24 @@ function AdminTickets({ token }: { token: string }) {
       ) : rows.length === 0 ? (
         <EmptyState title="কোনো টিকিট নেই" />
       ) : (
-        <ul className="space-y-3">
-          {rows.map((t) => (
+        <>
+          <ListControls
+            query={ctl.query}
+            setQuery={ctl.setQuery}
+            sort={ctl.sort}
+            setSort={ctl.setSort}
+            sortOptions={[["new", "সাম্প্রতিক আগে"], ["old", "পুরনো আগে"]]}
+            total={ctl.total}
+            page={ctl.page}
+            pageCount={ctl.pageCount}
+            setPage={ctl.setPage}
+            searchLabel="বিষয়, কোড বা নাম দিয়ে খুঁজুন"
+          />
+          {ctl.pageRows.length === 0 ? (
+            <EmptyState title="খোঁজার সাথে মিলে এমন টিকিট নেই" />
+          ) : (
+            <ul className="space-y-3">
+              {ctl.pageRows.map((t) => (
             <li key={t.id} className="rounded-2xl border border-[#E5EAE5] bg-white p-4">
               <button
                 type="button"
@@ -4148,8 +4812,10 @@ function AdminTickets({ token }: { token: string }) {
                 </div>
               )}
             </li>
-          ))}
-        </ul>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
@@ -4400,7 +5066,7 @@ function PaymentVerifyBox({ token, p }: { token: string; p: PaymentView }) {
   return (
     <div className="rounded-xl border border-[#E5EAE5] bg-white p-3.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{PROVIDER_BN[p.provider] ?? p.provider}</span>
+        <span className="font-semibold">{PROVIDER_BN[p.provider] ?? providerEn(p.provider)}</span>
         <span className="font-en text-sm">{p.providerTrxId}</span>
         <span className="font-en font-bold">{bdt(p.amount)}</span>
         <PaymentStatusChip status={p.status} />
@@ -4604,7 +5270,7 @@ function CommissionRatesCard({ token }: { token: string }) {
           </div>
         </fieldset>
         <fieldset>
-          <legend className="font-semibold text-[#064B27] mb-2">৫০% অনলাইন + ৫০% ক্যাশ</legend>
+          <legend className="font-semibold text-[#064B27] mb-2">৫০% অনলাইন + ৫০% নগদ</legend>
           <div className="grid grid-cols-2 gap-3">
             {rateField("cr-split-fee", "গ্রাহক ফি (%)", splitFee, setSplitFee, FIELDS.adminSaveSettings.splitCustomerFeePercent)}
             {rateField("cr-split-comm", "প্রফেশনাল কমিশন (%)", splitComm, setSplitComm, FIELDS.adminSaveSettings.splitProCommissionPercent)}
@@ -4665,7 +5331,7 @@ function WithdrawalDecisionBox({ token, w }: { token: string; w: SettlementWithd
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
       </div>
       <p className="mt-0.5 text-[13.5px] text-[#737B73]">
-        {WITHDRAW_METHOD_BN[w.method] ?? w.method} • <span className="font-en">{w.number}</span> •{" "}
+        {WITHDRAW_METHOD_BN[w.method] ?? providerEn(w.method)} • <span className="font-en">{w.number}</span> •{" "}
         {fmtDateTime(w.requestedAt)}
         {w.bookingCode ? (
           <>
@@ -4905,7 +5571,7 @@ function RefundDecisionBox({ token, r }: { token: string; r: AdminRefundRequest 
       </p>
       <p className="text-[13.5px] text-[#737B73]">
         অনলাইন পেমেন্ট: {r.paymentAmount != null ? bdt(r.paymentAmount) : "—"}
-        {r.paymentProvider ? ` (${PROVIDER_BN[r.paymentProvider] ?? r.paymentProvider})` : ""}
+        {r.paymentProvider ? ` (${PROVIDER_BN[r.paymentProvider] ?? providerEn(r.paymentProvider)})` : ""}
         {r.paymentStatus ? ` • অবস্থা: ${r.paymentStatus === "verified" ? "যাচাইকৃত" : r.paymentStatus === "refunded" ? "রিফান্ড হয়েছে" : r.paymentStatus}` : ""}
       </p>
       {r.status === "refunded" && r.refundAmount != null && (
@@ -5018,53 +5684,96 @@ function RefundRequestsPanel({ token }: { token: string }) {
 function AdminPayments({ token }: { token: string }) {
   const [status, setStatus] = useState("");
   const [openBooking, setOpenBooking] = useState<number | null>(null);
-  const ov = useQuery({ queryKey: ["admin-overview"], queryFn: () => api.getAdminOverview({ token }) });
+  const ov = useQuery({ queryKey: ["admin-overview"], queryFn: () => api.getAdminOverview({ token }), ...MONEY_REFETCH });
+  const analytics = useQuery({
+    queryKey: ["admin-analytics", "", ""],
+    queryFn: () => api.getAdminAnalytics({ token }),
+    ...MONEY_REFETCH,
+  });
   const list = useQuery({
     queryKey: ["admin-payments", status],
     queryFn: () => api.adminListPayments({ token, status: status || undefined }),
   });
+  type AdminPaymentRow = ApiResponse<typeof api, "adminListPayments">["payments"][number];
+  const payCtl = useListControls<AdminPaymentRow>(
+    list.data?.payments ?? [],
+    (p) => `${p.bookingCode} ${p.providerTrxId} ${p.provider} ${providerEn(p.provider)}`,
+    {
+      new: (a, b) => b.id - a.id,
+      old: (a, b) => a.id - b.id,
+      amount: (a, b) => b.amount - a.amount,
+    },
+    "new",
+  );
   const d = ov.data;
+  const a = analytics.data;
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <section>
-        <h2 className="text-lg font-bold text-[#064B27]">পেমেন্ট ম্যানেজমেন্ট</h2>
-        <p className="mt-1 text-sm text-[#737B73]">
-          প্রতিটি সংখ্যা সার্ভারের যাচাইকৃত পেমেন্ট ও লেজার এন্ট্রি থেকে হিসাব করা — ক্লায়েন্টে কোনো হিসাব হয় না।
-        </p>
-        {ov.isPending ? (
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-[#064B27]">ফাইন্যান্স ড্যাশবোর্ড</h2>
+            <p className="mt-1 text-sm text-[#737B73]">
+              প্রতিটি সংখ্যা সার্ভারের যাচাইকৃত পেমেন্ট ও লেজার এন্ট্রি থেকে হিসাব করা — ক্লায়েন্টে কোনো হিসাব হয় না। কমিশনের এই হিসাব লাইভ লেজারের; প্রফেশনালের আয়ের পেজের স্ন্যাপশট কমিশনের সাথে এটি হুবহু মিলবে না।
+            </p>
+          </div>
+          <FreshnessBar dataUpdatedAt={ov.dataUpdatedAt} isFetching={ov.isFetching || analytics.isFetching} onRefresh={() => { void ov.refetch(); void analytics.refetch(); }} />
+        </div>
+        {ov.isPending || analytics.isPending ? (
           <Spinner />
         ) : ov.isError ? (
           <ErrorBox message={errMsg(ov.error)} />
-        ) : d ? (
-          <div className="mt-4 rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
-              <MoneyStat label="অনলাইনে সংগৃহীত" value={d.onlineCollected} />
-              <MoneyStat label="গ্রাহক ফি সংগৃহীত" value={d.customerFeesCollected} />
-              <MoneyStat label="হেল্ড ব্যালেন্স (সেটলমেন্ট বাকি)" value={d.heldBalanceTotal} />
-              <MoneyStat label="ক্যাশে সংগৃহীত" value={d.cashCollected} />
-              <MoneyStat label="কমিশন অর্জিত (পাওনা)" value={d.commissionEarned} />
-              <MoneyStat label="কমিশন সংগৃহীত" value={d.commissionCollected} />
-              <MoneyStat label="পেআউট হয়েছে" value={d.paidOutTotal} />
-              <MoneyStat label="রিফান্ড হয়েছে" value={d.refundedTotal} />
-              <MoneyStat label="যাচাইয়ের অপেক্ষায়" value={d.pendingPaymentAmount} sub={`${d.pendingPayments}টি পেমেন্ট`} />
-              <MoneyStat label="পেআউটের অপেক্ষায়" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
+        ) : analytics.isError ? (
+          <ErrorBox message={errMsg(analytics.error)} />
+        ) : d && a ? (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-2xl border border-[#E5EAE5] bg-[#F0FAF2] p-5">
+              <h3 className="font-bold text-[#064B27]">অনলাইন সংগ্রহ</h3>
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                <MoneyStat label="মোট অনলাইন সংগ্রহ" value={a.onlineCollected} />
+                <MoneyStat label="সম্পূর্ণ অনলাইন পেমেন্ট" value={a.onlineFullOnline} />
+                <MoneyStat label="আংশিক অনলাইন পেমেন্ট" value={a.onlineSplit} />
+              </div>
             </div>
-            {(d.failedPayments > 0 || d.disputedPayments > 0) && (
-              <p className="mt-3 text-[13.5px] text-red-700">
-                ব্যর্থ পেমেন্ট: {d.failedPayments}টি
-                {d.disputedPayments > 0 ? ` • বিরোধপূর্ণ বুকিং: ${d.disputedPayments}টি` : ""}
+            <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+              <h3 className="font-bold text-[#064B27]">ফি, কমিশন ও রাজস্ব</h3>
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+                <MoneyStat label="গ্রাহক সার্ভিস ফি সংগৃহীত" value={d.customerFeesCollected} />
+                <MoneyStat label="প্রফেশনাল কমিশন অর্জিত (পাওনা)" value={d.commissionEarned} />
+                <MoneyStat label="প্রফেশনাল কমিশন সংগৃহীত" value={d.commissionCollected} />
+                <MoneyStat label="ঘরসেবার রাজস্ব (ফি + সংগৃহীত কমিশন)" value={a.revenue} />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+              <h3 className="font-bold text-[#064B27]">পেআউট ও হেল্ড ব্যালেন্স</h3>
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+                <MoneyStat label="প্রফেশনাল পেআউট সম্পন্ন" value={d.paidOutTotal} />
+                <MoneyStat label="পেআউটের অপেক্ষায়" value={d.pendingPayoutAmount} sub={`${d.pendingPayoutCount}টি অনুরোধ`} />
+                <MoneyStat label="হেল্ড ব্যালেন্স (সেটলমেন্ট বাকি)" value={d.heldBalanceTotal} />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-[#E5EAE5] bg-white p-5">
+              <h3 className="font-bold text-[#064B27]">রিফান্ড, ব্যর্থ ও অন্যান্য</h3>
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+                <MoneyStat label="রিফান্ড হয়েছে" value={d.refundedTotal} />
+                <MoneyStat label="ব্যর্থ লেনদেন" value={a.failedAmount} sub={`${a.failedCount}টি পেমেন্ট`} />
+                <MoneyStat label="যাচাইয়ের অপেক্ষায়" value={d.pendingPaymentAmount} sub={`${d.pendingPayments}টি পেমেন্ট`} />
+                <MoneyStat label="ক্যাশ — প্রফেশনালকে সরাসরি" value={d.cashCollected} />
+              </div>
+              {d.disputedPayments > 0 && (
+                <p className="mt-3 text-[13.5px] text-red-700">বিরোধপূর্ণ বুকিং: {d.disputedPayments}টি — সিদ্ধান্ত না হওয়া পর্যন্ত সেগুলোর সেটেলমেন্ট স্থগিত।</p>
+              )}
+              <p className="mt-3 text-[12.5px] text-[#737B73]">
+                বর্তমান হার — সম্পূর্ণ অনলাইন: ফি {d.fullOnlineCustomerFeePercent}% / কমিশন {d.fullOnlineProCommissionPercent}% •
+                ৫০% অনলাইন + ৫০% নগদ: ফি {d.splitCustomerFeePercent}% / কমিশন {d.splitProCommissionPercent}%। ক্যাশ গ্রাহক সরাসরি প্রফেশনালকে দেন — এটি যাচাইকৃত অনলাইন সংগ্রহ নয়।
               </p>
-            )}
-            <p className="mt-3 text-[12.5px] text-[#737B73]">
-              বর্তমান হার — সম্পূর্ণ অনলাইন: ফি {d.fullOnlineCustomerFeePercent}% / কমিশন {d.fullOnlineProCommissionPercent}% •
-              ৫০-৫০: ফি {d.splitCustomerFeePercent}% / কমিশন {d.splitProCommissionPercent}%
-            </p>
+            </div>
           </div>
         ) : null}
       </section>
       <CommissionRatesCard token={token} />
       <section>
-        <h2 className="text-lg font-bold text-[#064B27]">TrxID যাচাই</h2>
+        <h2 className="text-lg font-bold text-[#064B27]">TrxID যাচাই ও পেমেন্ট ইতিহাস</h2>
         <div className="flex flex-wrap gap-2 mt-3 mb-4" role="group" aria-label="পেমেন্ট স্ট্যাটাস ফিল্টার">
           {(
             [
@@ -5092,32 +5801,50 @@ function AdminPayments({ token }: { token: string }) {
         ) : (list.data?.payments.length ?? 0) === 0 ? (
           <EmptyState title="এই ফিল্টারে কোনো পেমেন্ট নেই" />
         ) : (
-          <div className="space-y-4">
-            {list.data?.payments.map((p) => (
-              <div key={p.id}>
-                <p className="text-[13px] text-[#737B73] mb-1.5">
-                  বুকিং{" "}
-                  <a className="font-en font-semibold text-[#087A35] underline" href={`#/booking/${p.bookingCode}`}>
-                    {p.bookingCode}
-                  </a>
-                </p>
-                <PaymentVerifyBox token={token} p={p} />
-                <button
-                  type="button"
-                  onClick={() => setOpenBooking(openBooking === p.bookingId ? null : p.bookingId)}
-                  aria-expanded={openBooking === p.bookingId}
-                  className="mt-2 bg-[#F0FAF2] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E2F4E7]"
-                >
-                  {openBooking === p.bookingId ? "পেমেন্ট বিবরণ বন্ধ করুন" : "বুকিংয়ের পেমেন্ট বিবরণ"}
-                </button>
-                {openBooking === p.bookingId && (
-                  <div className="mt-3 rounded-2xl border border-[#E5EAE5] bg-white p-4">
-                    <BookingPaymentDetail token={token} bookingId={p.bookingId} />
+          <>
+            <ListControls
+              query={payCtl.query}
+              setQuery={payCtl.setQuery}
+              sort={payCtl.sort}
+              setSort={payCtl.setSort}
+              sortOptions={[["new", "নতুন আগে"], ["old", "পুরনো আগে"], ["amount", "বেশি টাকা আগে"]]}
+              total={payCtl.total}
+              page={payCtl.page}
+              pageCount={payCtl.pageCount}
+              setPage={payCtl.setPage}
+              searchLabel="বুকিং কোড, TrxID বা নাম দিয়ে খুঁজুন"
+            />
+            {payCtl.pageRows.length === 0 ? (
+              <EmptyState title="খোঁজার সাথে মিলে এমন পেমেন্ট নেই" />
+            ) : (
+              <div className="space-y-4">
+                {payCtl.pageRows.map((p) => (
+                  <div key={p.id}>
+                    <p className="text-[13px] text-[#737B73] mb-1.5">
+                      বুকিং{" "}
+                      <a className="font-en font-semibold text-[#087A35] underline" href={`#/booking/${p.bookingCode}`}>
+                        {p.bookingCode}
+                      </a>
+                    </p>
+                    <PaymentVerifyBox token={token} p={p} />
+                    <button
+                      type="button"
+                      onClick={() => setOpenBooking(openBooking === p.bookingId ? null : p.bookingId)}
+                      aria-expanded={openBooking === p.bookingId}
+                      className="mt-2 bg-[#F0FAF2] text-[#064B27] font-semibold text-sm px-4 py-2 rounded-xl hover:bg-[#E2F4E7]"
+                    >
+                      {openBooking === p.bookingId ? "পেমেন্ট বিবরণ বন্ধ করুন" : "বুকিংয়ের পেমেন্ট বিবরণ"}
+                    </button>
+                    {openBooking === p.bookingId && (
+                      <div className="mt-3 rounded-2xl border border-[#E5EAE5] bg-white p-4">
+                        <BookingPaymentDetail token={token} bookingId={p.bookingId} />
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </section>
       <RefundRequestsPanel token={token} />
@@ -5185,7 +5912,7 @@ function AdminSettings({ token }: { token: string }) {
     >
       <p className="rounded-xl bg-[#F0FAF2] border border-[#cfe3d3] text-[#064B27] text-sm px-4 py-3">
         কমিশন ও গ্রাহক ফি-এর হার <strong>পেমেন্ট</strong> ট্যাব থেকে বদলানো যায় — প্রতিটি পেমেন্ট মডেলের (সম্পূর্ণ
-        অনলাইন / ৫০-৫০) আলাদা হার সেখানে দেখানো ও সম্পাদনা করা যায়।
+        অনলাইন / ৫০% অনলাইন + ৫০% নগদ) আলাদা হার সেখানে দেখানো ও সম্পাদনা করা যায়।
       </p>
       <div>
         <label className={labelCls} htmlFor="st-phone">সাপোর্ট ফোন নম্বর</label>

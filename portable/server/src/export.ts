@@ -20,6 +20,17 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { asc, sql } from "drizzle-orm";
 import * as schema from "./schema";
 import type { AppDb } from "./runtime";
+// Exact English brand spellings for payment providers (Master
+// Phase 11): the Sheets export must never write the raw lowercase
+// enum ("bkash") — the owner's spreadsheet shows "bKash" / "Nagad".
+const PROVIDER_EN: Record<string, string> = {
+  bkash: "bKash",
+  nagad: "Nagad",
+  rocket: "Rocket",
+  pathao_pay: "Pathao Pay",
+  sslcommerz: "SSLCOMMERZ",
+};
+
 
 export interface ExportBookingRow {
   id: number;
@@ -250,7 +261,7 @@ export async function buildExport(db: AppDb): Promise<ExportPayload> {
           bookingId: p.bookingId,
           bookingCode: booking?.code ?? "",
           customerName: booking?.customerName ?? "",
-          provider: p.provider,
+          provider: PROVIDER_EN[p.provider] ?? p.provider,
           trxId: p.providerTrxId,
           amount: p.amount,
           customerFee: booking?.customerFee ?? null,
