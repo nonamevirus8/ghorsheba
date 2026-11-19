@@ -158,6 +158,17 @@ bun install            # or: npm install
 bun run dev            # or: npm run dev
 ```
 
+## Operations (Phase 12)
+
+- **Runbook**: `docs/OPERATIONS-RUNBOOK.md` — incident procedures (site
+  down, payment dispute, wrong data, suspected compromise), backup &
+  recovery, the owner-only database-password rotation steps, the
+  production test-data deletion list, and the known open items.
+- **Test-data cleanup**: `scripts/cleanup-test-data.mjs` — dry-run by
+  default; prints every row belonging to the known test accounts and
+  deletes only with `--execute --confirm=<phones>`, in one transaction.
+  Prepared in Phase 12; **not yet run against production**.
+
 ## Notes
 
 - Every dependency comes from the public npm registry — `bun install` /

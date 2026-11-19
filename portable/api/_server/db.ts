@@ -96,18 +96,49 @@ function isAlreadyExistsError(err: unknown): boolean {
 
 type SqlLike = postgres.Sql | postgres.ReservedSql;
 
-async function runMigrations(sql: SqlLike): Promise<void> {
+function migrationFiles(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+}
+
+async function appliedMigrations(sql: SqlLike): Promise<Set<string>> {
+  const rows = await sql`SELECT name FROM _ghorsheba_migrations`;
+  return new Set(rows.map((r) => String(r.name)));
+}
+
+// Master Phase 12 (loading speed): once every migration file is recorded
+// as applied — the steady state of the deployed site — a cold start needs
+// no advisory lock and no per-file round trips: two queries on the pooled
+// connection prove the schema is current and startup proceeds. Any doubt
+// (table missing, unreadable directory, query error) returns false and
+// the caller takes the original locked migration path unchanged.
+async function migrationsComplete(sql: SqlLike, dir: string): Promise<boolean> {
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS _ghorsheba_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
+    const files = migrationFiles(dir);
+    if (files.length === 0) return false;
+    const applied = await appliedMigrations(sql);
+    return files.every((f) => applied.has(f));
+  } catch {
+    return false;
+  }
+}
+
+async function runMigrations(sql: SqlLike, dir: string): Promise<void> {
   await sql`CREATE TABLE IF NOT EXISTS _ghorsheba_migrations (
     name TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
-  const dir = findMigrationsDir();
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+  const files = migrationFiles(dir);
+  // One query for the whole applied set (was: one SELECT per file —
+  // eleven extra round trips to the pooler on every cold start).
+  const applied = await appliedMigrations(sql);
   for (const file of files) {
-    const seen = await sql`SELECT name FROM _ghorsheba_migrations WHERE name = ${file}`;
-    if (seen.length > 0) continue;
+    if (applied.has(file)) continue;
     const text = readFileSync(join(dir, file), "utf8");
     const statements = text
       .split("--> statement-breakpoint")
@@ -131,6 +162,9 @@ export function getDb(): Promise<AppDb> {
   if (!ready) {
     ready = (async () => {
       const { sql, db } = connect();
+      const dir = findMigrationsDir();
+      // Fast path: schema already current → no lock, no migration run.
+      if (await migrationsComplete(sql, dir)) return db;
       // Run the lock AND the migrations on one reserved connection.
       // Previously the advisory lock was taken on the reserved connection
       // while the migrations ran through the pool — different backends —
@@ -158,7 +192,7 @@ export function getDb(): Promise<AppDb> {
             await new Promise((r) => setTimeout(r, 250));
           }
         }
-        await runMigrations(lock);
+        await runMigrations(lock, dir);
       } finally {
         if (locked) {
           try {

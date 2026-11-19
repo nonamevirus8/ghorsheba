@@ -1,7 +1,7 @@
 // GhorSheba — app shell, routing, homepage and public pages.
 // Dashboards live in ./panels; booking flow in ./booking.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { FIELDS } from "./fields";
@@ -41,8 +41,27 @@ import svcElectrician from "./assets/svc-electrician.webp";
 import svcPlumber from "./assets/svc-plumber.jpg";
 import svcMason from "./assets/svc-mason.webp";
 import svcPainter from "./assets/svc-painter.webp";
-import { BookingDetailPage, BookingPage } from "./booking";
-import { AdminPanel, CustomerDashboard, ProDashboard } from "./panels";
+// Master Phase 12 (loading speed): the booking flow and the three
+// dashboards are code-split out of the first-load bundle, so the
+// homepage and public pages no longer pay their parse/execute cost
+// (panels.tsx alone is ~6k lines including the analytics charts). Each
+// loads on first navigation to its route, behind the app's standard
+// loading spinner (see the <Suspense> around {content} in App below).
+const BookingPage = lazy(() =>
+  import("./booking").then((m) => ({ default: m.BookingPage })),
+);
+const BookingDetailPage = lazy(() =>
+  import("./booking").then((m) => ({ default: m.BookingDetailPage })),
+);
+const CustomerDashboard = lazy(() =>
+  import("./panels").then((m) => ({ default: m.CustomerDashboard })),
+);
+const ProDashboard = lazy(() =>
+  import("./panels").then((m) => ({ default: m.ProDashboard })),
+);
+const AdminPanel = lazy(() =>
+  import("./panels").then((m) => ({ default: m.AdminPanel })),
+);
 
 export const SERVICE_IMG: Record<string, string> = {
   electrician: svcElectrician,
@@ -285,7 +304,18 @@ export function App() {
           </div>
         </div>
       )}
-      <main className={`flex-1 ${page === "admin" ? "" : "pb-20 lg:pb-0"}`}>{content}</main>
+      <main className={`flex-1 ${page === "admin" ? "" : "pb-20 lg:pb-0"}`}>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center gap-2 py-24 text-[#737B73]">
+              <Spinner />
+              <span>লোড হচ্ছে…</span>
+            </div>
+          }
+        >
+          {content}
+        </Suspense>
+      </main>
       {page !== "admin" && <Footer catalog={catalog.data} />}
       {/* Mobile bottom navigation (hidden on admin pages — the admin
           panel renders its own bottom navigation) */}
