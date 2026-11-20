@@ -4,6 +4,16 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import {
+  applySeo,
+  breadcrumbLd,
+  crumbsFor,
+  metaForRoute,
+  personLd,
+  proMeta,
+  serviceLd,
+  serviceMeta,
+} from "./seo";
 import { FIELDS } from "./fields";
 import {
 Avatar,
@@ -172,6 +182,12 @@ export function App() {
   const hash = useHashRoute();
   const { segs, params } = useMemo(() => parseRoute(hash), [hash]);
   const page = segs[0] ?? "";
+  // Per-route SEO metadata + JSON-LD (see ./seo.ts). The service and
+  // professional pages re-apply with their real data once it loads.
+  useEffect(() => {
+    const meta = metaForRoute(page, segs);
+    applySeo(meta, meta.noindex ? [] : [breadcrumbLd(crumbsFor(meta))]);
+  }, [page, segs]);
   const catalog = useCatalog();
   const me = useMe();
 
@@ -220,6 +236,9 @@ export function App() {
       break;
     case "admin":
       content = <AdminPanel params={params} />;
+      break;
+    case "locations":
+      content = <TangailPage />;
       break;
     case "how":
       content = <HowPage />;
@@ -573,6 +592,7 @@ function Footer({ catalog }: { catalog: ReturnType<typeof useCatalog>["data"] })
           <ul className="space-y-2.5 text-white/80 text-[15px]">
             <li><a className="hover:text-white" href="#/">হোম</a></li>
             <li><a className="hover:text-white" href="#/services">সার্ভিসসমূহ</a></li>
+            <li><a className="hover:text-white" href="#/locations/tangail">সেবা এলাকা: টাঙ্গাইল</a></li>
             <li><a className="hover:text-white" href="#/how">কিভাবে কাজ করে</a></li>
             <li><a className="hover:text-white" href="#/join">প্রফেশনাল নিবন্ধন</a></li>
             <li><a className="hover:text-white" href="#/download-app">অ্যাপ ডাউনলোড করুন</a></li>
@@ -1358,6 +1378,19 @@ function ServiceDetailPage({ slug }: { slug: string }) {
   });
   const [openFaq, setOpenFaq] = useState(0);
 
+  useEffect(() => {
+    if (!service) return;
+    const meta = serviceMeta(service);
+    applySeo(meta, [
+      breadcrumbLd([
+        { name: "হোম", path: "/" },
+        { name: "সার্ভিসসমূহ", path: "/services" },
+        { name: service.nameBn, path: meta.clean },
+      ]),
+      serviceLd(service),
+    ]);
+  }, [service]);
+
   if (catalog.isPending) return <Spinner />;
   if (!service) {
     return (
@@ -1373,9 +1406,15 @@ function ServiceDetailPage({ slug }: { slug: string }) {
   const img = SERVICE_IMG[service.slug];
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 lg:py-12">
-      <a href="#/services" className="inline-flex items-center gap-1.5 text-[#075B35] font-medium text-[15px] hover:underline">
-        {Icon.arrowLeft("w-4 h-4")} সব সার্ভিস
-      </a>
+      <nav aria-label="ব্রেডক্রাম্ব" className="text-[14px] text-[#5C6B76]">
+        <ol className="flex flex-wrap items-center gap-1.5">
+          <li><a href="#/" className="hover:text-[#075B35] hover:underline">হোম</a></li>
+          <li aria-hidden="true">/</li>
+          <li><a href="#/services" className="hover:text-[#075B35] hover:underline">সার্ভিসসমূহ</a></li>
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="font-medium text-[#172B3A]">{service.nameBn}</li>
+        </ol>
+      </nav>
       <div className="mt-4 grid lg:grid-cols-[1.5fr_1fr] gap-8 items-start">
         <div>
           <div className="flex items-center gap-4">
@@ -1538,8 +1577,20 @@ function ProProfilePage({ id }: { id: number }) {
     queryFn: () => api.getProfessional({ id }),
     enabled: id > 0,
   });
-  if (data.isPending) return <Spinner />;
   const pro = data.data?.professional;
+  useEffect(() => {
+    if (!pro) return;
+    const meta = proMeta(pro);
+    applySeo(meta, [
+      breadcrumbLd([
+        { name: "হোম", path: "/" },
+        { name: "প্রফেশনাল", path: "/professionals" },
+        { name: pro.name, path: meta.clean },
+      ]),
+      personLd(pro),
+    ]);
+  }, [pro]);
+  if (data.isPending) return <Spinner />;
   if (!pro) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-14">
@@ -1553,9 +1604,15 @@ function ProProfilePage({ id }: { id: number }) {
   }
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 lg:py-12">
-      <a href="#/professionals" className="inline-flex items-center gap-1.5 text-[#075B35] font-medium text-[15px] hover:underline">
-        {Icon.arrowLeft("w-4 h-4")} সব প্রফেশনাল
-      </a>
+      <nav aria-label="ব্রেডক্রাম্ব" className="text-[14px] text-[#5C6B76]">
+        <ol className="flex flex-wrap items-center gap-1.5">
+          <li><a href="#/" className="hover:text-[#075B35] hover:underline">হোম</a></li>
+          <li aria-hidden="true">/</li>
+          <li><a href="#/professionals" className="hover:text-[#075B35] hover:underline">প্রফেশনাল</a></li>
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="font-medium text-[#172B3A]">{pro.name}</li>
+        </ol>
+      </nav>
       <div className="mt-4 rounded-3xl border border-[#E1E9E4] bg-white p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row gap-5">
           <Avatar name={pro.name} photoUrl={pro.photoUrl} size="w-24 h-24" textSize="text-3xl" />
@@ -2115,6 +2172,83 @@ function HowPage() {
       <p>প্রতিটি ধাপে আপনি নোটিফিকেশন পাবেন এবং "আমার বুকিং" থেকে বুকিংয়ের অবস্থা যেকোনো সময় দেখতে পারবেন।</p>
       <a href="#/services" className="inline-flex bg-[#FF8500] hover:bg-[#E67600] text-white font-bold px-6 py-3 rounded-xl">এখনই সার্ভিস খুঁজুন</a>
     </PageShell>
+  );
+}
+
+// Tangail location landing page (SEO Phase 8): the ONE genuinely
+// served area — Tangail district and its 12 upazilas, read live from
+// the catalog. No other city page exists, because no other area is
+// served; inventing one would be a fake page.
+function TangailPage() {
+  const catalog = useCatalog();
+  const services = catalog.data?.services ?? [];
+  const locations = catalog.data?.locations ?? [];
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8 lg:py-12">
+      <nav aria-label="ব্রেডক্রাম্ব" className="text-[14px] text-[#5C6B76]">
+        <ol className="flex flex-wrap items-center gap-1.5">
+          <li><a href="#/" className="hover:text-[#075B35] hover:underline">হোম</a></li>
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="font-medium text-[#172B3A]">টাঙ্গাইল</li>
+        </ol>
+      </nav>
+      <h1 className="mt-4 text-[28px] sm:text-[36px] font-bold text-[#054A2B] leading-tight">
+        টাঙ্গাইলে হোম সার্ভিস — যাচাইকৃত মিস্ত্রি, এক ডাকেই
+      </h1>
+      <p className="mt-3 max-w-3xl text-[16px] leading-relaxed text-[#43534B]">
+        MistriDako বর্তমানে শুধুমাত্র <b>টাঙ্গাইল জেলায়</b> সেবা দেয়। ইলেকট্রিশিয়ান, প্লাম্বার, রাজমিস্ত্রি,
+        রংমিস্ত্রি, কাঠমিস্ত্রি, এসি টেকনিশিয়ানসহ সব হোম সার্ভিসের জন্য পরিচয়-যাচাইকৃত স্থানীয় প্রফেশনাল
+        বুকিং করুন — বুকিং সম্পূর্ণ ফ্রি, মূল্য নির্ধারণ হয় আইটেমভিত্তিক কোটেশনে আপনার অনুমোদনের পর।
+      </p>
+
+      <h2 className="text-[21px] font-bold text-[#054A2B] mt-10 mb-4">সেবা এলাকা — টাঙ্গাইলের ১২টি উপজেলা</h2>
+      {catalog.isPending ? (
+        <Spinner />
+      ) : (
+        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {locations.map((l) => (
+            <li key={l.id} className="flex items-center gap-2 rounded-2xl border border-[#E1E9E4] bg-[#F3F8F4] px-4 py-3 font-medium text-[#172B3A]">
+              <span className="text-[#075B35]">{Icon.pin("w-4 h-4")}</span> {l.nameBn}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h2 className="text-[21px] font-bold text-[#054A2B] mt-10 mb-4">টাঙ্গাইলে পাওয়া যাচ্ছে যেসব সার্ভিস</h2>
+      <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {services.map((s) => (
+          <li key={s.slug}>
+            <a
+              href={`#/service/${s.slug}`}
+              className="flex items-center gap-3 rounded-2xl border border-[#E1E9E4] bg-white px-4 py-3.5 hover:border-[#075B35] transition-colors"
+            >
+              <span className="grid place-items-center w-11 h-11 rounded-xl bg-[#F3F8F4] text-[#075B35] shrink-0">
+                <ServiceIcon icon={s.icon} className="w-6 h-6" />
+              </span>
+              <span>
+                <span className="block font-semibold text-[#172B3A]">{s.nameBn} — টাঙ্গাইল</span>
+                {s.tagline && <span className="block text-[13.5px] text-[#5C6B76]">{s.tagline}</span>}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+
+      <h2 className="text-[21px] font-bold text-[#054A2B] mt-10 mb-4">কিভাবে বুকিং করবেন</h2>
+      <ol className="list-decimal list-inside space-y-2 max-w-3xl text-[15.5px] leading-relaxed text-[#43534B]">
+        <li>পছন্দের সার্ভিস বেছে নিয়ে আপনার উপজেলা ও ঠিকানা দিয়ে বুকিং রিকোয়েস্ট পাঠান।</li>
+        <li>অ্যাডমিন যাচাইকৃত প্রফেশনালের আইটেমভিত্তিক কোটেশন পাঠাবেন — আপনি অনুমোদন না করলে মূল্য চূড়ান্ত হয় না।</li>
+        <li>প্রফেশনাল আপনার ঠিকানায় গিয়ে কাজ সম্পন্ন করবেন; কাজ শেষে আপনি সম্পন্ন নিশ্চিত করে রিভিউ দিতে পারবেন।</li>
+      </ol>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <a href="#/services" className="inline-flex bg-[#FF8500] hover:bg-[#E67600] text-white font-bold px-6 py-3 rounded-xl">
+          সব সার্ভিস দেখুন
+        </a>
+        <a href="#/contact" className="inline-flex border-[1.5px] border-[#075B35] text-[#075B35] font-bold px-6 py-3 rounded-xl hover:bg-[#F3F8F4]">
+          যোগাযোগ করুন
+        </a>
+      </div>
+    </div>
   );
 }
 

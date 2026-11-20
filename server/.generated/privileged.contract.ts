@@ -6,6 +6,10 @@ export const Privileged = definePrivilegedContracts({
     request: z.object({}),
     response: z.object({ token: z.string().nullable() }),
   },
+  readIndexNowKey: {
+    request: z.object({}),
+    response: z.object({ key: z.string().nullable() }),
+  },
   readSslcommerzConfig: {
     request: z.object({}),
     response: z.object({

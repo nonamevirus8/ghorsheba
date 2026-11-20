@@ -34,6 +34,7 @@ import {
   fullBackupResponse,
   type FullBackupDownload,
 } from "./backup";
+import { buildSitemapXml, type SitemapKind } from "./sitemap";
 import { Privileged } from "@space/privileged";
 import bcrypt from "bcryptjs";
 
@@ -41,6 +42,39 @@ import bcrypt from "bcryptjs";
 
 function dbOf(ctx: Ctx) {
   return ctx.db<typeof schema>();
+}
+
+// ------------------------------------------------------- SEO (Phases 2/5)
+// Canonical production origin for every SEO URL, in both editions.
+const SEO_SITE_URL = "https://mistridako.vercel.app";
+function seoUrl(path: string): string {
+  return `${SEO_SITE_URL}${path}`;
+}
+
+// IndexNow notification (SEO Phase 5), artifact edition. The API key
+// is read on the host via the readIndexNowKey privileged contract —
+// it never enters the sandbox bundle or any client. While the key is
+// unset this is deliberately inert. Never throws: a notification
+// failure must not fail the admin action that triggered it.
+async function pingIndexNow(ctx: Ctx, urls: string[]): Promise<void> {
+  try {
+    const { key } = await ctx.executePrivileged(Privileged.readIndexNowKey, {});
+    if (!key) return;
+    const unique = [...new Set(urls)].filter((u) => u.startsWith(`${SEO_SITE_URL}/`));
+    if (unique.length === 0) return;
+    await fetch("https://api.indexnow.org/indexnow", {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        host: "mistridako.vercel.app",
+        key,
+        keyLocation: `${SEO_SITE_URL}/indexnow-key.txt`,
+        urlList: unique.slice(0, 10_000),
+      }),
+    });
+  } catch {
+    /* IndexNow is best-effort only */
+  }
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -2030,6 +2064,46 @@ export const Actions = {
         .where(eq(schema.users.role, "admin"))
         .limit(1);
       return { adminExists: admins.length > 0 };
+    },
+  }),
+
+  getSitemapXml: defineAction({
+    description: "Returns one XML sitemap (index, pages, services, locations or professionals) generated from the live database — public canonical URLs only. The portable production edition serves the same XML over HTTP at /sitemap.xml and its sibling paths.",
+    request: z.object({
+      kind: z.enum(["index", "pages", "services", "locations", "professionals"]).default("index"),
+    }),
+    response: z.object({ xml: z.string() }),
+    async handler(ctx, args) {
+      const db = dbOf(ctx);
+      const services = await db
+        .select({ slug: schema.services.slug, updatedAt: schema.services.updatedAt })
+        .from(schema.services)
+        .where(eq(schema.services.active, 1))
+        .orderBy(asc(schema.services.sortOrder))
+        .limit(50_000);
+      const pros = await db
+        .select({
+          id: schema.professionals.id,
+          userId: schema.professionals.userId,
+          updatedAt: schema.professionals.updatedAt,
+        })
+        .from(schema.professionals)
+        .where(eq(schema.professionals.status, "verified"))
+        .orderBy(asc(schema.professionals.id))
+        .limit(50_000);
+      let professionals: { id: number; updatedAt: Date }[] = [];
+      if (pros.length > 0) {
+        const users = await db
+          .select({ id: schema.users.id, status: schema.users.status })
+          .from(schema.users);
+        const activeUser = new Map(users.map((u) => [u.id, u.status === "active"]));
+        professionals = pros
+          .filter((p) => activeUser.get(p.userId))
+          .map((p) => ({ id: p.id, updatedAt: p.updatedAt }));
+      }
+      return {
+        xml: buildSitemapXml(args.kind as SitemapKind, { services, professionals }),
+      };
     },
   }),
 
@@ -4497,6 +4571,7 @@ export const Actions = {
       note: z.string().max(600).optional(),
     }),
     response: okOut,
+    privileged: [Privileged.readIndexNowKey],
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
       const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
@@ -4536,6 +4611,8 @@ export const Actions = {
         body: note ?? undefined,
       });
       await logAdmin(ctx, admin.id, "pro_status", `professional #${pro.id} -> ${args.status}${note ? ` — ${note}` : ""}`);
+      // SEO (Phase 5): profile became public / stopped being public.
+      await pingIndexNow(ctx, [seoUrl(`/professionals/${pro.id}`), seoUrl("/professionals")]);
       ctx.invalidateQueries();
       return { ok: true };
     },
@@ -4660,6 +4737,7 @@ export const Actions = {
       active: z.boolean(),
     }),
     response: okOut,
+    privileged: [Privileged.readIndexNowKey],
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
       const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
@@ -4704,6 +4782,22 @@ export const Actions = {
           sortOrder: maxSort.length + 1,
         });
         await logAdmin(ctx, admin.id, "service_create", args.nameBn);
+      }
+      // SEO (Phase 5): service create/update (including deactivation)
+      // changes public pages — notify IndexNow.
+      {
+        let slug = args.slug?.toLowerCase().replace(/[^a-z0-9-]/g, "-") ?? null;
+        if (args.id) {
+          const rows = await db
+            .select({ slug: schema.services.slug })
+            .from(schema.services)
+            .where(eq(schema.services.id, args.id))
+            .limit(1);
+          slug = rows[0]?.slug ?? slug;
+        }
+        const urls = [seoUrl("/services"), seoUrl("/")];
+        if (slug) urls.push(seoUrl(`/services/${slug}`));
+        await pingIndexNow(ctx, urls);
       }
       ctx.invalidateQueries();
       return { ok: true };
@@ -4753,6 +4847,7 @@ export const Actions = {
       active: z.boolean(),
     }),
     response: okOut,
+    privileged: [Privileged.readIndexNowKey],
     async handler(ctx, args): Promise<z.infer<typeof okOut>> {
       const admin = await requireAdminLevel(ctx, args.token, ["operations"]);
       const db = dbOf(ctx);
@@ -4772,6 +4867,8 @@ export const Actions = {
         });
         await logAdmin(ctx, admin.id, "location_create", args.nameBn);
       }
+      // SEO (Phase 5): service-area changes affect the Tangail page.
+      await pingIndexNow(ctx, [seoUrl("/locations/tangail"), seoUrl("/")]);
       ctx.invalidateQueries();
       return { ok: true };
     },

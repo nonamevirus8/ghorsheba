@@ -1,0 +1,52 @@
+# MistriDako — robots.txt
+# Public pages are crawlable. Private surfaces (dashboards, admin,
+# booking details, payment records) are views behind login on the app
+# shell; they are excluded from the sitemaps and carry a noindex
+# directive in the app, and every one of them is protected by
+# server-side authentication — robots.txt is not a security mechanism
+# and is not relied on as one. Only the internal API is disallowed
+# here, because it is a JSON RPC endpoint, not a page.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# --- AI search crawlers: ALLOWED (search indexing is welcome) ---
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+
+# --- AI model-training crawlers: DISALLOWED ---
+# (Owner default, 2026-11-20: search crawling and model training are
+# kept separate. To change this policy, edit these groups and
+# redeploy — no code change is needed.)
+User-agent: GPTBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+Sitemap: https://mistridako.vercel.app/sitemap.xml

@@ -1,1 +1,64 @@
-{"$schema":"https://openapi.vercel.sh/vercel.json","functions":{"api/actions.ts":{"includeFiles":"drizzle/**"},"api/blob.ts":{"includeFiles":"drizzle/**"},"api/export.ts":{"includeFiles":"drizzle/**"},"api/sslcommerz/ipn.ts":{"includeFiles":"drizzle/**"},"api/sslcommerz/land.ts":{"includeFiles":"drizzle/**"},"api/sslcommerz/return.ts":{"includeFiles":"drizzle/**"}},"regions":["bom1"],"rewrites":[{"destination":"/index.html","source":"/((?!api/).*)"}]}
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/actions.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/blob.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/export.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/sslcommerz/ipn.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/sslcommerz/land.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/sslcommerz/return.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/sitemap.ts": {
+      "includeFiles": "drizzle/**"
+    },
+    "api/indexnow-key.ts": {}
+  },
+  "regions": [
+    "bom1"
+  ],
+  "rewrites": [
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap?kind=index"
+    },
+    {
+      "source": "/sitemap-index.xml",
+      "destination": "/api/sitemap?kind=index"
+    },
+    {
+      "source": "/sitemap-pages.xml",
+      "destination": "/api/sitemap?kind=pages"
+    },
+    {
+      "source": "/sitemap-services.xml",
+      "destination": "/api/sitemap?kind=services"
+    },
+    {
+      "source": "/sitemap-locations.xml",
+      "destination": "/api/sitemap?kind=locations"
+    },
+    {
+      "source": "/sitemap-professionals.xml",
+      "destination": "/api/sitemap?kind=professionals"
+    },
+    {
+      "source": "/indexnow-key.txt",
+      "destination": "/api/indexnow-key"
+    },
+    {
+      "destination": "/index.html",
+      "source": "/((?!api/).*)"
+    }
+  ]
+}

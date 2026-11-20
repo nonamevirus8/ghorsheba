@@ -1,0 +1,63 @@
+# MistriDako (মিস্ত্রি ডাকো)
+
+> MistriDako is a home-service marketplace for Tangail District, Bangladesh. Customers book verified local professionals — electricians, plumbers, masons, painters, carpenters, AC technicians and more — through a coordinated booking flow: request a booking, approve an itemized quotation, then the professional completes the work. Tagline: এক ডাকেই, ঘরের সমাধান। ("Every home solution, in one call.")
+
+Note: this file is a convenience summary for AI systems. It is not a replacement for the XML sitemaps (https://mistridako.vercel.app/sitemap.xml) and is not a guaranteed AI indexing method.
+
+## Business category
+
+Home services marketplace / local services platform (Bangladesh).
+
+## Service area
+
+Tangail District, Bangladesh only — 12 upazilas: Tangail Sadar, Ghatail, Kalihati, Mirzapur, Sakhipur, Basail, Madhupur, Nagarpur, Delduar, Bhuapur, Gopalpur, Dhanbari. MistriDako does not currently serve Dhaka or other districts.
+
+## Services
+
+- Electrician (ইলেকট্রিশিয়ান): https://mistridako.vercel.app/services/electrician
+- Plumber (প্লাম্বার): https://mistridako.vercel.app/services/plumber
+- Mason / Rajmistri (রাজমিস্ত্রি): https://mistridako.vercel.app/services/mason
+- Painter (রংমিস্ত্রি): https://mistridako.vercel.app/services/painter
+- Carpenter (কাঠমিস্ত্রি): https://mistridako.vercel.app/services/carpenter
+- AC Technician (এসি টেকনিশিয়ান): https://mistridako.vercel.app/services/ac-technician
+- Tile Worker (টাইলস মিস্ত্রি): https://mistridako.vercel.app/services/tile-worker
+- Welding (ওয়েল্ডিং): https://mistridako.vercel.app/services/welding
+- Cleaning (ক্লিনিং): https://mistridako.vercel.app/services/cleaning
+- Glass & Aluminium (গ্লাস ও অ্যালুমিনিয়াম): https://mistridako.vercel.app/services/glass-aluminium
+- Renovation (বাড়ি সংস্কার): https://mistridako.vercel.app/services/renovation
+- Pest Control (পেস্ট কন্ট্রোল): https://mistridako.vercel.app/services/pest-control
+
+Prices are not fixed online: after a booking request, the customer receives an itemized quotation (labour, materials, transport shown separately) and the price becomes final only when the customer approves it.
+
+## Public contact information
+
+As displayed on the website's footer and contact page:
+
+- Phone: +8801615799579
+- WhatsApp: +8801615799579
+- Email: manikmia2049@gmail.com
+- Address: টাঙ্গাইল, বাংলাদেশ (Tangail, Bangladesh)
+
+## Important public pages
+
+- Home: https://mistridako.vercel.app/
+- All services: https://mistridako.vercel.app/services
+- Verified professionals: https://mistridako.vercel.app/professionals
+- Service area — Tangail: https://mistridako.vercel.app/locations/tangail
+- How it works: https://mistridako.vercel.app/how-it-works
+- About: https://mistridako.vercel.app/about
+- Contact: https://mistridako.vercel.app/contact
+- Help & FAQs: https://mistridako.vercel.app/help
+- Become a professional: https://mistridako.vercel.app/become-a-professional
+- Download the app: https://mistridako.vercel.app/download-app
+
+## Policies
+
+- Privacy policy: https://mistridako.vercel.app/privacy-policy
+- Terms: https://mistridako.vercel.app/terms
+- Payment policy: https://mistridako.vercel.app/payment-policy
+- Cancellation policy: https://mistridako.vercel.app/cancellation-policy
+- Refund policy: https://mistridako.vercel.app/refund-policy
+- Commission policy: https://mistridako.vercel.app/commission-policy
+- Dispute policy: https://mistridako.vercel.app/dispute-policy
+- Professional agreement: https://mistridako.vercel.app/professional-agreement

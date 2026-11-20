@@ -23,6 +23,10 @@ export const Privileged = definePrivilegedContracts({
     request: z.object({}),
     response: z.object({ token: z.string().nullable() }),
   },
+  readIndexNowKey: {
+    request: z.object({}),
+    response: z.object({ key: z.string().nullable() }),
+  },
   readSslcommerzConfig: {
     request: z.object({}),
     response: z.object({
@@ -36,6 +40,12 @@ export const Privileged = definePrivilegedContracts({
 export default definePrivilegedHandlers(Privileged, {
   async readExportToken() {
     return { token: process.env.EXPORT_TOKEN ?? null };
+  },
+  async readIndexNowKey() {
+    // SEO Phase 5: the IndexNow API key lives only in the host
+    // environment. The sandboxed action compares/uses it server-side;
+    // it is never sent to any client. Unset → the integration is inert.
+    return { key: process.env.INDEXNOW_KEY ?? null };
   },
   async readSslcommerzConfig() {
     return {

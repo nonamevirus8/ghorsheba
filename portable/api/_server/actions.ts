@@ -33,6 +33,7 @@ import {
   fullBackupResponse,
   type FullBackupDownload,
 } from "./backup.js";
+import { notifyIndexNow, seoUrl } from "./indexnow.js";
 import bcrypt from "bcryptjs";
 
 // ---------------------------------------------------------------- helpers
@@ -4527,6 +4528,10 @@ export const Actions = {
         body: note ?? undefined,
       });
       await logAdmin(ctx, admin.id, "pro_status", `professional #${pro.id} -> ${args.status}${note ? ` — ${note}` : ""}`);
+      // SEO (Phase 5): a profile becoming public (verified) or stopping
+      // being public is a public-content change/removal — notify
+      // IndexNow. Fire-and-forget; inert while INDEXNOW_KEY is unset.
+      void notifyIndexNow([seoUrl(`/professionals/${pro.id}`), seoUrl("/professionals")]);
       ctx.invalidateQueries();
       return { ok: true };
     },
@@ -4696,6 +4701,22 @@ export const Actions = {
         });
         await logAdmin(ctx, admin.id, "service_create", args.nameBn);
       }
+      // SEO (Phase 5): service create/update (including deactivation,
+      // which removes the page from the sitemap) — notify IndexNow.
+      {
+        let slug = args.slug?.toLowerCase().replace(/[^a-z0-9-]/g, "-") ?? null;
+        if (args.id) {
+          const rows = await db
+            .select({ slug: schema.services.slug })
+            .from(schema.services)
+            .where(eq(schema.services.id, args.id))
+            .limit(1);
+          slug = rows[0]?.slug ?? slug;
+        }
+        const urls = [seoUrl("/services"), seoUrl("/")];
+        if (slug) urls.push(seoUrl(`/services/${slug}`));
+        void notifyIndexNow(urls);
+      }
       ctx.invalidateQueries();
       return { ok: true };
     },
@@ -4763,6 +4784,9 @@ export const Actions = {
         });
         await logAdmin(ctx, admin.id, "location_create", args.nameBn);
       }
+      // SEO (Phase 5): service-area changes affect the Tangail
+      // location page — notify IndexNow.
+      void notifyIndexNow([seoUrl("/locations/tangail"), seoUrl("/")]);
       ctx.invalidateQueries();
       return { ok: true };
     },

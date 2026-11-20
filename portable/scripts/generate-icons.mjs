@@ -1,13 +1,17 @@
 // Generates the PWA PNG icons (192, 512, maskable 512, apple-touch 180)
 // at build time — no binary icon files are kept in the repo.
 //
-// The artwork is NOT redrawn: it is the house+wrench icon cropped from
-// the owner's official MistriDako logo file, embedded as a base64 data
-// URI in client/src/logo.ts (LOGO_ICON_DATA_URI) because this repo is
-// published through a text-only channel. This script decodes that PNG,
-// box-downsamples it to each icon size (the maskable variant centres it
-// at 80% on the icon's own white background, inside the safe zone), and
-// re-encodes with the small PNG encoder below (node:zlib only).
+// The artwork is NOT redrawn: it is the owner's dedicated icon-only
+// MistriDako artwork (house+wrench, no text — sent 2026-11-20),
+// embedded as a base64 data URI in client/src/logo.ts
+// (LOGO_ICON_DATA_URI) because this repo is published through a
+// text-only channel. This script decodes that PNG, box-downsamples it
+// to each icon size (the maskable variant centres it at 80% on the
+// icon's own white background, inside the safe zone), and re-encodes
+// with the small PNG encoder below (node:zlib only). It also writes
+// dist/og-image.png — the FULL official logo lockup (LOGO_DATA_URI,
+// wordmark + tagline), which is what og:image / twitter:image point
+// at; the icon artwork is for favicons and app icons only.
 //
 // Output goes to dist/ (Vite has already written the site there).
 
@@ -196,8 +200,18 @@ function renderIcon(icon, size, { maskable = false } = {}) {
   return encodePng(canvas, size);
 }
 
+function loadFullLogoBytes() {
+  const src = readFileSync(join(process.cwd(), "client/src/logo.ts"), "utf8");
+  const m = src.match(/LOGO_DATA_URI\s*=\s*([\s\S]*?);\n/);
+  if (!m) throw new Error("LOGO_DATA_URI not found in client/src/logo.ts");
+  const b64 = [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]).join("");
+  return Buffer.from(b64.replace(/^data:image\/png;base64,/, ""), "base64");
+}
+
 const icon = loadIconPixels();
 const dist = join(process.cwd(), "dist");
+writeFileSync(join(dist, "og-image.png"), loadFullLogoBytes());
+console.log("generated dist/og-image.png (full official logo lockup)");
 const jobs = [
   ["icon-192.png", 192, {}],
   ["icon-512.png", 512, {}],
