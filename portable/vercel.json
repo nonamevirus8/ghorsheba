@@ -21,8 +21,7 @@
     },
     "api/sitemap.ts": {
       "includeFiles": "drizzle/**"
-    },
-    "api/indexnow-key.ts": {}
+    }
   },
   "regions": [
     "bom1"
